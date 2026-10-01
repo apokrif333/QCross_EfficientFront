@@ -1,0 +1,7 @@
+{
+  "source_url": "https://www.lazyportfolioetf.com/etf/vanguard-total-stock-market-vti/",
+  "captured_at": "2026-10-01T07:00:00.170975+00:00",
+  "source_response_sha256": "90e04574913dde9f5244d97f72e8155f52edf110af120cb1428999bc0ad95c75",
+  "fixture_sha256": "1b38eceb6844f9cffda0c44f7e3fbd0363e3d84843662f2b82b4c6901d885ae0",
+  "sanitization": "Public MAX/1M observations, nominal capital, KPIs, settings and methodology; no USID/nonces, tracking or live daily observations"
+}

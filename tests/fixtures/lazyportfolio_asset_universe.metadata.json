@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.lazyportfolioetf.com/portfolio-backtest-and-simulation/",
+  "captured_at": "2026-10-01T05:04:42.638176+00:00",
+  "raw_sha256": "b06fb24f9b86c4c7cc50485f605a8af0937c07ceaa6ce6559f5bce254f0e36ea",
+  "fixture_sha256": "d36739f366264c0407505b4f24c73e0b4c14d0d0471c47cbd37fc5f93ce6f5f4",
+  "live_selector_count": 12,
+  "fixture_selector_count": 2,
+  "instrument_count": 263,
+  "sanitization": "Only complete asset-block elements and first two asset-dropdown selects retained; no scripts, forms, tokens, ads or tracking."
+}

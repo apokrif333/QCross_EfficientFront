@@ -1,0 +1,1 @@
+"""Source-neutral storage access."""

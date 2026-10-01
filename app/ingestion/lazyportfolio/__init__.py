@@ -1,0 +1,1 @@
+"""LazyPortfolioETF-specific discovery implementation."""

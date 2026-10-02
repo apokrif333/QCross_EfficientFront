@@ -29,8 +29,14 @@ def _worker(connection, panel, kind: str, options: dict) -> None:
         "resampled-frontier": analyze_resampled_frontier,
     }
     try:
+        api_request = options.pop("_api_request", None)
         with threadpool_limits(limits=1):
             result = handlers[kind](panel, **options)
+        result["reproducibility"]["api_request"] = api_request
+        result["reproducibility"]["random_seed"] = (
+            api_request.get("random_seed") if api_request else None
+        )
+        result["reproducibility"]["optimization_parameters"] = options
         connection.send({"result": result})
     except Exception as exc:
         connection.send({"error": f"{type(exc).__name__}: {exc}"})

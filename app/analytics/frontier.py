@@ -7,6 +7,7 @@ from app.analytics.estimators import estimate_covariance
 from app.analytics.metrics import correlation_diagnostics, portfolio_metrics
 from app.analytics.models import AnalyticsError, OptimizationResult, ReturnPanel
 from app.analytics.optimizer import PortfolioOptimizer
+from app.analytics.provenance import panel_provenance
 
 
 def prepare(
@@ -56,6 +57,7 @@ def data_diagnostics(panel: ReturnPanel, estimate) -> dict:
     if estimate.diagnostics["nearly_singular"]:
         warnings.append("Nearly singular covariance: a disclosed eigenvalue floor was applied.")
     return {
+        "reproducibility": panel_provenance(panel),
         "period": {
             "start": str(panel.returns.index[0]),
             "end": str(panel.returns.index[-1]),

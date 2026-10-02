@@ -16,3 +16,10 @@ data/snapshots/**
 data/*.db*
 !data/raw/.gitkeep
 !data/exports/.gitkeep
+ui/node_modules/
+ui/dist/
+ui/test-results/
+ui/playwright-report/
+ui/.env.local
+ui/public/demo/
+ui/*.tsbuildinfo

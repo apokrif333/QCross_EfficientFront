@@ -107,6 +107,7 @@ class AnalyticsResultBase(BaseModel):
     annual_expected_returns: dict[str, float]
     annual_covariance: list[list[float]]
     correlation: list[list[float | None]]
+    reproducibility: dict[str, Any]
 
 
 class FrontierResult(AnalyticsResultBase):

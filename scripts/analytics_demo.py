@@ -28,6 +28,7 @@ from app.config import get_settings
 from app.db.models import Instrument
 from app.db.session import make_engine, make_session_factory
 from app.main import create_app
+from app.schemas.frontier import AnalyticsRequest
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -35,6 +36,16 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 def save(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, indent=2, allow_nan=False), encoding="utf-8")
+
+
+def save_calculation(path: Path, value: dict, request: dict) -> None:
+    full_request = AnalyticsRequest.model_validate(request).model_dump(mode="json")
+    value["reproducibility"].update(
+        api_request=full_request,
+        random_seed=full_request["random_seed"],
+        optimization_parameters=full_request,
+    )
+    save(path, value)
 
 
 def digest_database(url: str) -> str | None:
@@ -102,7 +113,11 @@ def main() -> None:
                 result = analyze_frontier(panel, **{**options, "covariance_method": method})
                 if result["status"] != "complete":
                     raise RuntimeError(f"{method} frontier incomplete; inspect solver diagnostics.")
-                save(output / f"frontier-{method}.json", result)
+                save_calculation(
+                    output / f"frontier-{method}.json",
+                    result,
+                    {**request, "covariance_method": method},
+                )
                 methods[method] = {
                     "parameters": result["covariance_parameters"],
                     "diagnostics": result["covariance_diagnostics"],
@@ -111,19 +126,31 @@ def main() -> None:
             frontier = json.loads((output / "frontier-sample.json").read_text())
             print("Five-fold CV and ensemble", flush=True)
             cv = analyze_cross_validation(panel, **options, cv_folds=5)
-            save(output / "cross-validation.json", cv)
+            save_calculation(output / "cross-validation.json", cv, {**request, "cv_folds": 5})
             timings["cross_validation"] = cv["execution_seconds"]
             print("1,000 stationary bootstrap iterations, GMV and Max Sharpe", flush=True)
             bootstrap = analyze_bootstrap(
                 panel, **options, bootstrap_iterations=1000, random_seed=42
             )
-            save(output / "bootstrap.json", bootstrap)
+            save_calculation(
+                output / "bootstrap.json",
+                bootstrap,
+                {
+                    **request,
+                    "bootstrap_iterations": 1000,
+                    "bootstrap_objectives": ["gmv", "max_sharpe"],
+                },
+            )
             timings["bootstrap_1000_both_objectives"] = bootstrap["execution_seconds"]
             print("Resampled frontier: 250 samples x 51 common risk aversions", flush=True)
             resampled = analyze_resampled_frontier(
                 panel, **options, bootstrap_iterations=250, frontier_points=51, random_seed=42
             )
-            save(output / "resampled-frontier.json", resampled)
+            save_calculation(
+                output / "resampled-frontier.json",
+                resampled,
+                {**request, "bootstrap_iterations": 250, "frontier_points": 51},
+            )
             timings["resampled_frontier_250x51"] = resampled["execution_seconds"]
         for label, result in [
             ("CV", cv),
@@ -196,6 +223,12 @@ def main() -> None:
         fig.savefig(output / "weight-stability.svg")
         fig.savefig(output / "weight-stability.png", dpi=160)
         plt.close(fig)
+        for svg in output.glob("*.svg"):
+            svg.write_text(
+                "\n".join(line.rstrip() for line in svg.read_text(encoding="utf-8").splitlines())
+                + "\n",
+                encoding="utf-8",
+            )
         application = create_app(settings, engine=engine)
         logging.getLogger("httpx").setLevel(logging.WARNING)
         save(output / "openapi.json", application.openapi())

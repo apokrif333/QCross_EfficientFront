@@ -1,5 +1,16 @@
 # QCross instruments and historical returns backend
 
+## Local Portfolio Lab UI
+
+The interactive React/TypeScript/Plotly application is in [`ui/`](ui/README.md).
+Run `cd ui`, `npm ci`, `npm run dev`, then open http://127.0.0.1:5173.
+Demo works from the checked-in `docs/analytics-demo/` results without a database
+or FastAPI. For Live, also run
+`.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000`
+from the repository root and select **Live** in the UI.
+See [`ui/README.md`](ui/README.md) for controls, all four analytics jobs,
+JSON snapshot/replay, tests and local build commands.
+
 The first backend milestone for future qcross.org tools: discover the complete
 LazyPortfolioETF simulator instrument universe, validate it, normalize it, and
 make it available through SQL storage, a CLI, and a read-only API. The second

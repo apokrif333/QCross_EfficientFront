@@ -484,6 +484,72 @@
         }
       }
     },
+    "/api/v1/analytics/catalog": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Analytics Catalog",
+        "operationId": "analytics_catalog_api_v1_analytics_catalog_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Analytics Catalog Api V1 Analytics Catalog Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/data-preview": {
+      "post": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Data Preview",
+        "operationId": "data_preview_api_v1_analytics_data_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Data Preview Api V1 Analytics Data Preview Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/analytics/frontier": {
       "post": {
         "tags": [
@@ -1099,6 +1165,11 @@
             "type": "array",
             "title": "Correlation"
           },
+          "reproducibility": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Reproducibility"
+          },
           "conditional_bootstrap": {
             "type": "boolean",
             "title": "Conditional Bootstrap"
@@ -1135,6 +1206,7 @@
           "annual_expected_returns",
           "annual_covariance",
           "correlation",
+          "reproducibility",
           "conditional_bootstrap",
           "sample_fingerprint",
           "sample_length",
@@ -1238,6 +1310,11 @@
             "type": "array",
             "title": "Correlation"
           },
+          "reproducibility": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Reproducibility"
+          },
           "cv_folds": {
             "type": "integer",
             "title": "Cv Folds"
@@ -1295,6 +1372,7 @@
           "annual_expected_returns",
           "annual_covariance",
           "correlation",
+          "reproducibility",
           "cv_folds",
           "ensemble_evaluation",
           "original",
@@ -1452,6 +1530,11 @@
             "type": "array",
             "title": "Correlation"
           },
+          "reproducibility": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Reproducibility"
+          },
           "gmv": {
             "$ref": "#/components/schemas/PortfolioRead"
           },
@@ -1491,6 +1574,7 @@
           "annual_expected_returns",
           "annual_covariance",
           "correlation",
+          "reproducibility",
           "gmv",
           "max_sharpe",
           "maximum_return",
@@ -2271,6 +2355,11 @@
             "type": "array",
             "title": "Correlation"
           },
+          "reproducibility": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Reproducibility"
+          },
           "requested_iterations": {
             "type": "integer",
             "title": "Requested Iterations"
@@ -2333,6 +2422,7 @@
           "annual_expected_returns",
           "annual_covariance",
           "correlation",
+          "reproducibility",
           "requested_iterations",
           "successful_iterations",
           "failed_iterations",

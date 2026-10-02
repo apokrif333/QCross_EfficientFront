@@ -1,0 +1,92 @@
+[
+  {
+    "kind": "frontier",
+    "seconds": 1.4496459999936633,
+    "status": "complete",
+    "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
+  },
+  {
+    "kind": "cross-validation",
+    "seconds": 1.3391874000080861,
+    "status": "complete",
+    "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
+  },
+  {
+    "kind": "bootstrap",
+    "seconds": 9.361138199979905,
+    "status": "complete",
+    "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
+  },
+  {
+    "kind": "resampled-frontier",
+    "seconds": 8.393019199982518,
+    "status": "complete",
+    "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
+  },
+  {
+    "kind": "frontier",
+    "seconds": 1.4293773999961559,
+    "status": "complete",
+    "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
+  },
+  {
+    "kind": "frontier",
+    "seconds": 1.2887266000034288,
+    "status": "complete",
+    "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
+  },
+  {
+    "kind": "frontier",
+    "seconds": 1.3736589000036474,
+    "status": "complete",
+    "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
+  },
+  {
+    "kind": "frontier",
+    "seconds": 1.3933942000148818,
+    "status": "complete",
+    "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
+  },
+  {
+    "kind": "frontier",
+    "seconds": 1.363722800015239,
+    "status": "complete",
+    "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
+  },
+  {
+    "kind": "frontier",
+    "seconds": 1.3849413000280038,
+    "status": "complete",
+    "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
+  },
+  {
+    "kind": "frontier",
+    "seconds": 1.4615066999976989,
+    "status": "complete",
+    "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
+  },
+  {
+    "kind": "frontier",
+    "seconds": 1.4704812999989372,
+    "status": "complete",
+    "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
+  },
+  {
+    "kind": "resampled-frontier",
+    "seconds": 8.373284899978898,
+    "status": "complete",
+    "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
+  },
+  {
+    "kind": "bootstrap",
+    "seconds": 9.169074100005673,
+    "status": "complete",
+    "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
+  },
+  {
+    "kind": "cross-validation",
+    "seconds": 1.3825015999900643,
+    "status": "complete",
+    "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
+  }
+]

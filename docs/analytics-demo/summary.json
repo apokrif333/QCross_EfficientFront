@@ -18,42 +18,42 @@
   "database_sha256_after": "6ee0af74a349065b8c82adf4ea9f4b6cd42136d8c8c129cbd3a17351ca4dfdfe",
   "database_unchanged": true,
   "numerical_timings_seconds": {
-    "frontier_sample": 0.044103599997470155,
-    "frontier_ledoit_wolf": 0.04413709999062121,
-    "frontier_nonlinear": 0.03972159998374991,
-    "frontier_cv_linear": 0.06668389998958446,
-    "cross_validation": 0.019719199975952506,
-    "bootstrap_1000_both_objectives": 7.569345299998531,
-    "resampled_frontier_250x51": 7.053280399995856
+    "frontier_sample": 0.15735890000360087,
+    "frontier_ledoit_wolf": 0.04696820001117885,
+    "frontier_nonlinear": 0.046234100009314716,
+    "frontier_cv_linear": 0.06872380001004785,
+    "cross_validation": 0.02071889999206178,
+    "bootstrap_1000_both_objectives": 8.161628500005463,
+    "resampled_frontier_250x51": 8.020640499977162
   },
   "api_timings": {
     "frontier": {
-      "submit_seconds": 0.2446893000160344,
-      "wall_seconds_including_polling": 2.082041899993783,
-      "job_seconds": 1.8778403000032995,
-      "retrieval_seconds": 0.0020059999951627105,
-      "numerical_seconds": 0.04224350000731647
+      "submit_seconds": 0.2839673000271432,
+      "wall_seconds_including_polling": 2.432811800012132,
+      "job_seconds": 2.2098235999874305,
+      "retrieval_seconds": 0.002373099996475503,
+      "numerical_seconds": 0.06352940000942908
     },
     "cross-validation": {
-      "submit_seconds": 0.11103430000366643,
-      "wall_seconds_including_polling": 1.8444687000010163,
-      "job_seconds": 1.7704444999981206,
-      "retrieval_seconds": 0.0012704999826382846,
-      "numerical_seconds": 0.023786100005963817
+      "submit_seconds": 0.13311860000248998,
+      "wall_seconds_including_polling": 2.1660258999909274,
+      "job_seconds": 2.0755699000146706,
+      "retrieval_seconds": 0.0017499999958090484,
+      "numerical_seconds": 0.03438090000418015
     },
     "bootstrap": {
-      "submit_seconds": 0.11545599999953993,
-      "wall_seconds_including_polling": 9.674210299999686,
-      "job_seconds": 9.571472300012829,
-      "retrieval_seconds": 0.027699099999153987,
-      "numerical_seconds": 7.718324500019662
+      "submit_seconds": 0.1263862999912817,
+      "wall_seconds_including_polling": 10.629726999992272,
+      "job_seconds": 10.518220300000394,
+      "retrieval_seconds": 0.027202900004340336,
+      "numerical_seconds": 7.962054600007832
     },
     "resampled-frontier": {
-      "submit_seconds": 0.24124409997602925,
-      "wall_seconds_including_polling": 9.076174799993169,
-      "job_seconds": 8.846975899999961,
-      "retrieval_seconds": 0.03012079998734407,
-      "numerical_seconds": 7.015268799994374
+      "submit_seconds": 0.2467565000115428,
+      "wall_seconds_including_polling": 9.44044340000255,
+      "job_seconds": 9.204534499993315,
+      "retrieval_seconds": 0.03096090001054108,
+      "numerical_seconds": 7.424303299980238
     }
   },
   "versions": {

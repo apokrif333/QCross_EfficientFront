@@ -46,6 +46,14 @@ def test_real_process_api_roundtrip(endpoint, panel, settings, session_factory):
         assert completed["result"]["currency"] == "USD"
         assert completed["result"]["execution_seconds"] > 0
         assert "period" in completed["result"] and "correlation" in completed["result"]
+        provenance = completed["result"]["reproducibility"]
+        expected = AnalyticsRequest.model_validate(body).model_dump(mode="json")
+        if endpoint == "bootstrap":
+            expected["bootstrap_objectives"] = ["gmv", "max_sharpe"]
+        assert provenance["api_request"] == expected
+        assert len(provenance["returns_matrix_sha256"]) == 64
+        assert provenance["source_series"][0]["instrument_id"] == 3
+        assert len(provenance["source_series"][0]["series_version"]) == 64
         assert client.get("/api/v1/analytics/jobs/not-a-job").status_code == 404
         assert client.get("/api/v1/analytics/jobs/not-a-job/result").status_code == 404
 

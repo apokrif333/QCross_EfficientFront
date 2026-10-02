@@ -1,5 +1,7 @@
 """Read-only SQLAlchemy boundary; all mathematical modules receive plain arrays."""
 
+import hashlib
+import json
 from datetime import UTC, date, datetime
 
 import pandas as pd
@@ -29,6 +31,15 @@ CATEGORY_GROUPS = {
     "Global Bonds": ["Fixed Income"],
     "Commodities": ["Commodities"],
 }
+
+
+def instrument_groups(instrument: Instrument) -> list[str]:
+    memberships = {g for g in (instrument.category, instrument.subcategory) if g}
+    memberships.update(CATEGORY_GROUPS.get(instrument.category, []))
+    explicit_groups = instrument.raw_metadata.get("analytics_groups", [])
+    if isinstance(explicit_groups, list):
+        memberships.update(g for g in explicit_groups if isinstance(g, str))
+    return sorted(memberships)
 
 
 def align_returns(
@@ -129,20 +140,34 @@ def load_returns(
             index=[o.date for o in observations],
             dtype=float,
         )
-        memberships = {g for g in (instrument.category, instrument.subcategory) if g}
-        memberships.update(CATEGORY_GROUPS.get(instrument.category, []))
-        # Explicit curated metadata may supply additional overlapping groups.
-        explicit_groups = instrument.raw_metadata.get("analytics_groups", [])
-        if isinstance(explicit_groups, list):
-            memberships.update(g for g in explicit_groups if isinstance(g, str))
+        memberships = instrument_groups(instrument)
         for group in memberships:
             groups.setdefault(group, []).append(key)
         source_meta = row.source_metadata
+        content = {
+            "series_id": row.id,
+            "instrument_id": instrument_id,
+            "source": row.source,
+            "currency": row.currency,
+            "frequency": row.frequency,
+            "return_type": row.return_type,
+            "observations": [[str(o.date), str(o.return_value)] for o in observations],
+        }
+        series_hash = hashlib.sha256(
+            json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        updated = row.last_updated_at
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=UTC)
         metadata.append(
             {
                 "instrument_id": instrument_id,
                 "ticker": instrument.ticker,
                 "series_id": row.id,
+                "series_version": series_hash,
+                "series_sha256": series_hash,
+                "last_updated_at": updated.isoformat(),
+                "observation_count": row.observation_count,
                 "currency": row.currency,
                 "source": row.source,
                 "start_date": str(row.start_date),

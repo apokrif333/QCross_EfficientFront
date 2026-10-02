@@ -12,10 +12,12 @@ dependencies = [
   "SQLAlchemy>=2.0,<3", "alembic>=1.13,<2", "psycopg[binary]>=3.2,<4",
   "httpx>=0.27,<1", "beautifulsoup4>=4.12,<5", "lxml>=5,<7", "uvicorn>=0.30,<1",
   "pyarrow>=21,<24",
+  "numpy>=2.3,<3", "pandas>=2.3,<4", "scipy>=1.16,<2",
+  "scikit-learn>=1.7,<2", "cvxpy>=1.7,<2",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10", "ruff>=0.6,<1"]
+dev = ["pytest>=8,<10", "ruff>=0.6,<1", "nonlinshrink==0.7", "matplotlib>=3.10,<4"]
 
 [project.scripts]
 qcross = "app.cli.main:main"

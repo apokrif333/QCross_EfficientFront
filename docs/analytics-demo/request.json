@@ -1,0 +1,32 @@
+{
+  "instrument_ids": [
+    1,
+    175,
+    243
+  ],
+  "start_date": "1990-01-01",
+  "currency": "USD",
+  "covariance_method": "sample",
+  "risk_free_rate": 0.03,
+  "random_seed": 42,
+  "asset_constraints": {
+    "175": {
+      "min": 0.1,
+      "max": 0.7
+    }
+  },
+  "group_constraints": {
+    "Equity": {
+      "max": 0.7
+    },
+    "US Stocks": {
+      "max": 0.6
+    },
+    "Fixed Income": {
+      "max": 0.7
+    },
+    "Commodities": {
+      "max": 0.4
+    }
+  }
+}

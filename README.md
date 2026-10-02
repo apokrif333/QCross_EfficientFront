@@ -628,3 +628,18 @@ Tests cover extraction/precision, date errors, cash-flow guards, full-path/stati
 validation, invalid values, revisions, transactional writes, incremental extension,
 interruption/resume, exports, currency separation and API filters. No efficient
 frontier, optimization, bootstrap, Monte Carlo or frontend work is included.
+# Portfolio analytics (Task 3)
+
+The backend now includes constrained efficient-frontier optimization, four covariance
+estimators, classical K-fold CV with a weight ensemble, Stationary Bootstrap, weight
+stability, resampled portfolios/frontiers, and an equal-weight reference.
+
+- [Mathematical conventions and methodology](docs/analytics.md)
+- [API, schemas, execution limits and project structure](docs/analytics-api.md)
+- [Actual stored USD calculation, portfolios, stability and timings](docs/analytics-demo/report.md)
+- [Staged verification and complete test results](docs/analytics-verification.md)
+
+Install the numerical and test dependencies with the project's configured interpreter
+using `-m pip install -e ".[dev]"`. Run the reproducible stored-history demonstration
+with `-m scripts.analytics_demo`. Analytics reads existing validated return series;
+historical data and ingestion mechanisms are unchanged.

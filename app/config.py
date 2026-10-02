@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     lazyportfolio_max_drop_fraction: float = Field(default=0.20, ge=0, lt=1)
     returns_request_interval: float = Field(default=3, ge=1)
     returns_save_raw_snapshots: bool = False
+    analytics_workers: int = Field(default=2, ge=1, le=4)
+    analytics_timeout_seconds: float = Field(default=300, gt=0, le=1800)
+    analytics_max_jobs: int = Field(default=32, ge=1, le=100)
+    analytics_retention_seconds: float = Field(default=3600, ge=1, le=86400)
 
 
 @lru_cache

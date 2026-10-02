@@ -1,0 +1,2504 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "QCross Instrument API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/instruments": {
+      "get": {
+        "tags": [
+          "instruments"
+        ],
+        "summary": "Instruments",
+        "operationId": "instruments_api_v1_instruments_get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Active"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z]{3}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Currency"
+            }
+          },
+          {
+            "name": "available_currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z]{3}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Available Currency"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 1000,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/InstrumentRead"
+                  },
+                  "title": "Response Instruments Api V1 Instruments Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/instruments/{instrument_id}": {
+      "get": {
+        "tags": [
+          "instruments"
+        ],
+        "summary": "Instrument By Id",
+        "operationId": "instrument_by_id_api_v1_instruments__instrument_id__get",
+        "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Instrument Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstrumentRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/return-series": {
+      "get": {
+        "tags": [
+          "returns"
+        ],
+        "summary": "Return Series",
+        "operationId": "return_series_api_v1_return_series_get",
+        "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instrument Id"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z]{3}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Currency"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 1000,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReturnSeriesRead"
+                  },
+                  "title": "Response Return Series Api V1 Return Series Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/return-series/{series_id}": {
+      "get": {
+        "tags": [
+          "returns"
+        ],
+        "summary": "Series By Id",
+        "operationId": "series_by_id_api_v1_return_series__series_id__get",
+        "parameters": [
+          {
+            "name": "series_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Series Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnSeriesRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/return-series/{series_id}/observations": {
+      "get": {
+        "tags": [
+          "returns"
+        ],
+        "summary": "Monthly Observations",
+        "operationId": "monthly_observations_api_v1_return_series__series_id__observations_get",
+        "parameters": [
+          {
+            "name": "series_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Series Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "default": 10000,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MonthlyReturnRead"
+                  },
+                  "title": "Response Monthly Observations Api V1 Return Series  Series Id  Observations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/frontier": {
+      "post": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Frontier",
+        "operationId": "frontier_api_v1_analytics_frontier_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/cross-validation": {
+      "post": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Cross Validation",
+        "operationId": "cross_validation_api_v1_analytics_cross_validation_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/bootstrap": {
+      "post": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Bootstrap",
+        "operationId": "bootstrap_api_v1_analytics_bootstrap_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyticsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/resampled-frontier": {
+      "post": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Resampled Frontier",
+        "operationId": "resampled_frontier_api_v1_analytics_resampled_frontier_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResampledFrontierRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Job Status",
+        "operationId": "job_status_api_v1_analytics_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/jobs/{job_id}/result": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Job Result",
+        "operationId": "job_result_api_v1_analytics_jobs__job_id__result_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResultRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AnalyticsRequest": {
+        "properties": {
+          "instrument_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 15,
+            "minItems": 2,
+            "title": "Instrument Ids"
+          },
+          "currency": {
+            "type": "string",
+            "const": "USD",
+            "title": "Currency",
+            "default": "USD"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "covariance_method": {
+            "type": "string",
+            "enum": [
+              "sample",
+              "ledoit_wolf",
+              "nonlinear",
+              "cv_linear"
+            ],
+            "title": "Covariance Method",
+            "default": "sample"
+          },
+          "shrinkage_target": {
+            "type": "string",
+            "enum": [
+              "identity",
+              "diagonal"
+            ],
+            "title": "Shrinkage Target",
+            "default": "identity"
+          },
+          "risk_free_rate": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Risk Free Rate",
+            "default": 0.03
+          },
+          "objective": {
+            "type": "string",
+            "enum": [
+              "gmv",
+              "max_sharpe",
+              "target_return"
+            ],
+            "title": "Objective",
+            "default": "gmv"
+          },
+          "target_return": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 12.0,
+                "minimum": -12.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Return"
+          },
+          "asset_constraints": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/WeightBounds"
+            },
+            "type": "object",
+            "maxProperties": 15,
+            "title": "Asset Constraints"
+          },
+          "group_constraints": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/WeightBounds"
+            },
+            "type": "object",
+            "maxProperties": 30,
+            "title": "Group Constraints"
+          },
+          "frontier_points": {
+            "type": "integer",
+            "maximum": 201.0,
+            "minimum": 2.0,
+            "title": "Frontier Points",
+            "default": 51
+          },
+          "cv_folds": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Cv Folds",
+            "default": 5
+          },
+          "bootstrap_iterations": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 1.0,
+            "title": "Bootstrap Iterations",
+            "default": 1000
+          },
+          "expected_block_length": {
+            "type": "number",
+            "maximum": 24.0,
+            "minimum": 3.0,
+            "title": "Expected Block Length",
+            "default": 12
+          },
+          "random_seed": {
+            "type": "integer",
+            "maximum": 4294967295.0,
+            "minimum": 0.0,
+            "title": "Random Seed",
+            "default": 42
+          },
+          "bootstrap_objectives": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "gmv",
+                    "max_sharpe"
+                  ]
+                },
+                "type": "array",
+                "maxItems": 2,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bootstrap Objectives"
+          },
+          "risk_aversions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array",
+                "maxItems": 201,
+                "minItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Aversions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "instrument_ids"
+        ],
+        "title": "AnalyticsRequest"
+      },
+      "BootstrapObjectiveRead": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "requested_iterations": {
+            "type": "integer",
+            "title": "Requested Iterations"
+          },
+          "successful_iterations": {
+            "type": "integer",
+            "title": "Successful Iterations"
+          },
+          "failed_iterations": {
+            "type": "integer",
+            "title": "Failed Iterations"
+          },
+          "failure_reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Failure Reasons"
+          },
+          "failures": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Failures"
+          },
+          "original": {
+            "$ref": "#/components/schemas/PortfolioRead"
+          },
+          "resampled": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PortfolioRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stability": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stability"
+          },
+          "iterations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Iterations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "requested_iterations",
+          "successful_iterations",
+          "failed_iterations",
+          "failure_reasons",
+          "failures",
+          "original",
+          "resampled",
+          "stability",
+          "iterations"
+        ],
+        "title": "BootstrapObjectiveRead"
+      },
+      "BootstrapResult": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "incomplete"
+            ],
+            "title": "Status"
+          },
+          "assets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Assets"
+          },
+          "currency": {
+            "type": "string",
+            "const": "USD",
+            "title": "Currency"
+          },
+          "covariance_method": {
+            "type": "string",
+            "enum": [
+              "sample",
+              "ledoit_wolf",
+              "nonlinear",
+              "cv_linear"
+            ],
+            "title": "Covariance Method"
+          },
+          "covariance_parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Covariance Parameters"
+          },
+          "covariance_diagnostics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Covariance Diagnostics"
+          },
+          "risk_free_rate": {
+            "type": "number",
+            "title": "Risk Free Rate"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "execution_seconds": {
+            "type": "number",
+            "title": "Execution Seconds"
+          },
+          "period": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Period"
+          },
+          "annual_expected_returns": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Annual Expected Returns"
+          },
+          "annual_covariance": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Annual Covariance"
+          },
+          "correlation": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Correlation"
+          },
+          "conditional_bootstrap": {
+            "type": "boolean",
+            "title": "Conditional Bootstrap"
+          },
+          "sample_fingerprint": {
+            "type": "string",
+            "title": "Sample Fingerprint"
+          },
+          "sample_length": {
+            "type": "integer",
+            "title": "Sample Length"
+          },
+          "objectives": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BootstrapObjectiveRead"
+            },
+            "type": "object",
+            "title": "Objectives"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "status",
+          "assets",
+          "currency",
+          "covariance_method",
+          "covariance_parameters",
+          "covariance_diagnostics",
+          "risk_free_rate",
+          "warnings",
+          "execution_seconds",
+          "period",
+          "annual_expected_returns",
+          "annual_covariance",
+          "correlation",
+          "conditional_bootstrap",
+          "sample_fingerprint",
+          "sample_length",
+          "objectives"
+        ],
+        "title": "BootstrapResult"
+      },
+      "CrossValidationResult": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "incomplete"
+            ],
+            "title": "Status"
+          },
+          "assets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Assets"
+          },
+          "currency": {
+            "type": "string",
+            "const": "USD",
+            "title": "Currency"
+          },
+          "covariance_method": {
+            "type": "string",
+            "enum": [
+              "sample",
+              "ledoit_wolf",
+              "nonlinear",
+              "cv_linear"
+            ],
+            "title": "Covariance Method"
+          },
+          "covariance_parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Covariance Parameters"
+          },
+          "covariance_diagnostics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Covariance Diagnostics"
+          },
+          "risk_free_rate": {
+            "type": "number",
+            "title": "Risk Free Rate"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "execution_seconds": {
+            "type": "number",
+            "title": "Execution Seconds"
+          },
+          "period": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Period"
+          },
+          "annual_expected_returns": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Annual Expected Returns"
+          },
+          "annual_covariance": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Annual Covariance"
+          },
+          "correlation": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Correlation"
+          },
+          "cv_folds": {
+            "type": "integer",
+            "title": "Cv Folds"
+          },
+          "ensemble_evaluation": {
+            "type": "string",
+            "title": "Ensemble Evaluation"
+          },
+          "original": {
+            "$ref": "#/components/schemas/PortfolioRead"
+          },
+          "folds": {
+            "items": {
+              "$ref": "#/components/schemas/FoldRead"
+            },
+            "type": "array",
+            "title": "Folds"
+          },
+          "ensemble": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PortfolioRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stability": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stability"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "status",
+          "assets",
+          "currency",
+          "covariance_method",
+          "covariance_parameters",
+          "covariance_diagnostics",
+          "risk_free_rate",
+          "warnings",
+          "execution_seconds",
+          "period",
+          "annual_expected_returns",
+          "annual_covariance",
+          "correlation",
+          "cv_folds",
+          "ensemble_evaluation",
+          "original",
+          "folds",
+          "ensemble",
+          "stability"
+        ],
+        "title": "CrossValidationResult"
+      },
+      "FoldRead": {
+        "properties": {
+          "fold": {
+            "type": "integer",
+            "title": "Fold"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "training": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Training"
+          },
+          "validation": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Validation"
+          },
+          "weights": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weights"
+          },
+          "diagnostics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Diagnostics"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "fold",
+          "status",
+          "training",
+          "validation",
+          "weights",
+          "diagnostics"
+        ],
+        "title": "FoldRead"
+      },
+      "FrontierResult": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "incomplete"
+            ],
+            "title": "Status"
+          },
+          "assets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Assets"
+          },
+          "currency": {
+            "type": "string",
+            "const": "USD",
+            "title": "Currency"
+          },
+          "covariance_method": {
+            "type": "string",
+            "enum": [
+              "sample",
+              "ledoit_wolf",
+              "nonlinear",
+              "cv_linear"
+            ],
+            "title": "Covariance Method"
+          },
+          "covariance_parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Covariance Parameters"
+          },
+          "covariance_diagnostics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Covariance Diagnostics"
+          },
+          "risk_free_rate": {
+            "type": "number",
+            "title": "Risk Free Rate"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "execution_seconds": {
+            "type": "number",
+            "title": "Execution Seconds"
+          },
+          "period": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Period"
+          },
+          "annual_expected_returns": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Annual Expected Returns"
+          },
+          "annual_covariance": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Annual Covariance"
+          },
+          "correlation": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Correlation"
+          },
+          "gmv": {
+            "$ref": "#/components/schemas/PortfolioRead"
+          },
+          "max_sharpe": {
+            "$ref": "#/components/schemas/PortfolioRead"
+          },
+          "maximum_return": {
+            "$ref": "#/components/schemas/PortfolioRead"
+          },
+          "selected_portfolio": {
+            "$ref": "#/components/schemas/PortfolioRead"
+          },
+          "equal_weight": {
+            "$ref": "#/components/schemas/PortfolioRead"
+          },
+          "frontier": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioRead"
+            },
+            "type": "array",
+            "title": "Frontier"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "status",
+          "assets",
+          "currency",
+          "covariance_method",
+          "covariance_parameters",
+          "covariance_diagnostics",
+          "risk_free_rate",
+          "warnings",
+          "execution_seconds",
+          "period",
+          "annual_expected_returns",
+          "annual_covariance",
+          "correlation",
+          "gmv",
+          "max_sharpe",
+          "maximum_return",
+          "selected_portfolio",
+          "equal_weight",
+          "frontier"
+        ],
+        "title": "FrontierResult"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InstrumentRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "source_symbol": {
+            "type": "string",
+            "title": "Source Symbol"
+          },
+          "ticker": {
+            "type": "string",
+            "title": "Ticker"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "available_currencies": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Currencies"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "exchange": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange"
+          },
+          "asset_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Type"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "first_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "First Seen At"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen At"
+          },
+          "raw_metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Raw Metadata"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "source_symbol",
+          "ticker",
+          "name",
+          "category",
+          "subcategory",
+          "currency",
+          "available_currencies",
+          "country",
+          "exchange",
+          "asset_type",
+          "source_url",
+          "is_active",
+          "first_seen_at",
+          "last_seen_at",
+          "raw_metadata",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "InstrumentRead"
+      },
+      "JobRead": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "frontier",
+              "cross-validation",
+              "bootstrap",
+              "resampled-frontier"
+            ],
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "timed_out"
+            ],
+            "title": "Status"
+          },
+          "submitted_at": {
+            "type": "string",
+            "title": "Submitted At"
+          },
+          "elapsed_seconds": {
+            "type": "number",
+            "title": "Elapsed Seconds"
+          },
+          "timeout_seconds": {
+            "type": "number",
+            "title": "Timeout Seconds"
+          },
+          "status_url": {
+            "type": "string",
+            "title": "Status Url"
+          },
+          "result_url": {
+            "type": "string",
+            "title": "Result Url"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "kind",
+          "status",
+          "submitted_at",
+          "elapsed_seconds",
+          "timeout_seconds",
+          "status_url",
+          "result_url"
+        ],
+        "title": "JobRead"
+      },
+      "JobResultRead": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "frontier",
+              "cross-validation",
+              "bootstrap",
+              "resampled-frontier"
+            ],
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "timed_out"
+            ],
+            "title": "Status"
+          },
+          "submitted_at": {
+            "type": "string",
+            "title": "Submitted At"
+          },
+          "elapsed_seconds": {
+            "type": "number",
+            "title": "Elapsed Seconds"
+          },
+          "timeout_seconds": {
+            "type": "number",
+            "title": "Timeout Seconds"
+          },
+          "status_url": {
+            "type": "string",
+            "title": "Status Url"
+          },
+          "result_url": {
+            "type": "string",
+            "title": "Result Url"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FrontierResult"
+              },
+              {
+                "$ref": "#/components/schemas/CrossValidationResult"
+              },
+              {
+                "$ref": "#/components/schemas/BootstrapResult"
+              },
+              {
+                "$ref": "#/components/schemas/ResampledFrontierResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "kind",
+          "status",
+          "submitted_at",
+          "elapsed_seconds",
+          "timeout_seconds",
+          "status_url",
+          "result_url",
+          "result"
+        ],
+        "title": "JobResultRead"
+      },
+      "MonthlyReturnRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "series_id": {
+            "type": "integer",
+            "title": "Series Id"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "return_value": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Return Value"
+          },
+          "quality_flag": {
+            "type": "string",
+            "title": "Quality Flag"
+          },
+          "source_metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Source Metadata"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "series_id",
+          "date",
+          "return_value",
+          "quality_flag",
+          "source_metadata",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MonthlyReturnRead"
+      },
+      "PortfolioMetrics": {
+        "properties": {
+          "expected_return": {
+            "type": "number",
+            "title": "Expected Return"
+          },
+          "volatility": {
+            "type": "number",
+            "title": "Volatility"
+          },
+          "sharpe_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sharpe Ratio"
+          },
+          "historical_cagr": {
+            "type": "number",
+            "title": "Historical Cagr"
+          },
+          "historical_max_drawdown": {
+            "type": "number",
+            "title": "Historical Max Drawdown"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expected_return",
+          "volatility",
+          "sharpe_ratio",
+          "historical_cagr",
+          "historical_max_drawdown"
+        ],
+        "title": "PortfolioMetrics"
+      },
+      "PortfolioRead": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "weights": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weights"
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PortfolioMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diagnostics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Diagnostics"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "status",
+          "weights",
+          "metrics",
+          "diagnostics"
+        ],
+        "title": "PortfolioRead"
+      },
+      "ResampledFrontierRequest": {
+        "properties": {
+          "instrument_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 15,
+            "minItems": 2,
+            "title": "Instrument Ids"
+          },
+          "currency": {
+            "type": "string",
+            "const": "USD",
+            "title": "Currency",
+            "default": "USD"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "covariance_method": {
+            "type": "string",
+            "enum": [
+              "sample",
+              "ledoit_wolf",
+              "nonlinear",
+              "cv_linear"
+            ],
+            "title": "Covariance Method",
+            "default": "sample"
+          },
+          "shrinkage_target": {
+            "type": "string",
+            "enum": [
+              "identity",
+              "diagonal"
+            ],
+            "title": "Shrinkage Target",
+            "default": "identity"
+          },
+          "risk_free_rate": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Risk Free Rate",
+            "default": 0.03
+          },
+          "objective": {
+            "type": "string",
+            "enum": [
+              "gmv",
+              "max_sharpe",
+              "target_return"
+            ],
+            "title": "Objective",
+            "default": "gmv"
+          },
+          "target_return": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 12.0,
+                "minimum": -12.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Return"
+          },
+          "asset_constraints": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/WeightBounds"
+            },
+            "type": "object",
+            "maxProperties": 15,
+            "title": "Asset Constraints"
+          },
+          "group_constraints": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/WeightBounds"
+            },
+            "type": "object",
+            "maxProperties": 30,
+            "title": "Group Constraints"
+          },
+          "frontier_points": {
+            "type": "integer",
+            "maximum": 201.0,
+            "minimum": 2.0,
+            "title": "Frontier Points",
+            "default": 51
+          },
+          "cv_folds": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 2.0,
+            "title": "Cv Folds",
+            "default": 5
+          },
+          "bootstrap_iterations": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Bootstrap Iterations",
+            "default": 250
+          },
+          "expected_block_length": {
+            "type": "number",
+            "maximum": 24.0,
+            "minimum": 3.0,
+            "title": "Expected Block Length",
+            "default": 12
+          },
+          "random_seed": {
+            "type": "integer",
+            "maximum": 4294967295.0,
+            "minimum": 0.0,
+            "title": "Random Seed",
+            "default": 42
+          },
+          "bootstrap_objectives": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "gmv",
+                    "max_sharpe"
+                  ]
+                },
+                "type": "array",
+                "maxItems": 2,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bootstrap Objectives"
+          },
+          "risk_aversions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array",
+                "maxItems": 201,
+                "minItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Aversions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "instrument_ids"
+        ],
+        "title": "ResampledFrontierRequest"
+      },
+      "ResampledFrontierResult": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "incomplete"
+            ],
+            "title": "Status"
+          },
+          "assets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Assets"
+          },
+          "currency": {
+            "type": "string",
+            "const": "USD",
+            "title": "Currency"
+          },
+          "covariance_method": {
+            "type": "string",
+            "enum": [
+              "sample",
+              "ledoit_wolf",
+              "nonlinear",
+              "cv_linear"
+            ],
+            "title": "Covariance Method"
+          },
+          "covariance_parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Covariance Parameters"
+          },
+          "covariance_diagnostics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Covariance Diagnostics"
+          },
+          "risk_free_rate": {
+            "type": "number",
+            "title": "Risk Free Rate"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "execution_seconds": {
+            "type": "number",
+            "title": "Execution Seconds"
+          },
+          "period": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Period"
+          },
+          "annual_expected_returns": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Annual Expected Returns"
+          },
+          "annual_covariance": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Annual Covariance"
+          },
+          "correlation": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Correlation"
+          },
+          "requested_iterations": {
+            "type": "integer",
+            "title": "Requested Iterations"
+          },
+          "successful_iterations": {
+            "type": "integer",
+            "title": "Successful Iterations"
+          },
+          "failed_iterations": {
+            "type": "integer",
+            "title": "Failed Iterations"
+          },
+          "failure_reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Failure Reasons"
+          },
+          "failures": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Failures"
+          },
+          "risk_aversions": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Risk Aversions"
+          },
+          "frontier": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioRead"
+            },
+            "type": "array",
+            "title": "Frontier"
+          },
+          "conditional_bootstrap": {
+            "type": "boolean",
+            "title": "Conditional Bootstrap"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "status",
+          "assets",
+          "currency",
+          "covariance_method",
+          "covariance_parameters",
+          "covariance_diagnostics",
+          "risk_free_rate",
+          "warnings",
+          "execution_seconds",
+          "period",
+          "annual_expected_returns",
+          "annual_covariance",
+          "correlation",
+          "requested_iterations",
+          "successful_iterations",
+          "failed_iterations",
+          "failure_reasons",
+          "failures",
+          "risk_aversions",
+          "frontier",
+          "conditional_bootstrap"
+        ],
+        "title": "ResampledFrontierResult"
+      },
+      "ReturnSeriesRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "instrument_id": {
+            "type": "integer",
+            "title": "Instrument Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "frequency": {
+            "type": "string",
+            "title": "Frequency"
+          },
+          "return_type": {
+            "type": "string",
+            "title": "Return Type"
+          },
+          "extraction_method": {
+            "type": "string",
+            "title": "Extraction Method"
+          },
+          "currency_kind": {
+            "type": "string",
+            "title": "Currency Kind"
+          },
+          "validation_status": {
+            "type": "string",
+            "title": "Validation Status"
+          },
+          "is_extended_history": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Extended History"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "title": "End Date"
+          },
+          "observation_count": {
+            "type": "integer",
+            "title": "Observation Count"
+          },
+          "last_updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Updated At"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "instrument_id",
+          "source",
+          "currency",
+          "frequency",
+          "return_type",
+          "extraction_method",
+          "currency_kind",
+          "validation_status",
+          "is_extended_history",
+          "start_date",
+          "end_date",
+          "observation_count",
+          "last_updated_at",
+          "metadata"
+        ],
+        "title": "ReturnSeriesRead"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "WeightBounds": {
+        "properties": {
+          "min": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Min",
+            "default": 0
+          },
+          "max": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Max",
+            "default": 1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "WeightBounds"
+      }
+    }
+  }
+}

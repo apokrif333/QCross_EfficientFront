@@ -1,0 +1,624 @@
+{
+  "period": {
+    "start": "1990-01",
+    "end": "2026-08",
+    "observations": 440,
+    "segments": [
+      {
+        "start": "1990-01",
+        "end": "2026-08",
+        "observations": 440
+      }
+    ]
+  },
+  "annual_expected_returns": {
+    "1": 0.11462959090909089,
+    "175": 0.05864307272727273,
+    "243": 0.07549789090909091
+  },
+  "annual_covariance": [
+    [
+      0.022673038959894892,
+      -0.0008235824869656258,
+      0.0006823378325019677
+    ],
+    [
+      -0.0008235824869656258,
+      0.013973298443572833,
+      0.003153164084055333
+    ],
+    [
+      0.0006823378325019677,
+      0.003153164084055333,
+      0.024308905466677834
+    ]
+  ],
+  "correlation": [
+    [
+      0.9999999999999999,
+      -0.046270348274814015,
+      0.029064434812338114
+    ],
+    [
+      -0.046270348274814015,
+      0.9999999999999998,
+      0.17108597191792133
+    ],
+    [
+      0.029064434812338114,
+      0.17108597191792133,
+      1.0
+    ]
+  ],
+  "warnings": [
+    "VTI contains historical reconstructions; detailed proxy transitions may be unknown.",
+    "TLT contains historical reconstructions; detailed proxy transitions may be unknown.",
+    "GLD contains historical reconstructions; detailed proxy transitions may be unknown.",
+    "Selected series have unequal publication endpoints; the earliest is used."
+  ],
+  "status": "complete",
+  "assets": [
+    "1",
+    "175",
+    "243"
+  ],
+  "currency": "USD",
+  "objective": "gmv",
+  "target_return": null,
+  "risk_free_rate": 0.03,
+  "cv_folds": 5,
+  "methodology": "classical_consecutive_kfold_no_shuffle",
+  "ensemble_evaluation": "full_sample_descriptive_not_independent_out_of_sample",
+  "covariance_method": "sample",
+  "covariance_parameters": {},
+  "covariance_diagnostics": {
+    "finite": true,
+    "symmetry_error": 0.0,
+    "positive_semidefinite": true,
+    "eigenvalues_before": [
+      0.0010823731939052744,
+      0.001891418200686141,
+      0.002105812177920714
+    ],
+    "eigenvalues_after": [
+      0.0010823731939052744,
+      0.001891418200686141,
+      0.002105812177920714
+    ],
+    "condition_number_before": 1.9455509336135755,
+    "condition_number_after": 1.9455509336135755,
+    "nearly_singular": false,
+    "regularization": "none",
+    "eigenvalue_floor": null,
+    "frobenius_change": 0.0
+  },
+  "source_metadata": [
+    {
+      "instrument_id": 1,
+      "ticker": "VTI",
+      "series_id": 1,
+      "currency": "USD",
+      "source": "lazyportfolioetf",
+      "start_date": "1793-01-31",
+      "end_date": "2026-08-31",
+      "currency_kind": "native",
+      "groups": [
+        "Equity",
+        "US Stocks"
+      ],
+      "historical_proxy_through": "2001-12-31",
+      "detailed_proxy_transitions": "unknown"
+    },
+    {
+      "instrument_id": 175,
+      "ticker": "TLT",
+      "series_id": 65,
+      "currency": "USD",
+      "source": "lazyportfolioetf",
+      "start_date": "1793-01-31",
+      "end_date": "2026-08-31",
+      "currency_kind": "native",
+      "groups": [
+        "Fixed Income",
+        "US Fixed Income"
+      ],
+      "historical_proxy_through": "2002-12-31",
+      "detailed_proxy_transitions": "unknown"
+    },
+    {
+      "instrument_id": 243,
+      "ticker": "GLD",
+      "series_id": 29,
+      "currency": "USD",
+      "source": "lazyportfolioetf",
+      "start_date": "1793-01-31",
+      "end_date": "2026-09-30",
+      "currency_kind": "native",
+      "groups": [
+        "Commodities",
+        "Commodity"
+      ],
+      "historical_proxy_through": "2004-12-31",
+      "detailed_proxy_transitions": "unknown"
+    }
+  ],
+  "original": {
+    "status": "optimal",
+    "diagnostics": {
+      "solver": "CLARABEL",
+      "solver_status": "optimal",
+      "solve_seconds": 6.13e-05,
+      "iterations": 7,
+      "wall_seconds": 0.002402699989033863,
+      "constraint_violation": 0.0
+    },
+    "weights": {
+      "1": 0.3167944507593661,
+      "175": 0.46693911252042036,
+      "243": 0.2162664367202136
+    },
+    "metrics": {
+      "expected_return": 0.08002442247435997,
+      "volatility": 0.08334084714927768,
+      "sharpe_ratio": 0.6002389486725241,
+      "historical_cagr": 0.07930575547278615,
+      "historical_max_drawdown": 0.2443250288917419
+    }
+  },
+  "folds": [
+    {
+      "fold": 1,
+      "training": {
+        "start": "1997-05",
+        "end": "2026-08",
+        "observations": 352,
+        "segments": [
+          {
+            "start": "1997-05",
+            "end": "2026-08",
+            "observations": 352
+          }
+        ]
+      },
+      "validation": {
+        "start": "1990-01",
+        "end": "1997-04",
+        "observations": 88,
+        "segments": [
+          {
+            "start": "1990-01",
+            "end": "1997-04",
+            "observations": 88
+          }
+        ]
+      },
+      "status": "optimal",
+      "diagnostics": {
+        "solver": "CLARABEL",
+        "solver_status": "optimal",
+        "solve_seconds": 5.12e-05,
+        "iterations": 8,
+        "wall_seconds": 0.0021219000045675784,
+        "constraint_violation": 0.0
+      },
+      "weights": {
+        "1": 0.3367322151736892,
+        "175": 0.482614713151433,
+        "243": 0.1806530716748777
+      },
+      "covariance_parameters": {},
+      "covariance_diagnostics": {
+        "finite": true,
+        "symmetry_error": 0.0,
+        "positive_semidefinite": true,
+        "eigenvalues_before": [
+          0.001140644003613096,
+          0.002112812242849559,
+          0.0024224261695387547
+        ],
+        "eigenvalues_after": [
+          0.001140644003613096,
+          0.002112812242849559,
+          0.0024224261695387547
+        ],
+        "condition_number_before": 2.123735505438589,
+        "condition_number_after": 2.123735505438589,
+        "nearly_singular": false,
+        "regularization": "none",
+        "eigenvalue_floor": null,
+        "frobenius_change": 0.0
+      },
+      "training_metrics": {
+        "expected_return": 0.07933263103883431,
+        "volatility": 0.08748316739121119,
+        "sharpe_ratio": 0.5639099784559288,
+        "historical_cagr": 0.0781822919756964,
+        "historical_max_drawdown": 0.2492529445939884
+      },
+      "validation_metrics": {
+        "realized_annual_arithmetic_return": 0.08537153430248982,
+        "realized_annual_volatility": 0.06604065632759117,
+        "realized_sharpe_ratio": 0.8384461539543501,
+        "realized_total_return": 0.8371652432592369,
+        "historical_cagr": 0.08647618661031797,
+        "historical_max_drawdown": 0.06883289591720732
+      }
+    },
+    {
+      "fold": 2,
+      "training": {
+        "start": "1990-01",
+        "end": "2026-08",
+        "observations": 352,
+        "segments": [
+          {
+            "start": "1990-01",
+            "end": "1997-04",
+            "observations": 88
+          },
+          {
+            "start": "2004-09",
+            "end": "2026-08",
+            "observations": 264
+          }
+        ]
+      },
+      "validation": {
+        "start": "1997-05",
+        "end": "2004-08",
+        "observations": 88,
+        "segments": [
+          {
+            "start": "1997-05",
+            "end": "2004-08",
+            "observations": 88
+          }
+        ]
+      },
+      "status": "optimal",
+      "diagnostics": {
+        "solver": "CLARABEL",
+        "solver_status": "optimal",
+        "solve_seconds": 4.79e-05,
+        "iterations": 7,
+        "wall_seconds": 0.0020173000229988247,
+        "constraint_violation": 1.1102230246251565e-16
+      },
+      "weights": {
+        "1": 0.34968015025380705,
+        "175": 0.4313294506592933,
+        "243": 0.21899039908689952
+      },
+      "covariance_parameters": {},
+      "covariance_diagnostics": {
+        "finite": true,
+        "symmetry_error": 0.0,
+        "positive_semidefinite": true,
+        "eigenvalues_before": [
+          0.001188366484637922,
+          0.001723676538468447,
+          0.0022100787960345676
+        ],
+        "eigenvalues_after": [
+          0.001188366484637922,
+          0.001723676538468447,
+          0.0022100787960345676
+        ],
+        "condition_number_before": 1.8597619712474023,
+        "condition_number_after": 1.8597619712474023,
+        "nearly_singular": false,
+        "regularization": "none",
+        "eigenvalue_floor": null,
+        "frobenius_change": 0.0
+      },
+      "training_metrics": {
+        "expected_return": 0.08412242312199515,
+        "volatility": 0.08550666080129543,
+        "sharpe_ratio": 0.6329614864480264,
+        "historical_cagr": 0.08350933270744554,
+        "historical_max_drawdown": 0.2383495184558625
+      },
+      "validation_metrics": {
+        "realized_annual_arithmetic_return": 0.0730677583992788,
+        "realized_annual_volatility": 0.0759158964306726,
+        "realized_sharpe_ratio": 0.567308830221202,
+        "realized_total_return": 0.6711189684188581,
+        "historical_cagr": 0.07253159773025927,
+        "historical_max_drawdown": 0.07579287365206067
+      }
+    },
+    {
+      "fold": 3,
+      "training": {
+        "start": "1990-01",
+        "end": "2026-08",
+        "observations": 352,
+        "segments": [
+          {
+            "start": "1990-01",
+            "end": "2004-08",
+            "observations": 176
+          },
+          {
+            "start": "2012-01",
+            "end": "2026-08",
+            "observations": 176
+          }
+        ]
+      },
+      "validation": {
+        "start": "2004-09",
+        "end": "2011-12",
+        "observations": 88,
+        "segments": [
+          {
+            "start": "2004-09",
+            "end": "2011-12",
+            "observations": 88
+          }
+        ]
+      },
+      "status": "optimal",
+      "diagnostics": {
+        "solver": "CLARABEL",
+        "solver_status": "optimal",
+        "solve_seconds": 4.65e-05,
+        "iterations": 7,
+        "wall_seconds": 0.0020200000144541264,
+        "constraint_violation": 0.0
+      },
+      "weights": {
+        "1": 0.29328802397455284,
+        "175": 0.45793946715282907,
+        "243": 0.24877250887261806
+      },
+      "covariance_parameters": {},
+      "covariance_diagnostics": {
+        "finite": true,
+        "symmetry_error": 0.0,
+        "positive_semidefinite": true,
+        "eigenvalues_before": [
+          0.0009348946106474789,
+          0.0017523529664964543,
+          0.00185158108249778
+        ],
+        "eigenvalues_after": [
+          0.0009348946106474789,
+          0.0017523529664964543,
+          0.00185158108249778
+        ],
+        "condition_number_before": 1.980523859491962,
+        "condition_number_after": 1.980523859491962,
+        "nearly_singular": false,
+        "regularization": "none",
+        "eigenvalue_floor": null,
+        "frobenius_change": 0.0
+      },
+      "training_metrics": {
+        "expected_return": 0.07112099253868286,
+        "volatility": 0.08201027689233933,
+        "sharpe_ratio": 0.5014126777387337,
+        "historical_cagr": 0.06992310394920548,
+        "historical_max_drawdown": 0.2406930002152291
+      },
+      "validation_metrics": {
+        "realized_annual_arithmetic_return": 0.11179734694384993,
+        "realized_annual_volatility": 0.08935211251495219,
+        "realized_sharpe_ratio": 0.9154495024408288,
+        "realized_total_return": 1.1973438966059842,
+        "historical_cagr": 0.11332627536261089,
+        "historical_max_drawdown": 0.138122465527171
+      }
+    },
+    {
+      "fold": 4,
+      "training": {
+        "start": "1990-01",
+        "end": "2026-08",
+        "observations": 352,
+        "segments": [
+          {
+            "start": "1990-01",
+            "end": "2011-12",
+            "observations": 264
+          },
+          {
+            "start": "2019-05",
+            "end": "2026-08",
+            "observations": 88
+          }
+        ]
+      },
+      "validation": {
+        "start": "2012-01",
+        "end": "2019-04",
+        "observations": 88,
+        "segments": [
+          {
+            "start": "2012-01",
+            "end": "2019-04",
+            "observations": 88
+          }
+        ]
+      },
+      "status": "optimal",
+      "diagnostics": {
+        "solver": "CLARABEL",
+        "solver_status": "optimal",
+        "solve_seconds": 4.85e-05,
+        "iterations": 7,
+        "wall_seconds": 0.0020755000005010515,
+        "constraint_violation": 0.0
+      },
+      "weights": {
+        "1": 0.28656441639883945,
+        "175": 0.47566575337708994,
+        "243": 0.23776983022407058
+      },
+      "covariance_parameters": {},
+      "covariance_diagnostics": {
+        "finite": true,
+        "symmetry_error": 0.0,
+        "positive_semidefinite": true,
+        "eigenvalues_before": [
+          0.0011378414544444167,
+          0.0020321127434577272,
+          0.0021867844380990876
+        ],
+        "eigenvalues_after": [
+          0.0011378414544444167,
+          0.0020321127434577272,
+          0.0021867844380990876
+        ],
+        "condition_number_before": 1.9218709509637677,
+        "condition_number_after": 1.9218709509637677,
+        "nearly_singular": false,
+        "regularization": "none",
+        "eigenvalue_floor": null,
+        "frobenius_change": 0.0
+      },
+      "training_metrics": {
+        "expected_return": 0.0851721170939904,
+        "volatility": 0.08623257822086627,
+        "sharpe_ratio": 0.6398059553858966,
+        "historical_cagr": 0.08458100961494418,
+        "historical_max_drawdown": 0.24431840471842925
+      },
+      "validation_metrics": {
+        "realized_annual_arithmetic_return": 0.05278345109302317,
+        "realized_annual_volatility": 0.07174098760361251,
+        "realized_sharpe_ratio": 0.3175792786531964,
+        "realized_total_return": 0.44439797864434505,
+        "historical_cagr": 0.051418181064468944,
+        "historical_max_drawdown": 0.09509602602592437
+      }
+    },
+    {
+      "fold": 5,
+      "training": {
+        "start": "1990-01",
+        "end": "2019-04",
+        "observations": 352,
+        "segments": [
+          {
+            "start": "1990-01",
+            "end": "2019-04",
+            "observations": 352
+          }
+        ]
+      },
+      "validation": {
+        "start": "2019-05",
+        "end": "2026-08",
+        "observations": 88,
+        "segments": [
+          {
+            "start": "2019-05",
+            "end": "2026-08",
+            "observations": 88
+          }
+        ]
+      },
+      "status": "optimal",
+      "diagnostics": {
+        "solver": "CLARABEL",
+        "solver_status": "optimal",
+        "solve_seconds": 4.71e-05,
+        "iterations": 8,
+        "wall_seconds": 0.002022700005909428,
+        "constraint_violation": 1.1102230246251565e-16
+      },
+      "weights": {
+        "1": 0.31746335144039806,
+        "175": 0.48527869184346034,
+        "243": 0.19725795671614157
+      },
+      "covariance_parameters": {},
+      "covariance_diagnostics": {
+        "finite": true,
+        "symmetry_error": 0.0,
+        "positive_semidefinite": true,
+        "eigenvalues_before": [
+          0.000923595878464271,
+          0.0017789902570562541,
+          0.001989410868674549
+        ],
+        "eigenvalues_after": [
+          0.000923595878464271,
+          0.0017789902570562541,
+          0.001989410868674549
+        ],
+        "condition_number_before": 2.153984134254134,
+        "condition_number_after": 2.153984134254134,
+        "nearly_singular": false,
+        "regularization": "none",
+        "eigenvalue_floor": null,
+        "frobenius_change": 0.0
+      },
+      "training_metrics": {
+        "expected_return": 0.08032487334238905,
+        "volatility": 0.07385178585027874,
+        "sharpe_ratio": 0.6814306893595466,
+        "historical_cagr": 0.08042672166533635,
+        "historical_max_drawdown": 0.13101036058772964
+      },
+      "validation_metrics": {
+        "realized_annual_arithmetic_return": 0.07740794373103897,
+        "realized_annual_volatility": 0.11445365700006163,
+        "realized_sharpe_ratio": 0.41421082535627013,
+        "realized_total_return": 0.6798122133471252,
+        "historical_cagr": 0.073290716437958,
+        "historical_max_drawdown": 0.24856828327504688
+      }
+    }
+  ],
+  "ensemble": {
+    "status": "averaged",
+    "diagnostics": {
+      "constraint_violation": 0.0
+    },
+    "weights": {
+      "1": 0.3167456314482573,
+      "175": 0.46656561523682116,
+      "243": 0.2166887533149215
+    },
+    "metrics": {
+      "expected_return": 0.08002880732052992,
+      "volatility": 0.08334087886242578,
+      "sharpe_ratio": 0.6002913336576944,
+      "historical_cagr": 0.0793104719170095,
+      "historical_max_drawdown": 0.24423607952925908
+    }
+  },
+  "stability": {
+    "standard_deviation": {
+      "1": 0.024272726547314497,
+      "175": 0.020032788218479772,
+      "243": 0.025120521313543216
+    },
+    "minimum": {
+      "1": 0.28656441639883945,
+      "175": 0.4313294506592933,
+      "243": 0.1806530716748777
+    },
+    "maximum": {
+      "1": 0.34968015025380705,
+      "175": 0.48527869184346034,
+      "243": 0.24877250887261806
+    },
+    "mean_absolute_weight_deviation": 0.020395681789795457,
+    "maximum_weight_deviation": 0.03603568164004378,
+    "mean_allocation_turnover_from_original": 0.030593522684693182,
+    "lower_bound_frequency": {
+      "1": 0.0,
+      "175": 0.0,
+      "243": 0.0
+    },
+    "upper_bound_frequency": {
+      "1": 0.0,
+      "175": 0.0,
+      "243": 0.0
+    }
+  },
+  "execution_seconds": 0.019719199975952506
+}

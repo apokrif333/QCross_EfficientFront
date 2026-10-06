@@ -6,8 +6,23 @@ import {
   parseSnapshot,
 } from "../lib/snapshot";
 import { instruments, saved } from "./fixtures";
+import type { FrontierResult } from "../types";
 
 describe("full calculation snapshots", () => {
+  it("round-trips user allocations, numbered groups and reference portfolio metrics", () => {
+    const record = saved();
+    const result = record.result as FrontierResult;
+    result.user_portfolio = structuredClone(result.equal_weight);
+    record.request.asset_groups = { "1": 1, "175": 3, "243": 5 };
+    record.request.user_weights = structuredClone(
+      result.user_portfolio.weights,
+    );
+    result.reproducibility.api_request = structuredClone(record.request);
+    const snapshot = parseSnapshot(
+      JSON.stringify(createSnapshot([record], instruments)),
+    );
+    expect(snapshot.calculations[0]).toEqual(record);
+  });
   it("round-trips all four stored result schemas with provenance", () => {
     const records = [
       saved(),

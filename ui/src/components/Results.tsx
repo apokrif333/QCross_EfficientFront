@@ -11,17 +11,24 @@ import type {
 } from "../types";
 import { METHODS } from "../types";
 import { compatible } from "../lib/snapshot";
-import { escapeHtml as escape, number, percent, ticker } from "../lib/display";
+import {
+  displayedVolatility,
+  escapeHtml as escape,
+  number,
+  percent,
+  ticker,
+  visibleWeights,
+} from "../lib/display";
 import Plot from "./Plot";
 import PortfolioTable from "./PortfolioTable";
 
 const AXES = {
   xaxis: { title: { text: "Годовая волатильность" }, tickformat: ".1%" },
-  yaxis: { title: { text: "Ожидаемая годовая доходность" }, tickformat: ".1%" },
+  yaxis: { title: { text: "Историческая CAGR" }, tickformat: ".1%" },
 };
 function hover(p: Portfolio, label: string, instruments: Instrument[]) {
   const m = p.metrics;
-  return `<b>${escape(label)}</b><br>Доходность ${percent(m?.expected_return)}<br>Волатильность ${percent(m?.volatility)}<br>Sharpe ${number(m?.sharpe_ratio)}<br>${Object.entries(
+  return `<b>${escape(label)}</b><br>Ожидаемая (арифм.) ${percent(m?.expected_return)}<br>Историческая CAGR ${percent(m?.historical_cagr)}<br>Волатильность ${percent(displayedVolatility(m))}<br>Sharpe ${number(m?.sharpe_ratio)}<br>${visibleWeights(
     p.weights ?? {},
   )
     .map(([a, w]) => `${escape(ticker(a, instruments))}: ${percent(w)}`)
@@ -39,13 +46,44 @@ function trace(
     type: "scatter",
     mode: line ? "lines+markers" : "markers",
     name: label,
-    x: good.map((p) => p.metrics!.volatility),
-    y: good.map((p) => p.metrics!.expected_return),
+    x: good.map((p) => displayedVolatility(p.metrics) ?? null),
+    y: good.map((p) => p.metrics!.historical_cagr),
     marker: { color, size: line ? 4 : 12 },
     line: { color, width: 2.5 },
     customdata: good as never,
     hovertemplate: good.map((p) => hover(p, label, instruments)),
   };
+}
+function assetTrace(
+  portfolios: Record<string, Portfolio> | undefined,
+  instruments: Instrument[],
+): Data[] {
+  if (!portfolios || !Object.keys(portfolios).length) return [];
+  const entries = Object.entries(portfolios).filter(
+    ([, p]) => p.metrics && p.weights,
+  );
+  return [
+    {
+      type: "scatter",
+      mode: "text+markers",
+      name: "Активы",
+      x: entries.map(([, p]) => displayedVolatility(p.metrics) ?? null),
+      y: entries.map(([, p]) => p.metrics!.historical_cagr),
+      text: entries.map(([id]) => ticker(id, instruments)),
+      textposition: "top center",
+      textfont: { color: "#d14b74", size: 11 },
+      marker: {
+        color: "#d14b74",
+        symbol: "diamond",
+        size: 12,
+        line: { color: "#fff", width: 1 },
+      },
+      customdata: entries.map(([, p]) => p) as never,
+      hovertemplate: entries.map(([id, p]) =>
+        hover(p, ticker(id, instruments), instruments),
+      ),
+    },
+  ];
 }
 export function PointDetail({
   selected,
@@ -67,17 +105,20 @@ export function PointDetail({
       <h3>{label}</h3>
       <div className="metrics">
         <span>
-          Доходность<b>{percent(p.metrics?.expected_return)}</b>
+          Ожидаемая (арифм.)<b>{percent(p.metrics?.expected_return)}</b>
         </span>
         <span>
-          Волатильность<b>{percent(p.metrics?.volatility)}</b>
+          Волатильность<b>{percent(displayedVolatility(p.metrics))}</b>
         </span>
         <span>
           Sharpe<b>{number(p.metrics?.sharpe_ratio)}</b>
         </span>
+        <span>
+          Историческая CAGR<b>{percent(p.metrics?.historical_cagr)}</b>
+        </span>
       </div>
       <div className="allocations">
-        {Object.entries(p.weights ?? {}).map(([a, w]) => (
+        {visibleWeights(p.weights).map(([a, w]) => (
           <div key={a}>
             <span>
               {ticker(a, instruments)} <b>{percent(w)}</b>
@@ -124,12 +165,23 @@ export function FrontierView({
           return [
             { label: `${name} · GMV`, portfolio: r.gmv },
             { label: `${name} · Max Sharpe`, portfolio: r.max_sharpe },
+            ...(r.user_portfolio
+              ? [
+                  {
+                    label: `${name} · Ваш портфель`,
+                    portfolio: r.user_portfolio,
+                  },
+                ]
+              : []),
           ];
         });
     const rows = [
       { label: "GMV", portfolio: result.gmv },
       { label: "Max Sharpe", portfolio: result.max_sharpe },
       { label: "Equal Weight", portfolio: result.equal_weight },
+      ...(result.user_portfolio
+        ? [{ label: "Ваш портфель", portfolio: result.user_portfolio }]
+        : []),
     ];
     for (const c of related.filter(
       (c) =>
@@ -190,16 +242,33 @@ export function FrontierView({
           row.label,
           ["#173847", "#c0873a", "#85929a", "#548b79", "#8c7499"][i % 5],
           instruments,
+          false,
         ),
       ),
     );
+    d.push(...assetTrace(result.asset_portfolios, instruments));
     return d;
-  }, [calculation, related, compare, instruments, rows]);
+  }, [
+    calculation,
+    related,
+    compare,
+    instruments,
+    rows,
+    result.asset_portfolios,
+  ]);
   const click = (e: PlotMouseEvent) => {
     const p = e.points[0];
     if (p?.customdata)
       setSelected({
-        label: p.data.name ?? "Frontier point",
+        label:
+          p.data.name === "Активы"
+            ? ticker(
+                String(
+                  (p.customdata as unknown as Portfolio).diagnostics.asset_id,
+                ),
+                instruments,
+              )
+            : (p.data.name ?? "Frontier point"),
         portfolio: p.customdata as unknown as Portfolio,
       });
   };
@@ -221,7 +290,8 @@ export function FrontierView({
       {compare && (
         <p className="hint">
           На графике только расчёты с одинаковыми данными, датами и
-          ограничениями. Цвет соответствует методу; маркеры — GMV и Max Sharpe.
+          ограничениями. Цвет кривой соответствует методу; розовые ромбы —
+          отдельные активы.
         </p>
       )}
       <p className="hint">
@@ -282,8 +352,8 @@ export function CVView({
               <th>Обучение</th>
               <th>Проверка</th>
               <th>Веса</th>
-              <th>Train return / vol</th>
-              <th>Validation return / vol</th>
+              <th>Train arithmetic return / vol</th>
+              <th>Validation arithmetic return / vol</th>
               <th>Validation Sharpe</th>
             </tr>
           </thead>
@@ -307,7 +377,7 @@ export function CVView({
                   <small>{f.validation.observations} мес.</small>
                 </td>
                 <td>
-                  {Object.entries(f.weights ?? {}).map(([a, w]) => (
+                  {visibleWeights(f.weights).map(([a, w]) => (
                     <small key={a}>
                       {ticker(a, instruments)} {percent(w)}
                     </small>
@@ -608,6 +678,7 @@ export function ResampledView({
   const data = useMemo(
     () => [
       trace(r.frontier, "Resampled Frontier", "#b98943", instruments, true),
+      ...assetTrace(r.asset_portfolios, instruments),
     ],
     [r, instruments],
   );
@@ -624,7 +695,16 @@ export function ResampledView({
         onSelect={(e) => {
           if (e.points[0]?.customdata)
             setSelected({
-              label: "Resampled point",
+              label:
+                e.points[0].data.name === "Активы"
+                  ? ticker(
+                      String(
+                        (e.points[0].customdata as unknown as Portfolio)
+                          .diagnostics.asset_id,
+                      ),
+                      instruments,
+                    )
+                  : "Resampled point",
               portfolio: e.points[0].customdata as unknown as Portfolio,
             });
         }}

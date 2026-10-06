@@ -15,6 +15,8 @@ export interface ApiRequest {
   target_return: number | null;
   asset_constraints: Record<string, Bounds>;
   group_constraints: Record<string, Bounds>;
+  asset_groups?: Record<string, number>;
+  user_weights?: Record<string, number> | null;
   frontier_points: number;
   cv_folds: number;
   bootstrap_iterations: number;
@@ -66,6 +68,7 @@ export interface Catalog {
 export interface Metrics {
   expected_return: number;
   volatility: number;
+  historical_volatility?: number;
   sharpe_ratio: number | null;
   historical_cagr: number;
   historical_max_drawdown: number;
@@ -86,6 +89,7 @@ export interface Period {
   observations: number;
 }
 export interface BaseResult {
+  asset_portfolios?: Record<string, Portfolio>;
   status: "complete" | "incomplete";
   assets: string[];
   currency: "USD";
@@ -106,6 +110,7 @@ export interface BaseResult {
   reproducibility: Provenance;
 }
 export interface FrontierResult extends BaseResult {
+  user_portfolio?: Portfolio | null;
   frontier: Portfolio[];
   gmv: Portfolio;
   max_sharpe: Portfolio;

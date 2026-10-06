@@ -23,6 +23,13 @@ import {
   type Comparison,
 } from "./lib/snapshot";
 import Settings from "./components/Settings";
+import AssetBuilder from "./components/AssetBuilder";
+import {
+  allocationError,
+  requestFromRows,
+  rowsFromRequest,
+  type AssetRow,
+} from "./lib/allocations";
 import {
   BootstrapView,
   CVView,
@@ -72,6 +79,18 @@ export default function App() {
     [relTol, setRelTol] = useState(1e-6),
     [loaded, setLoaded] = useState(false);
   const [periodInfo, setPeriodInfo] = useState("");
+  const [assetRows, setAssetRows] = useState<AssetRow[]>(() =>
+    rowsFromRequest(DEFAULT_REQUEST),
+  );
+  const formError = allocationError(assetRows);
+  const adoptRequest = (next: ApiRequest) => {
+    setRequest(next);
+    setAssetRows(rowsFromRequest(next));
+  };
+  const updateRows = (rows: AssetRow[]) => {
+    setAssetRows(rows);
+    setRequest((previous) => requestFromRows(rows, previous));
+  };
   const controller = useRef<AbortController | null>(null),
     file = useRef<HTMLInputElement>(null);
   const instruments = catalog?.instruments ?? [];
@@ -90,7 +109,12 @@ export default function App() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(request),
+          body: JSON.stringify({
+            instrument_ids: request.instrument_ids,
+            currency: "USD",
+            start_date: request.start_date,
+            end_date: request.end_date,
+          }),
         },
         abort.signal,
       )
@@ -118,7 +142,7 @@ export default function App() {
         setDemo(bundle);
         setCatalog(bundle.catalog);
         setCalculations(bundle.calculations);
-        setRequest(bundle.calculations[0].request);
+        adoptRequest(bundle.calculations[0].request);
       })
       .catch((e) => {
         if (active) setError(e.message);
@@ -150,17 +174,29 @@ export default function App() {
         if (!demo) throw new Error("Demo ещё не загружен.");
         setCatalog(demo.catalog);
         setCalculations(demo.calculations);
-        setRequest(demo.calculations[0].request);
+        adoptRequest(demo.calculations[0].request);
         setLoaded(false);
         setBaseline([]);
         setComparisons([]);
       } else {
         const c = await fetchCatalog();
         setCatalog(c);
-        setRequest((previous) => ({
-          ...previous,
-          bootstrap_objectives: ["gmv", "max_sharpe"],
-        }));
+        if (!loaded && mode === "demo") {
+          const next = {
+            ...request,
+            asset_constraints: {},
+            group_constraints: {},
+            asset_groups: {},
+            user_weights: null,
+            start_date: null,
+            end_date: null,
+            bootstrap_objectives: [
+              "gmv",
+              "max_sharpe",
+            ] as ApiRequest["bootstrap_objectives"],
+          };
+          adoptRequest(requestFromRows(rowsFromRequest(next), next));
+        }
         if (mode !== "live" && !loaded) setCalculations([]);
       }
       setMode(next);
@@ -175,7 +211,7 @@ export default function App() {
       const found = (loaded ? calculations : demo?.calculations)?.find(
         (c) => c.request.covariance_method === next.covariance_method,
       );
-      if (found) setRequest(found.request);
+      if (found) adoptRequest(found.request);
     } else setRequest(next);
   }
   async function preview() {
@@ -187,7 +223,12 @@ export default function App() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(request),
+          body: JSON.stringify({
+            instrument_ids: request.instrument_ids,
+            currency: "USD",
+            start_date: request.start_date,
+            end_date: request.end_date,
+          }),
         },
       );
       setMessage(
@@ -208,7 +249,7 @@ export default function App() {
     const calculation: Calculation = {
       id: crypto.randomUUID(),
       kind,
-      request: structuredClone(body),
+      request: structuredClone(result.reproducibility.api_request ?? body),
       result,
       origin: "live",
       created_at: new Date().toISOString(),
@@ -226,6 +267,10 @@ export default function App() {
     return calculation;
   }
   async function calculate(kinds: Kind[], compare = false) {
+    if (formError) {
+      setError(formError);
+      return;
+    }
     setError("");
     setMessage("");
     setLoaded(false);
@@ -282,7 +327,7 @@ export default function App() {
         engine: s.calculations[0].result.reproducibility.engine,
         instruments: s.instruments,
       });
-      setRequest(s.calculations[0].request);
+      adoptRequest(s.calculations[0].request);
       setLoaded(true);
       setComparisons([]);
       setTab("Snapshot");
@@ -458,10 +503,16 @@ export default function App() {
           )}
         </div>
       )}
+      <AssetBuilder
+        rows={assetRows}
+        instruments={instruments}
+        locked={!!busy || mode === "demo"}
+        onChange={updateRows}
+      />
       <div className="workspace">
         <aside>
           <details className="settings-shell" open>
-            <summary>Настройки / выбор активов</summary>
+            <summary>Настройки расчёта</summary>
             {mode === "demo" && !loaded && (
               <p className="demo-note">
                 Demo показывает реальные сохранённые расчёты VTI / TLT / GLD.
@@ -538,7 +589,9 @@ export default function App() {
               {mode === "live" && tab !== "Snapshot" && (
                 <button
                   className="primary"
-                  disabled={!!busy || request.instrument_ids.length < 2}
+                  disabled={
+                    !!busy || !!formError || request.instrument_ids.length < 2
+                  }
                   onClick={() =>
                     void calculate(
                       [
@@ -620,7 +673,11 @@ export default function App() {
                   {mode === "live" && (
                     <button
                       className="secondary"
-                      disabled={!!busy || request.instrument_ids.length < 2}
+                      disabled={
+                        !!busy ||
+                        !!formError ||
+                        request.instrument_ids.length < 2
+                      }
                       onClick={() => void calculate(["resampled-frontier"])}
                     >
                       Рассчитать Resampled Frontier

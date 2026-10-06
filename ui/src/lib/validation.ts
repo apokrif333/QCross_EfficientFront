@@ -26,6 +26,8 @@ export const requestSchema = z.object({
   target_return: n.nullable(),
   asset_constraints: z.record(z.string(), bounds),
   group_constraints: z.record(z.string(), bounds),
+  asset_groups: z.record(z.string(), n.int().min(1).max(5)).optional(),
+  user_weights: z.record(z.string(), n.min(0).max(1)).nullable().optional(),
   frontier_points: n.int().min(2).max(201),
   cv_folds: n.int().min(2).max(10),
   bootstrap_iterations: n.int().min(1).max(2000),
@@ -41,6 +43,7 @@ export const requestSchema = z.object({
 const metrics = z.object({
   expected_return: n,
   volatility: n,
+  historical_volatility: n.optional(),
   sharpe_ratio: n.nullable(),
   historical_cagr: n,
   historical_max_drawdown: n,
@@ -90,6 +93,7 @@ const provenance = z
   })
   .passthrough();
 const base = z.object({
+  asset_portfolios: z.record(z.string(), portfolio).optional(),
   status: z.enum(["complete", "incomplete"]),
   assets: z.array(z.string()).min(2).max(15),
   currency: z.literal("USD"),
@@ -157,6 +161,7 @@ const results = {
       gmv: portfolio,
       max_sharpe: portfolio,
       equal_weight: portfolio,
+      user_portfolio: portfolio.nullable().optional(),
       selected_portfolio: portfolio,
       maximum_return: portfolio,
     })

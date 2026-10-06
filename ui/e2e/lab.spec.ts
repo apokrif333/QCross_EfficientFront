@@ -104,6 +104,7 @@ test("all four Live jobs, four-method comparison and exact snapshot repeat throu
   await page.goto("/");
   await expect(page.locator(".js-plotly-plot")).toHaveCount(1);
   await page.getByRole("button", { name: "Live", exact: true }).click();
+  await page.getByLabel("Начало", { exact: true }).fill("1990-01-01");
   await expect(
     page.getByText("LIVE · FastAPI", { exact: false }),
   ).toBeVisible();

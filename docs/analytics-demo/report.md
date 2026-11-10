@@ -15,44 +15,47 @@ Period: **1990-01 to 2026-08**, **440 months**. Annual risk-free rate: 3%.
 | GMV | 31.68% | 46.69% | 21.63% | 8.00% | 8.33% | 0.600 | 7.93% | 24.43% |
 | Max Sharpe | 52.17% | 26.79% | 21.05% | 9.14% | 9.23% | 0.665 | 9.07% | 23.15% |
 | Equal weight | 33.33% | 33.33% | 33.33% | 8.29% | 8.63% | 0.613 | 8.22% | 21.53% |
-| CV ensemble (full-sample) | 31.67% | 46.66% | 21.67% | 8.00% | 8.33% | 0.600 | 7.93% | 24.42% |
+| CV ensemble (full-sample) | 31.73% | 48.47% | 19.80% | 7.97% | 8.34% | 0.596 | 7.90% | 24.84% |
 | Resampled gmv | 31.57% | 46.63% | 21.80% | 8.00% | 8.33% | 0.600 | 7.93% | 24.41% |
 | Resampled max_sharpe | 49.69% | 29.38% | 20.92% | 9.00% | 9.03% | 0.664 | 8.94% | 23.13% |
 
 CV ensemble and resampled statistics above use original full-sample estimates. They are not independent out-of-sample performance. The resampled portfolios are not assumed superior.
 
-## Five-fold validation
+## Four-fold one-sided block validation
 
-| Fold | Training months | Validation interval | Months | VTI | TLT | GLD | Realized arithmetic return | Volatility | Sharpe |
-|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
-| 1 | 352 | 1990-01–1997-04 | 88 | 33.67% | 48.26% | 18.07% | 8.54% | 6.60% | 0.838 |
-| 2 | 352 | 1997-05–2004-08 | 88 | 34.97% | 43.13% | 21.90% | 7.31% | 7.59% | 0.567 |
-| 3 | 352 | 2004-09–2011-12 | 88 | 29.33% | 45.79% | 24.88% | 11.18% | 8.94% | 0.915 |
-| 4 | 352 | 2012-01–2019-04 | 88 | 28.66% | 47.57% | 23.78% | 5.28% | 7.17% | 0.318 |
-| 5 | 352 | 2019-05–2026-08 | 88 | 31.75% | 48.53% | 19.73% | 7.74% | 11.45% | 0.414 |
+Sample sensitivity and allocation stability, not a historical investable backtest or independent forward out-of-sample performance. No embargo or purge gap.
+
+Validation coverage: 440/440 (100.0%). Portfolio minimums: 120/60 months; covariance CV minimums: 60/30. Training samples across folds may overlap.
+
+| Fold | Training months | Training interval | Direction | Validation interval | Months | VTI | TLT | GLD | Realized arithmetic return | Volatility | Sharpe |
+|---|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 330 | 1999-03–2026-08 | train_after_validation | 1990-01–1999-02 | 110 | 35.54% | 47.00% | 17.45% | 9.63% | 7.09% | 0.935 |
+| 2 | 220 | 2008-05–2026-08 | train_after_validation | 1999-03–2008-04 | 110 | 37.74% | 43.80% | 18.47% | 7.45% | 6.38% | 0.697 |
+| 3 | 220 | 1990-01–2008-04 | train_before_validation | 2008-05–2017-06 | 110 | 21.72% | 54.19% | 24.09% | 7.47% | 10.01% | 0.447 |
+| 4 | 330 | 1990-01–2017-06 | train_before_validation | 2017-07–2026-08 | 110 | 31.92% | 48.87% | 19.21% | 7.27% | 10.56% | 0.405 |
 
 CV stability:
 
 ```json
 {
   "standard_deviation": {
-    "1": 0.024272726547314497,
-    "175": 0.020032788218479772,
-    "243": 0.025120521313543216
+    "1": 0.061396847564549994,
+    "175": 0.03769472798732756,
+    "243": 0.0255124575580548
   },
   "minimum": {
-    "1": 0.28656441639883945,
-    "175": 0.4313294506592933,
-    "243": 0.1806530716748777
+    "1": 0.2172247949899743,
+    "175": 0.43797574205130596,
+    "243": 0.17452901417434719
   },
   "maximum": {
-    "1": 0.34968015025380705,
-    "175": 0.48527869184346034,
-    "243": 0.24877250887261806
+    "1": 0.3773515012794085,
+    "175": 0.5418807124886186,
+    "243": 0.2408944925214073
   },
-  "mean_absolute_weight_deviation": 0.020395681789795457,
-  "maximum_weight_deviation": 0.03603568164004378,
-  "mean_allocation_turnover_from_original": 0.030593522684693182,
+  "mean_absolute_weight_deviation": 0.03403580917912962,
+  "maximum_weight_deviation": 0.10007857903219028,
+  "mean_allocation_turnover_from_original": 0.05651396660966085,
   "lower_bound_frequency": {
     "1": 0.0,
     "175": 0.0,
@@ -120,13 +123,13 @@ Numerical times (seconds):
 
 ```json
 {
-  "frontier_sample": 0.15735890000360087,
-  "frontier_ledoit_wolf": 0.04696820001117885,
-  "frontier_nonlinear": 0.046234100009314716,
-  "frontier_cv_linear": 0.06872380001004785,
-  "cross_validation": 0.02071889999206178,
-  "bootstrap_1000_both_objectives": 8.161628500005463,
-  "resampled_frontier_250x51": 8.020640499977162
+  "frontier_sample": 0.05848250000008193,
+  "frontier_ledoit_wolf": 0.05187969999997222,
+  "frontier_nonlinear": 0.043697599999632075,
+  "frontier_cv_linear": 0.06850039999972068,
+  "cross_validation": 0.01980230000026495,
+  "bootstrap_1000_both_objectives": 8.447945299999901,
+  "resampled_frontier_250x51": 8.628007599999819
 }
 ```
 
@@ -135,32 +138,32 @@ Local FastAPI TestClient timings include actual spawned worker processes and pol
 ```json
 {
   "frontier": {
-    "submit_seconds": 0.2839673000271432,
-    "wall_seconds_including_polling": 2.432811800012132,
-    "job_seconds": 2.2098235999874305,
-    "retrieval_seconds": 0.002373099996475503,
-    "numerical_seconds": 0.06352940000942908
+    "submit_seconds": 0.33520099999986996,
+    "wall_seconds_including_polling": 2.7099969000000783,
+    "job_seconds": 2.421770099999776,
+    "retrieval_seconds": 0.0029595000000881555,
+    "numerical_seconds": 0.06425840000019889
   },
   "cross-validation": {
-    "submit_seconds": 0.13311860000248998,
-    "wall_seconds_including_polling": 2.1660258999909274,
-    "job_seconds": 2.0755699000146706,
-    "retrieval_seconds": 0.0017499999958090484,
-    "numerical_seconds": 0.03438090000418015
+    "submit_seconds": 0.165715199999795,
+    "wall_seconds_including_polling": 2.4380889999997635,
+    "job_seconds": 2.3247341000001143,
+    "retrieval_seconds": 0.001987300000109826,
+    "numerical_seconds": 0.033723900000040885
   },
   "bootstrap": {
-    "submit_seconds": 0.1263862999912817,
-    "wall_seconds_including_polling": 10.629726999992272,
-    "job_seconds": 10.518220300000394,
-    "retrieval_seconds": 0.027202900004340336,
-    "numerical_seconds": 7.962054600007832
+    "submit_seconds": 0.16321130000005724,
+    "wall_seconds_including_polling": 12.158866800000396,
+    "job_seconds": 12.011815600000318,
+    "retrieval_seconds": 0.03348000000005413,
+    "numerical_seconds": 9.785083400000076
   },
   "resampled-frontier": {
-    "submit_seconds": 0.2467565000115428,
-    "wall_seconds_including_polling": 9.44044340000255,
-    "job_seconds": 9.204534499993315,
-    "retrieval_seconds": 0.03096090001054108,
-    "numerical_seconds": 7.424303299980238
+    "submit_seconds": 0.5241089000001011,
+    "wall_seconds_including_polling": 13.692871200000354,
+    "job_seconds": 13.326961400000073,
+    "retrieval_seconds": 0.03353340000012395,
+    "numerical_seconds": 9.005602100000033
   }
 }
 ```

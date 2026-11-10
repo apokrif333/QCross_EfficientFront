@@ -124,9 +124,9 @@ def main() -> None:
                 }
                 timings[f"frontier_{method}"] = result["execution_seconds"]
             frontier = json.loads((output / "frontier-sample.json").read_text())
-            print("Five-fold CV and ensemble", flush=True)
-            cv = analyze_cross_validation(panel, **options, cv_folds=5)
-            save_calculation(output / "cross-validation.json", cv, {**request, "cv_folds": 5})
+            print("Four-fold one-sided block CV and ensemble", flush=True)
+            cv = analyze_cross_validation(panel, **options, cv_folds=4)
+            save_calculation(output / "cross-validation.json", cv, {**request, "cv_folds": 4})
             timings["cross_validation"] = cv["execution_seconds"]
             print("1,000 stationary bootstrap iterations, GMV and Max Sharpe", flush=True)
             bootstrap = analyze_bootstrap(
@@ -237,7 +237,7 @@ def main() -> None:
             with TestClient(application) as client:
                 for endpoint, overrides in [
                     ("frontier", {}),
-                    ("cross-validation", {"cv_folds": 5}),
+                    ("cross-validation", {"cv_folds": 4}),
                     (
                         "bootstrap",
                         {
@@ -362,17 +362,27 @@ def write_report(output, frontier, cv, bootstrap, resampled, summary):
         "They are not independent out-of-sample performance. The resampled portfolios are "
         "not assumed superior.",
         "",
-        "## Five-fold validation",
+        "## Four-fold one-sided block validation",
         "",
-        "| Fold | Training months | Validation interval | Months | VTI | TLT | GLD "
+        "Sample sensitivity and allocation stability, not a historical investable backtest "
+        "or independent forward out-of-sample performance. No embargo or purge gap.",
+        "",
+        f"Validation coverage: {cv['validation_observations']}/{cv['total_observations']} "
+        f"({cv['validation_coverage_fraction']:.1%}). Portfolio minimums: 120/60 months; "
+        "covariance CV minimums: 60/30. Training samples across folds may overlap.",
+        "",
+        "| Fold | Training months | Training interval | Direction | Validation interval "
+        "| Months | VTI | TLT | GLD "
         "| Realized arithmetic return | Volatility | Sharpe |",
-        "|---|---:|---|---:|---:|---:|---:|---:|---:|---:|",
+        "|---|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for fold in cv["folds"]:
         v, m = fold["validation"], fold["validation_metrics"]
         cells = [
             str(fold["fold"]),
             str(fold["training"]["observations"]),
+            f"{fold['training']['start']}–{fold['training']['end']}",
+            fold["training_direction"],
             f"{v['start']}–{v['end']}",
             str(v["observations"]),
         ]

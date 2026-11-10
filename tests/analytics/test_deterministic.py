@@ -7,7 +7,6 @@ import pytest
 from scipy.optimize import minimize_scalar
 from scipy.stats import multivariate_normal
 from sklearn.covariance import LedoitWolf
-from sklearn.model_selection import KFold
 
 from app.analytics.constraints import build_constraints
 from app.analytics.data_loader import align_returns, load_returns
@@ -23,6 +22,7 @@ from app.analytics.frontier import analyze_frontier
 from app.analytics.metrics import correlation_diagnostics, historical_metrics, portfolio_metrics
 from app.analytics.models import AnalyticsError
 from app.analytics.optimizer import PortfolioOptimizer
+from app.analytics.splitting import one_sided_folds
 from app.db.models import Instrument, MonthlyReturn, ReturnSeries
 
 
@@ -57,11 +57,11 @@ def test_covariances_and_independent_nonlinear_reference(panel):
 
 @pytest.mark.parametrize("target", ["identity", "diagonal"])
 def test_cv_shrinkage_uses_validation_nll(panel, target):
-    chosen = select_shrinkage(panel.values, 5, target)
+    chosen = select_shrinkage(panel.values, 4, target)
     scores = []
     for intensity in chosen["grid"]:
         total = 0
-        for train, validation in KFold(5, shuffle=False).split(panel.values):
+        for train, validation in one_sided_folds(240, 4, min_train=60, min_validation=30):
             covariance, _ = validate_covariance(
                 linear_covariance(panel.values[train], intensity, target)
             )

@@ -3,7 +3,33 @@ from dataclasses import dataclass
 import cvxpy as cp
 import numpy as np
 
-from app.analytics.models import AnalyticsError
+from app.analytics.models import AnalyticsError, ReturnPanel
+
+
+def numbered_groups(panel: ReturnPanel, mapping: dict[str, int]) -> ReturnPanel:
+    """Explicit user assignments supplement source categories without changing source records."""
+    groups = {name: list(members) for name, members in panel.groups.items()}
+    for asset, group in mapping.items():
+        if asset not in panel.assets or isinstance(group, bool) or group not in range(1, 6):
+            raise AnalyticsError("User groups require selected asset IDs and group numbers 1 to 5.")
+        groups.setdefault(f"Group {group}", []).append(asset)
+    return ReturnPanel(panel.returns, panel.assets, groups, panel.metadata, panel.warnings)
+
+
+def user_allocation(assets: list[str], weights: dict | None) -> np.ndarray | None:
+    if not weights:
+        return None
+    if set(weights) - set(assets):
+        raise AnalyticsError("User allocation references unselected assets.")
+    vector = np.array([weights.get(a, 0) for a in assets], dtype=float)
+    if not np.isfinite(vector).all() or (vector < 0).any() or (vector > 1).any():
+        raise AnalyticsError("User allocation weights must be finite and between 0 and 1.")
+    total = float(vector.sum())
+    if total == 0:
+        return None
+    if abs(total - 1) > 1e-8:
+        raise AnalyticsError("User allocation must total 100%, or 0% to omit the user portfolio.")
+    return vector
 
 
 @dataclass

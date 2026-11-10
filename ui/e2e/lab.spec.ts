@@ -13,12 +13,18 @@ test("Demo works without API; charts, mobile, snapshot export and reload", async
     page.getByRole("heading", { name: "Efficient Frontier", exact: true }),
   ).toBeVisible();
   await expect(page.locator(".js-plotly-plot")).toHaveCount(1);
+  await expect(
+    page.getByRole("combobox", { name: "Метод ковариации", exact: true }),
+  ).toHaveValue("nonlinear");
   await page.getByRole("button", { name: "GMV", exact: true }).click();
   await expect(page.locator(".point-detail h3")).toHaveText("GMV");
   await page.getByRole("button", { name: "Compare", exact: true }).click();
   await expect(
     page.locator(".legendtext").filter({ hasText: /^Nonlinear$/ }),
   ).toBeVisible();
+  await page
+    .getByRole("combobox", { name: "Метод в Demo", exact: true })
+    .selectOption("sample");
   await page
     .getByRole("button", { name: "Cross-validation", exact: true })
     .click();
@@ -104,7 +110,15 @@ test("all four Live jobs, four-method comparison and exact snapshot repeat throu
   await page.goto("/");
   await expect(page.locator(".js-plotly-plot")).toHaveCount(1);
   await page.getByRole("button", { name: "Live", exact: true }).click();
+  await expect(
+    page.getByRole("combobox", { name: "Метод ковариации", exact: true }),
+  ).toHaveValue("nonlinear");
+  await page
+    .getByRole("combobox", { name: "Метод ковариации", exact: true })
+    .selectOption("sample");
   await page.getByLabel("Начало", { exact: true }).fill("1990-01-01");
+  // Dismiss the date help before clicking the adjacent preview button.
+  await page.getByLabel("Начало", { exact: true }).press("Escape");
   await expect(
     page.getByText("LIVE · FastAPI", { exact: false }),
   ).toBeVisible();

@@ -332,9 +332,15 @@ export function CVView({
   return (
     <>
       <p className="hint">
-        Последовательные K-фолды без перемешивания. Обучение на K−1 фолдах,
-        проверка на оставшемся; веса фиксированы. Это classical K-Fold, не
-        walk-forward.
+        Двунаправленная односторонняя блочная CV: обучение одним непрерывным
+        периодом до или после проверки. Веса фиксированы, разрыва нет.
+        Диагностика чувствительности к выборке и устойчивости аллокации; метрики
+        проверки не являются историческим торговым бэктестом или независимым
+        forward out-of-sample результатом. Проверка: {r.validation_observations}{" "}
+        из {r.total_observations} мес. (
+        {percent(r.validation_coverage_fraction)}).
+        {r.validation_coverage_fraction < 1 &&
+          " Центральные месяцы не входят в проверку при K=2."}
       </p>
       <Plot
         title="Веса CV-фолдов"
@@ -366,6 +372,11 @@ export function CVView({
                 </td>
                 <td>
                   {f.training.observations} мес.
+                  <small>
+                    {f.training_direction === "train_before_validation"
+                      ? "До проверки"
+                      : "После проверки"}
+                  </small>
                   <small>
                     {f.training.segments
                       ?.map((s) => `${s.start}—${s.end}`)

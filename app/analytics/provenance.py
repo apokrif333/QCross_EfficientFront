@@ -8,7 +8,7 @@ from pathlib import Path
 
 from app.analytics.models import ReturnPanel
 
-ENGINE_VERSION = "1.0.0"
+ENGINE_VERSION = "1.3.0"
 
 
 @lru_cache
@@ -24,6 +24,7 @@ def engine_identity() -> dict:
         "optimizer.py",
         "frontier.py",
         "cross_validation.py",
+        "splitting.py",
         "bootstrap.py",
         "provenance.py",
     ):

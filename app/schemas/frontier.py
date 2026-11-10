@@ -1,8 +1,9 @@
 from datetime import date
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.analytics.constraints import user_allocation
 from app.analytics.models import CovarianceMethod, Objective, ShrinkageTarget
 
 
@@ -31,8 +32,12 @@ class AnalyticsRequest(BaseModel):
     target_return: float | None = Field(default=None, ge=-12, le=12)
     asset_constraints: dict[str, WeightBounds] = Field(default_factory=dict, max_length=15)
     group_constraints: dict[str, WeightBounds] = Field(default_factory=dict, max_length=30)
+    asset_groups: dict[str, Annotated[int, Field(strict=True, ge=1, le=5)]] = Field(
+        default_factory=dict, max_length=15
+    )
+    user_weights: dict[str, float] | None = Field(default=None, max_length=15)
     frontier_points: int = Field(default=51, ge=2, le=201)
-    cv_folds: int = Field(default=5, ge=2, le=10)
+    cv_folds: int = Field(default=4, strict=True, ge=2, le=20, multiple_of=2)
     bootstrap_iterations: int = Field(default=1000, ge=1, le=2000)
     expected_block_length: float = Field(default=12, ge=3, le=24)
     random_seed: int = Field(default=42, ge=0, le=2**32 - 1)
@@ -43,6 +48,12 @@ class AnalyticsRequest(BaseModel):
 
     @model_validator(mode="after")
     def valid_selection(self):
+        assets = list(map(str, self.instrument_ids))
+        if set(self.asset_groups) - set(assets) or any(
+            not 1 <= group <= 5 for group in self.asset_groups.values()
+        ):
+            raise ValueError("Groups require selected instrument IDs and numbers from 1 to 5.")
+        user_allocation(assets, self.user_weights)
         if any(i <= 0 for i in self.instrument_ids) or len(set(self.instrument_ids)) != len(
             self.instrument_ids
         ):
@@ -79,6 +90,7 @@ class ResampledFrontierRequest(AnalyticsRequest):
 class PortfolioMetrics(BaseModel):
     expected_return: float
     volatility: float
+    historical_volatility: float
     sharpe_ratio: float | None
     historical_cagr: float
     historical_max_drawdown: float
@@ -96,6 +108,7 @@ class AnalyticsResultBase(BaseModel):
     model_config = ConfigDict(extra="allow")
     status: Literal["complete", "incomplete"]
     assets: list[str]
+    asset_portfolios: dict[str, PortfolioRead]
     currency: Literal["USD"]
     covariance_method: CovarianceMethod
     covariance_parameters: dict[str, Any]
@@ -120,12 +133,14 @@ class FrontierResult(AnalyticsResultBase):
     maximum_return: PortfolioRead
     selected_portfolio: PortfolioRead
     equal_weight: PortfolioRead
+    user_portfolio: PortfolioRead | None
     frontier: list[PortfolioRead]
 
 
 class FoldRead(BaseModel):
     model_config = ConfigDict(extra="allow")
     fold: int
+    training_direction: Literal["train_before_validation", "train_after_validation"]
     status: str
     training: dict[str, Any]
     validation: dict[str, Any]
@@ -135,6 +150,15 @@ class FoldRead(BaseModel):
 
 class CrossValidationResult(AnalyticsResultBase):
     cv_folds: int
+    methodology: Literal["bidirectional_one_sided_block_kfold"]
+    total_observations: int
+    validation_observations: int
+    validation_coverage_fraction: float
+    minimum_portfolio_train: int
+    minimum_portfolio_validation: int
+    minimum_covariance_train: int
+    minimum_covariance_validation: int
+    validation_interpretation: str
     ensemble_evaluation: str
     original: PortfolioRead
     folds: list[FoldRead]

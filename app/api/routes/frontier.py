@@ -4,12 +4,19 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.analytics.constraints import build_constraints
-from app.analytics.cross_validation import portfolio_folds
+from app.analytics.constraints import build_constraints, numbered_groups
 from app.analytics.data_loader import instrument_groups, load_returns
 from app.analytics.jobs import JobCapacityError
 from app.analytics.models import AnalyticsError
 from app.analytics.provenance import engine_identity, panel_provenance
+from app.analytics.splitting import (
+    MIN_COVARIANCE_TRAIN,
+    MIN_COVARIANCE_VALIDATION,
+    MIN_PORTFOLIO_TRAIN,
+    MIN_PORTFOLIO_VALIDATION,
+    eligible_folds,
+    validate_cv_configuration,
+)
 from app.api.dependencies import get_session
 from app.db.models import Instrument, ReturnSeries
 from app.schemas.frontier import AnalyticsRequest, JobRead, JobResultRead, ResampledFrontierRequest
@@ -28,18 +35,25 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
             end_date=body.end_date,
         )
         options = body.estimator_options()
+        panel = numbered_groups(panel, body.asset_groups)
         build_constraints(
             panel.assets, options["asset_constraints"], options["group_constraints"], panel.groups
         )
         options["risk_free_rate"] = body.risk_free_rate
+        validate_cv_configuration(
+            len(panel.values),
+            body.cv_folds,
+            portfolio=kind == "cross-validation",
+            covariance_method=body.covariance_method,
+        )
         if kind == "frontier":
             options.update(
                 frontier_points=body.frontier_points,
                 objective=body.objective,
                 target_return=body.target_return,
+                user_weights=body.user_weights,
             )
         elif kind == "cross-validation":
-            portfolio_folds(len(panel.values), body.cv_folds)
             options.update(objective=body.objective, target_return=body.target_return)
         else:
             if body.objective == "target_return":
@@ -135,6 +149,16 @@ def data_preview(body: AnalyticsRequest, session: DatabaseSession) -> dict:
             "groups": panel.groups,
             "source_metadata": panel.metadata,
             "warnings": panel.warnings,
+            "eligible_portfolio_folds": eligible_folds(
+                len(panel.values),
+                min_train=MIN_PORTFOLIO_TRAIN,
+                min_validation=MIN_PORTFOLIO_VALIDATION,
+            ),
+            "eligible_covariance_folds": eligible_folds(
+                len(panel.values),
+                min_train=MIN_COVARIANCE_TRAIN,
+                min_validation=MIN_COVARIANCE_VALIDATION,
+            ),
             "reproducibility": panel_provenance(panel),
         }
     except AnalyticsError as exc:

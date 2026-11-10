@@ -2,6 +2,7 @@ import type { ApiRequest, Instrument } from "../types";
 import { METHODS } from "../types";
 import { commonHistory } from "../lib/display";
 import HelpField from "./HelpField";
+import { CV_FOLDS, minimumCVHistory } from "../lib/cv";
 
 export default function Settings({
   value,
@@ -9,12 +10,16 @@ export default function Settings({
   locked,
   onChange,
   onPreview,
+  observations,
+  portfolioCV = false,
 }: {
   value: ApiRequest;
   instruments: Instrument[];
   locked: boolean;
   onChange: (v: ApiRequest) => void;
   onPreview: () => void;
+  observations?: number;
+  portfolioCV?: boolean;
 }) {
   const selected = instruments.filter((i) =>
       value.instrument_ids.includes(i.id),
@@ -208,18 +213,35 @@ export default function Settings({
             />
           </HelpField>
         )}
-        <HelpField
-          label="Число CV-фолдов"
-          help="Cross-validation: число внешних фолдов. Для CV LS это также число внутренних фолдов при выборе интенсивности shrinkage, в том числе на Frontier. В каждом внешнем фолде подбор использует только обучающие данные."
-        >
-          <input
-            type="number"
-            min="2"
-            max="10"
+        <label>
+          Число CV-фолдов
+          <select
             value={value.cv_folds}
-            onChange={(e) => set("cv_folds", +e.target.value)}
-          />
-        </HelpField>
+            onChange={(e) => {
+              const folds = Number(e.target.value);
+              if (CV_FOLDS.includes(folds)) set("cv_folds", folds);
+            }}
+          >
+            {CV_FOLDS.map((k) => {
+              const required = minimumCVHistory(k, !portfolioCV);
+              const relevant =
+                portfolioCV || value.covariance_method === "cv_linear";
+              return (
+                <option
+                  key={k}
+                  value={k}
+                  disabled={
+                    relevant &&
+                    observations !== undefined &&
+                    observations < required
+                  }
+                >
+                  {k}
+                </option>
+              );
+            })}
+          </select>
+        </label>
         <details open>
           <summary>Stationary Bootstrap</summary>
           <div className="two">

@@ -6,11 +6,70 @@
     "243"
   ],
   "currency": "USD",
+  "asset_portfolios": {
+    "1": {
+      "status": "reference",
+      "diagnostics": {
+        "asset_id": "1"
+      },
+      "weights": {
+        "1": 1.0,
+        "175": 0.0,
+        "243": 0.0
+      },
+      "metrics": {
+        "expected_return": 0.11462959090909089,
+        "volatility": 0.15057569179616906,
+        "historical_volatility": 0.1504044857239808,
+        "sharpe_ratio": 0.5620401932049701,
+        "historical_cagr": 0.1082183685203042,
+        "historical_max_drawdown": 0.5083887925389374
+      }
+    },
+    "175": {
+      "status": "reference",
+      "diagnostics": {
+        "asset_id": "175"
+      },
+      "weights": {
+        "1": 0.0,
+        "175": 1.0,
+        "243": 0.0
+      },
+      "metrics": {
+        "expected_return": 0.05864307272727273,
+        "volatility": 0.1182087071394186,
+        "historical_volatility": 0.11807430265349934,
+        "sharpe_ratio": 0.24230933084726414,
+        "historical_cagr": 0.052968604509000525,
+        "historical_max_drawdown": 0.477532483404392
+      }
+    },
+    "243": {
+      "status": "reference",
+      "diagnostics": {
+        "asset_id": "243"
+      },
+      "weights": {
+        "1": 0.0,
+        "175": 0.0,
+        "243": 1.0
+      },
+      "metrics": {
+        "expected_return": 0.07549789090909091,
+        "volatility": 0.15591313436230392,
+        "historical_volatility": 0.15573585956437122,
+        "sharpe_ratio": 0.29181563885031625,
+        "historical_cagr": 0.06535873856767521,
+        "historical_max_drawdown": 0.42910201370960366
+      }
+    }
+  },
   "reproducibility": {
     "engine": {
       "name": "qcross-portfolio-engine",
-      "version": "1.0.0",
-      "source_sha256": "6903bc897bb6676fc4d8f6788278f0c323edbcb8fedda5d6f040e175c03fe9e0",
+      "version": "1.3.0",
+      "source_sha256": "60b577436f15a6dbd68b8a8a05486c44da699dec7d846f52607e0a5b05c5d1d0",
       "dependencies": {
         "numpy": "2.5.3",
         "pandas": "3.0.6",
@@ -92,8 +151,10 @@
           "max": 0.4
         }
       },
+      "asset_groups": {},
+      "user_weights": null,
       "frontier_points": 51,
-      "cv_folds": 5,
+      "cv_folds": 4,
       "bootstrap_iterations": 1000,
       "expected_block_length": 12.0,
       "random_seed": 42,
@@ -139,14 +200,36 @@
           "max": 0.4
         }
       },
+      "asset_groups": {},
+      "user_weights": null,
       "frontier_points": 51,
-      "cv_folds": 5,
+      "cv_folds": 4,
       "bootstrap_iterations": 1000,
       "expected_block_length": 12.0,
       "random_seed": 42,
       "bootstrap_objectives": null,
       "risk_aversions": null
     }
+  },
+  "allocation_groups": {
+    "Equity": [
+      "1"
+    ],
+    "US Stocks": [
+      "1"
+    ],
+    "Fixed Income": [
+      "175"
+    ],
+    "US Fixed Income": [
+      "175"
+    ],
+    "Commodities": [
+      "243"
+    ],
+    "Commodity": [
+      "243"
+    ]
   },
   "period": {
     "start": "1990-01",
@@ -289,9 +372,9 @@
     "diagnostics": {
       "solver": "CLARABEL",
       "solver_status": "optimal",
-      "solve_seconds": 5.4e-05,
+      "solve_seconds": 7.25e-05,
       "iterations": 7,
-      "wall_seconds": 0.002609699993627146,
+      "wall_seconds": 0.002902600000197708,
       "constraint_violation": 0.0
     },
     "weights": {
@@ -302,6 +385,7 @@
     "metrics": {
       "expected_return": 0.08002442247435997,
       "volatility": 0.08334084714927768,
+      "historical_volatility": 0.08324608776997104,
       "sharpe_ratio": 0.6002389486725241,
       "historical_cagr": 0.07930575547278615,
       "historical_max_drawdown": 0.2443250288917419
@@ -312,9 +396,9 @@
     "diagnostics": {
       "solver": "CLARABEL",
       "solver_status": "optimal",
-      "solve_seconds": 7.1e-05,
+      "solve_seconds": 0.0001065,
       "iterations": 8,
-      "wall_seconds": 0.002977900003315881,
+      "wall_seconds": 0.003523700000187091,
       "constraint_violation": 0.0,
       "formulation": "homogeneous_convex_qp"
     },
@@ -326,6 +410,7 @@
     "metrics": {
       "expected_return": 0.09139632633731966,
       "volatility": 0.09232898519081931,
+      "historical_volatility": 0.092224006208388,
       "sharpe_ratio": 0.6649734772935052,
       "historical_cagr": 0.0906921876742367,
       "historical_max_drawdown": 0.23153876765478043
@@ -336,9 +421,9 @@
     "diagnostics": {
       "solver": "CLARABEL",
       "solver_status": "optimal",
-      "solve_seconds": 4.32e-05,
+      "solve_seconds": 8.71e-05,
       "iterations": 8,
-      "wall_seconds": 0.0018469999777153134,
+      "wall_seconds": 0.002258800000163319,
       "constraint_violation": 2.220446049250313e-16
     },
     "weights": {
@@ -349,6 +434,7 @@
     "metrics": {
       "expected_return": 0.09729142909009827,
       "volatility": 0.1040472492087206,
+      "historical_volatility": 0.10392894644254018,
       "sharpe_ratio": 0.646739145934656,
       "historical_cagr": 0.09582741630247396,
       "historical_max_drawdown": 0.28548135830224197
@@ -359,9 +445,9 @@
     "diagnostics": {
       "solver": "CLARABEL",
       "solver_status": "optimal",
-      "solve_seconds": 4.73e-05,
+      "solve_seconds": 6.35e-05,
       "iterations": 7,
-      "wall_seconds": 0.00039610001840628684,
+      "wall_seconds": 0.0004336000001785578,
       "constraint_violation": 0.0
     },
     "weights": {
@@ -372,6 +458,7 @@
     "metrics": {
       "expected_return": 0.08002442247435997,
       "volatility": 0.08334084714927768,
+      "historical_volatility": 0.08324608776997104,
       "sharpe_ratio": 0.6002389486725241,
       "historical_cagr": 0.07930575547278615,
       "historical_max_drawdown": 0.2443250288917419
@@ -388,6 +475,7 @@
     "metrics": {
       "expected_return": 0.08292351818181817,
       "volatility": 0.08626772393049242,
+      "historical_volatility": 0.08616963666292231,
       "sharpe_ratio": 0.6134799409389736,
       "historical_cagr": 0.08215429455494754,
       "historical_max_drawdown": 0.21529210401675947
@@ -395,15 +483,16 @@
     "feasible": true,
     "label": "Equal-weight benchmark"
   },
+  "user_portfolio": null,
   "frontier": [
     {
       "status": "optimal",
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.3e-05,
+        "solve_seconds": 5.27e-05,
         "iterations": 7,
-        "wall_seconds": 0.002373199997236952,
+        "wall_seconds": 0.0027992999998787127,
         "constraint_violation": 0.0
       },
       "weights": {
@@ -414,6 +503,7 @@
       "metrics": {
         "expected_return": 0.08002442247435994,
         "volatility": 0.08334084714927767,
+        "historical_volatility": 0.08324608776997104,
         "sharpe_ratio": 0.6002389486725239,
         "historical_cagr": 0.07930575547275398,
         "historical_max_drawdown": 0.2443250289933916
@@ -425,9 +515,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.03e-05,
+        "solve_seconds": 5.8e-05,
         "iterations": 7,
-        "wall_seconds": 0.0005031999899074435,
+        "wall_seconds": 0.0005544000000554661,
         "constraint_violation": 1.1102230246251565e-16
       },
       "weights": {
@@ -438,6 +528,7 @@
       "metrics": {
         "expected_return": 0.08036976260667472,
         "volatility": 0.08334958257669321,
+        "historical_volatility": 0.08325481326511797,
         "sharpe_ratio": 0.6043193145007959,
         "historical_cagr": 0.07967480820894778,
         "historical_max_drawdown": 0.24335439325966168
@@ -449,9 +540,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4e-05,
+        "solve_seconds": 5.58e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004715000104624778,
+        "wall_seconds": 0.0005098000001453329,
         "constraint_violation": 2.220446049250313e-16
       },
       "weights": {
@@ -462,6 +553,7 @@
       "metrics": {
         "expected_return": 0.08071510273898949,
         "volatility": 0.08337578336086503,
+        "historical_volatility": 0.08328098425873533,
         "sharpe_ratio": 0.6082713792263351,
         "historical_cagr": 0.08004242444395995,
         "historical_max_drawdown": 0.2423836328997152
@@ -473,9 +565,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 5.05e-05,
+        "solve_seconds": 5.35e-05,
         "iterations": 7,
-        "wall_seconds": 0.0008385999826714396,
+        "wall_seconds": 0.0004960000001119624,
         "constraint_violation": 2.220446049250313e-16
       },
       "weights": {
@@ -486,6 +578,7 @@
       "metrics": {
         "expected_return": 0.08106044287130426,
         "volatility": 0.0834194330449803,
+        "historical_volatility": 0.08332458431272186,
         "sharpe_ratio": 0.6120929021870976,
         "historical_cagr": 0.08040860212602152,
         "historical_max_drawdown": 0.2414127494122209
@@ -497,9 +590,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 5.21e-05,
+        "solve_seconds": 5.29e-05,
         "iterations": 7,
-        "wall_seconds": 0.0005744000081904233,
+        "wall_seconds": 0.0004830000002584711,
         "constraint_violation": 0.0
       },
       "weights": {
@@ -510,6 +603,7 @@
       "metrics": {
         "expected_return": 0.08140578300361902,
         "volatility": 0.08348050425837855,
+        "historical_volatility": 0.08338558608753778,
         "sharpe_ratio": 0.6157818937522728,
         "historical_cagr": 0.08077333920316418,
         "historical_max_drawdown": 0.2404417442970035
@@ -521,9 +615,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 5.04e-05,
+        "solve_seconds": 5.54e-05,
         "iterations": 7,
-        "wall_seconds": 0.0005164000031072646,
+        "wall_seconds": 0.00048279999964506715,
         "constraint_violation": 2.220446049250313e-16
       },
       "weights": {
@@ -534,6 +628,7 @@
       "metrics": {
         "expected_return": 0.0817511231359338,
         "volatility": 0.08355895880215078,
+        "historical_volatility": 0.08346395142770667,
         "sharpe_ratio": 0.6193366202476155,
         "historical_cagr": 0.08113663362321842,
         "historical_max_drawdown": 0.2394706190537098
@@ -545,9 +640,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.8e-05,
+        "solve_seconds": 5.28e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004916999896522611,
+        "wall_seconds": 0.00047769999991942313,
         "constraint_violation": 1.1102230246251565e-16
       },
       "weights": {
@@ -558,6 +653,7 @@
       "metrics": {
         "expected_return": 0.08209646326824856,
         "volatility": 0.08365474776810373,
+        "historical_volatility": 0.08355963148064435,
         "sharpe_ratio": 0.6227556075198895,
         "historical_cagr": 0.08149848333381045,
         "historical_max_drawdown": 0.23849937518483444
@@ -569,9 +665,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.71e-05,
+        "solve_seconds": 5.38e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004898000042885542,
+        "wall_seconds": 0.00046229999998104176,
         "constraint_violation": 1.1102230246251565e-16
       },
       "weights": {
@@ -582,6 +678,7 @@
       "metrics": {
         "expected_return": 0.08244180340056333,
         "volatility": 0.08376781169022945,
+        "historical_volatility": 0.08367256684795633,
         "sharpe_ratio": 0.626037643128262,
         "historical_cagr": 0.08185888628236002,
         "historical_max_drawdown": 0.23757057079666255
@@ -593,9 +690,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.69e-05,
+        "solve_seconds": 5.3e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004807999939657748,
+        "wall_seconds": 0.00045799999998052954,
         "constraint_violation": 0.0
       },
       "weights": {
@@ -606,6 +703,7 @@
       "metrics": {
         "expected_return": 0.08278714353287808,
         "volatility": 0.08389808072759225,
+        "historical_volatility": 0.08380268776811675,
         "sharpe_ratio": 0.6291817771645107,
         "historical_cagr": 0.08221784041607866,
         "historical_max_drawdown": 0.23726165151320222
@@ -617,9 +715,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.61e-05,
+        "solve_seconds": 5.31e-05,
         "iterations": 7,
-        "wall_seconds": 0.000453799992101267,
+        "wall_seconds": 0.00045319999981074943,
         "constraint_violation": 2.220446049250313e-16
       },
       "weights": {
@@ -630,6 +728,7 @@
       "metrics": {
         "expected_return": 0.08313248366519288,
         "volatility": 0.08404547487733406,
+        "historical_volatility": 0.08394991432923161,
         "sharpe_ratio": 0.632187321717686,
         "historical_cagr": 0.08257534368196685,
         "historical_max_drawdown": 0.23695315403723716
@@ -641,9 +740,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.41e-05,
+        "solve_seconds": 5.31e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004413000133354217,
+        "wall_seconds": 0.0004564000000755186,
         "constraint_violation": 0.0
       },
       "weights": {
@@ -654,6 +753,7 @@
       "metrics": {
         "expected_return": 0.08347782379750762,
         "volatility": 0.08420990421630195,
+        "historical_volatility": 0.08411415671039148,
         "sharpe_ratio": 0.635053849012157,
         "historical_cagr": 0.08293139402681143,
         "historical_max_drawdown": 0.2366450787750468
@@ -665,9 +765,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.66e-05,
+        "solve_seconds": 5.34e-05,
         "iterations": 7,
-        "wall_seconds": 0.00045779999345541,
+        "wall_seconds": 0.00046939999992900994,
         "constraint_violation": 0.0
       },
       "weights": {
@@ -678,6 +778,7 @@
       "metrics": {
         "expected_return": 0.0838231639298224,
         "volatility": 0.08439126916962482,
+        "historical_volatility": 0.08429531544994293,
         "sharpe_ratio": 0.6377811882605876,
         "historical_cagr": 0.08328598939718329,
         "historical_max_drawdown": 0.23633742613268793
@@ -689,9 +790,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.63e-05,
+        "solve_seconds": 5.36e-05,
         "iterations": 7,
-        "wall_seconds": 0.00044100001105107367,
+        "wall_seconds": 0.0004600000002028537,
         "constraint_violation": 1.1102230246251565e-16
       },
       "weights": {
@@ -702,6 +803,7 @@
       "metrics": {
         "expected_return": 0.08416850406213718,
         "volatility": 0.08458946080440839,
+        "historical_volatility": 0.08449328173884944,
         "sharpe_ratio": 0.6403694212850943,
         "historical_cagr": 0.08363912773943456,
         "historical_max_drawdown": 0.2360301965159186
@@ -713,9 +815,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.46e-05,
+        "solve_seconds": 5.36e-05,
         "iterations": 7,
-        "wall_seconds": 0.000434300018241629,
+        "wall_seconds": 0.00045490000002246234,
         "constraint_violation": 1.1102230246251565e-16
       },
       "weights": {
@@ -726,6 +828,7 @@
       "metrics": {
         "expected_return": 0.08451384419445193,
         "volatility": 0.0848043611465836,
+        "historical_volatility": 0.08470793773717966,
         "sharpe_ratio": 0.6428188769705514,
         "historical_cagr": 0.0839908069996961,
         "historical_max_drawdown": 0.23572339033022938
@@ -737,9 +840,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 5.12e-05,
+        "solve_seconds": 5.26e-05,
         "iterations": 7,
-        "wall_seconds": 0.0009067000064533204,
+        "wall_seconds": 0.00045030000001133885,
         "constraint_violation": 0.0
       },
       "weights": {
@@ -750,6 +853,7 @@
       "metrics": {
         "expected_return": 0.08485918432676669,
         "volatility": 0.08503584351883017,
+        "historical_volatility": 0.08493915691164669,
         "sharpe_ratio": 0.6451301246234922,
         "historical_cagr": 0.08434102512387481,
         "historical_max_drawdown": 0.23541700798078713
@@ -761,9 +865,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 5.01e-05,
+        "solve_seconds": 5.26e-05,
         "iterations": 7,
-        "wall_seconds": 0.0006556999869644642,
+        "wall_seconds": 0.00044580000030691735,
         "constraint_violation": 0.0
       },
       "weights": {
@@ -774,6 +878,7 @@
       "metrics": {
         "expected_return": 0.08520452445908147,
         "volatility": 0.08528377289740952,
+        "historical_volatility": 0.0851868043920353,
         "sharpe_ratio": 0.6473039663182901,
         "historical_cagr": 0.08468978005765092,
         "historical_max_drawdown": 0.23511104987248466
@@ -785,9 +890,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.63e-05,
+        "solve_seconds": 5.22e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004989999870304018,
+        "wall_seconds": 0.0004970999998477055,
         "constraint_violation": 2.220446049250313e-16
       },
       "weights": {
@@ -798,6 +903,7 @@
       "metrics": {
         "expected_return": 0.08554986459139623,
         "volatility": 0.08554800628567583,
+        "historical_volatility": 0.08545073734428829,
         "sharpe_ratio": 0.6493414283191484,
         "historical_cagr": 0.08503706974647565,
         "historical_max_drawdown": 0.2348055164075744
@@ -809,9 +915,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.59e-05,
+        "solve_seconds": 5.27e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004859999753534794,
+        "wall_seconds": 0.0004478999999264488,
         "constraint_violation": 2.220446049250313e-16
       },
       "weights": {
@@ -822,6 +928,7 @@
       "metrics": {
         "expected_return": 0.085895204723711,
         "volatility": 0.08582839310199333,
+        "historical_volatility": 0.08573080535798272,
         "sharpe_ratio": 0.6512437516718794,
         "historical_cagr": 0.08538289213556727,
         "historical_max_drawdown": 0.23450040799095417
@@ -833,9 +940,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.74e-05,
+        "solve_seconds": 5.18e-05,
         "iterations": 7,
-        "wall_seconds": 0.00046809998457320035,
+        "wall_seconds": 0.00043540000024222536,
         "constraint_violation": 2.220446049250313e-16
       },
       "weights": {
@@ -846,6 +953,7 @@
       "metrics": {
         "expected_return": 0.08624054485602575,
         "volatility": 0.08612477557976984,
+        "historical_volatility": 0.08602685084590862,
         "sharpe_ratio": 0.6530123820634524,
         "historical_cagr": 0.0857272451699087,
         "historical_max_drawdown": 0.23419572502833652
@@ -857,9 +965,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.47e-05,
+        "solve_seconds": 5.18e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004412999842315912,
+        "wall_seconds": 0.00043569999979808927,
         "constraint_violation": 0.0
       },
       "weights": {
@@ -870,6 +978,7 @@
       "metrics": {
         "expected_return": 0.08658588498834055,
         "volatility": 0.08643698917732101,
+        "historical_volatility": 0.08633870945346715,
         "sharpe_ratio": 0.6546489590498986,
         "historical_cagr": 0.08607012679424514,
         "historical_max_drawdown": 0.23389146792346582
@@ -881,9 +990,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.57e-05,
+        "solve_seconds": 6.33e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004522999806795269,
+        "wall_seconds": 0.0005701999998564133,
         "constraint_violation": 2.220446049250313e-16
       },
       "weights": {
@@ -894,6 +1003,7 @@
       "metrics": {
         "expected_return": 0.0869312251206553,
         "volatility": 0.08676486299530502,
+        "historical_volatility": 0.08666621047563079,
         "sharpe_ratio": 0.6561553047543675,
         "historical_cagr": 0.08641153495308072,
         "historical_max_drawdown": 0.23358763707976904
@@ -905,9 +1015,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.54e-05,
+        "solve_seconds": 5.52e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004388999950606376,
+        "wall_seconds": 0.0005052000001342094,
         "constraint_violation": 2.220446049250313e-16
       },
       "weights": {
@@ -918,6 +1028,7 @@
       "metrics": {
         "expected_return": 0.08727656525297006,
         "volatility": 0.08710822019951359,
+        "historical_volatility": 0.08700917727925354,
         "sharpe_ratio": 0.6575334121370315,
         "historical_cagr": 0.08675146759067569,
         "historical_max_drawdown": 0.23328423290040012
@@ -929,9 +1040,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.51e-05,
+        "solve_seconds": 5.34e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004288000054657459,
+        "wall_seconds": 0.000461399999949208,
         "constraint_violation": 2.220446049250313e-16
       },
       "weights": {
@@ -942,6 +1053,7 @@
       "metrics": {
         "expected_return": 0.08762190538528482,
         "volatility": 0.08746687844686697,
+        "historical_volatility": 0.08736742772858153,
         "sharpe_ratio": 0.6587854329372013,
         "historical_cagr": 0.08708992265104287,
         "historical_max_drawdown": 0.2329812557882044
@@ -953,9 +1065,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.5e-05,
+        "solve_seconds": 5.29e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004298999847378582,
+        "wall_seconds": 0.0004543000000012398,
         "constraint_violation": 1.1102230246251565e-16
       },
       "weights": {
@@ -966,6 +1078,7 @@
       "metrics": {
         "expected_return": 0.08796724551759963,
         "volatility": 0.08784065031254167,
+        "historical_volatility": 0.08774077461189517,
         "sharpe_ratio": 0.6599136653855489,
         "historical_cagr": 0.08742689807794528,
         "historical_max_drawdown": 0.2326787061457516
@@ -977,9 +1090,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.57e-05,
+        "solve_seconds": 5.3e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004317999992053956,
+        "wall_seconds": 0.00044809999963035807,
         "constraint_violation": 2.220446049250313e-16
       },
       "weights": {
@@ -990,6 +1103,7 @@
       "metrics": {
         "expected_return": 0.08831258564991436,
         "volatility": 0.08822934371625232,
+        "historical_volatility": 0.08812902606730634,
         "sharpe_ratio": 0.6609205417808505,
         "historical_cagr": 0.08776239181489207,
         "historical_max_drawdown": 0.23237658437528275
@@ -1001,9 +1115,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.48e-05,
+        "solve_seconds": 5.37e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004273999948054552,
+        "wall_seconds": 0.00047340000037365826,
         "constraint_violation": 2.220446049250313e-16
       },
       "weights": {
@@ -1014,6 +1128,7 @@
       "metrics": {
         "expected_return": 0.08865792578222914,
         "volatility": 0.08863276234581731,
+        "historical_volatility": 0.08853198600584228,
         "sharpe_ratio": 0.6618086160212887,
         "historical_cagr": 0.08809640180513618,
         "historical_max_drawdown": 0.23207489087877053
@@ -1025,9 +1140,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.52e-05,
+        "solve_seconds": 5.56e-05,
         "iterations": 7,
-        "wall_seconds": 0.00042600001324899495,
+        "wall_seconds": 0.0004969999999957508,
         "constraint_violation": 1.1102230246251565e-16
       },
       "weights": {
@@ -1038,6 +1153,7 @@
       "metrics": {
         "expected_return": 0.08900326591454391,
         "volatility": 0.08905070607625085,
+        "historical_volatility": 0.0889494545300614,
         "sharpe_ratio": 0.6625805511752101,
         "historical_cagr": 0.0884289259916705,
         "historical_max_drawdown": 0.23177362605784702
@@ -1049,9 +1165,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.57e-05,
+        "solve_seconds": 5.4e-05,
         "iterations": 7,
-        "wall_seconds": 0.00043310000910423696,
+        "wall_seconds": 0.00046380000003409805,
         "constraint_violation": 2.220446049250313e-16
       },
       "weights": {
@@ -1062,6 +1178,7 @@
       "metrics": {
         "expected_return": 0.08934860604685868,
         "volatility": 0.08948297138275345,
+        "historical_volatility": 0.08938122834657389,
         "sharpe_ratio": 0.6632391071704763,
         "historical_cagr": 0.08875996231722466,
         "historical_max_drawdown": 0.23147279031382806
@@ -1073,9 +1190,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.5e-05,
+        "solve_seconds": 5.45e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004254000086802989,
+        "wall_seconds": 0.00044079999997848063,
         "constraint_violation": 1.1102230246251565e-16
       },
       "weights": {
@@ -1086,6 +1203,7 @@
       "metrics": {
         "expected_return": 0.08969394617917345,
         "volatility": 0.08992935174609945,
+        "historical_volatility": 0.08982710117096858,
         "sharpe_ratio": 0.6637871286752891,
         "historical_cagr": 0.08908950872426193,
         "historical_max_drawdown": 0.23117238404768214
@@ -1097,9 +1215,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.53e-05,
+        "solve_seconds": 5.4e-05,
         "iterations": 7,
-        "wall_seconds": 0.00042329999268986285,
+        "wall_seconds": 0.0004422000001795823,
         "constraint_violation": 0.0
       },
       "weights": {
@@ -1110,6 +1228,7 @@
       "metrics": {
         "expected_return": 0.09003928631148822,
         "volatility": 0.09038963804905872,
+        "historical_volatility": 0.09028686412378366,
         "sharpe_ratio": 0.6642275332367419,
         "historical_cagr": 0.08941756315497541,
         "historical_max_drawdown": 0.2308724076600115
@@ -1121,9 +1240,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 5.25e-05,
+        "solve_seconds": 5.42e-05,
         "iterations": 7,
-        "wall_seconds": 0.0006378999969456345,
+        "wall_seconds": 0.00043819999973493395,
         "constraint_violation": 1.1102230246251565e-16
       },
       "weights": {
@@ -1134,6 +1253,7 @@
       "metrics": {
         "expected_return": 0.090384626443803,
         "volatility": 0.09086361896262536,
+        "historical_volatility": 0.09076030611629647,
         "sharpe_ratio": 0.6645632997365075,
         "historical_cagr": 0.08974412355128492,
         "historical_max_drawdown": 0.23057286155100254
@@ -1145,9 +1265,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.8e-05,
+        "solve_seconds": 5.47e-05,
         "iterations": 7,
-        "wall_seconds": 0.0005077000241726637,
+        "wall_seconds": 0.00045920000002297456,
         "constraint_violation": 1.1102230246251565e-16
       },
       "weights": {
@@ -1158,6 +1278,7 @@
       "metrics": {
         "expected_return": 0.09072996657611779,
         "volatility": 0.09135108132096553,
+        "historical_volatility": 0.09124721422504485,
         "sharpe_ratio": 0.6647974572160862,
         "historical_cagr": 0.09006918785483321,
         "historical_max_drawdown": 0.2302737461203267
@@ -1169,9 +1290,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.72e-05,
+        "solve_seconds": 5.46e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004631000047083944,
+        "wall_seconds": 0.0004361000001154025,
         "constraint_violation": 3.3306690738754696e-16
       },
       "weights": {
@@ -1182,6 +1303,7 @@
       "metrics": {
         "expected_return": 0.09107530670843253,
         "volatility": 0.09185181048413414,
+        "historical_volatility": 0.0917473740541315,
         "sharpe_ratio": 0.6649330741170558,
         "historical_cagr": 0.09039275400698256,
         "historical_max_drawdown": 0.22997506176692017
@@ -1193,9 +1315,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.74e-05,
+        "solve_seconds": 5.4e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004585999995470047,
+        "wall_seconds": 0.000430400000368536,
         "constraint_violation": 2.220446049250313e-16
       },
       "weights": {
@@ -1206,6 +1328,7 @@
       "metrics": {
         "expected_return": 0.09142064684074731,
         "volatility": 0.09236559068774527,
+        "historical_volatility": 0.09226057008449674,
         "sharpe_ratio": 0.6649732479748692,
         "historical_cagr": 0.09071481994881136,
         "historical_max_drawdown": 0.23184271998749273
@@ -1217,9 +1340,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.7e-05,
+        "solve_seconds": 5.45e-05,
         "iterations": 7,
-        "wall_seconds": 0.00044189998880028725,
+        "wall_seconds": 0.00042900000016743434,
         "constraint_violation": 3.3306690738754696e-16
       },
       "weights": {
@@ -1230,6 +1353,7 @@
       "metrics": {
         "expected_return": 0.09176598697306212,
         "volatility": 0.09289220537891252,
+        "historical_volatility": 0.09278658600947698,
         "sharpe_ratio": 0.6649210955980127,
         "historical_cagr": 0.09103538362111026,
         "historical_max_drawdown": 0.23614816972468078
@@ -1241,9 +1365,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.68e-05,
+        "solve_seconds": 5.5e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004324000037740916,
+        "wall_seconds": 0.00043659999982992304,
         "constraint_violation": 6.661338147750939e-16
       },
       "weights": {
@@ -1254,6 +1378,7 @@
       "metrics": {
         "expected_return": 0.09211132710537692,
         "volatility": 0.09343143753790363,
+        "historical_volatility": 0.09332520505609358,
         "sharpe_ratio": 0.6647797437578691,
         "historical_cagr": 0.09135444296437704,
         "historical_max_drawdown": 0.24043397662571087
@@ -1265,9 +1390,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.69e-05,
+        "solve_seconds": 5.45e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004254999803379178,
+        "wall_seconds": 0.00043210000012550154,
         "constraint_violation": 8.881784197001252e-16
       },
       "weights": {
@@ -1278,6 +1403,7 @@
       "metrics": {
         "expected_return": 0.09245666723769169,
         "volatility": 0.0939830699850748,
+        "historical_volatility": 0.09387621029163822,
         "sharpe_ratio": 0.6645523204084551,
         "historical_cagr": 0.09167199591881514,
         "historical_max_drawdown": 0.24470020831522055
@@ -1289,9 +1415,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.72e-05,
+        "solve_seconds": 5.5e-05,
         "iterations": 7,
-        "wall_seconds": 0.0004241999995429069,
+        "wall_seconds": 0.0004364999999779684,
         "constraint_violation": 4.440892098500626e-16
       },
       "weights": {
@@ -1302,6 +1428,7 @@
       "metrics": {
         "expected_return": 0.09280200737000642,
         "volatility": 0.09454688567276495,
+        "historical_volatility": 0.09443938491523511,
         "sharpe_ratio": 0.6642419464494015,
         "historical_cagr": 0.09198804042432879,
         "historical_max_drawdown": 0.24894693227102882
@@ -1313,9 +1440,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 5.22e-05,
+        "solve_seconds": 5.56e-05,
         "iterations": 7,
-        "wall_seconds": 0.00046350000775419176,
+        "wall_seconds": 0.00043630000027405913,
         "constraint_violation": 6.661338147750939e-16
       },
       "weights": {
@@ -1326,6 +1453,7 @@
       "metrics": {
         "expected_return": 0.09314734750232122,
         "volatility": 0.09512266796194001,
+        "historical_volatility": 0.09501451253417097,
         "sharpe_ratio": 0.6638517280401283,
         "historical_cagr": 0.09230257442051969,
         "historical_max_drawdown": 0.25317421581641497
@@ -1337,9 +1465,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.87e-05,
+        "solve_seconds": 5.56e-05,
         "iterations": 7,
-        "wall_seconds": 0.00046109998947940767,
+        "wall_seconds": 0.0004423000000315369,
         "constraint_violation": 2.220446049250313e-15
       },
       "weights": {
@@ -1350,6 +1478,7 @@
       "metrics": {
         "expected_return": 0.09349268763463628,
         "volatility": 0.0957102008834761,
+        "historical_volatility": 0.09560137742488098,
         "sharpe_ratio": 0.6633847494682041,
         "historical_cagr": 0.09261559584668336,
         "historical_max_drawdown": 0.2573821261015833
@@ -1361,9 +1490,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.84e-05,
+        "solve_seconds": 5.61e-05,
         "iterations": 7,
-        "wall_seconds": 0.00045900000259280205,
+        "wall_seconds": 0.00044139999999970314,
         "constraint_violation": 1.887379141862766e-15
       },
       "weights": {
@@ -1374,6 +1503,7 @@
       "metrics": {
         "expected_return": 0.09383802776695095,
         "volatility": 0.09630926938406408,
+        "historical_volatility": 0.09619976477857378,
         "sharpe_ratio": 0.6628440665703356,
         "historical_cagr": 0.09292710264180676,
         "historical_max_drawdown": 0.2615707300324298
@@ -1385,9 +1515,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.96e-05,
+        "solve_seconds": 5.74e-05,
         "iterations": 8,
-        "wall_seconds": 0.00043230000301264226,
+        "wall_seconds": 0.00044560000014826073,
         "constraint_violation": 1.1102230246251565e-16
       },
       "weights": {
@@ -1398,6 +1528,7 @@
       "metrics": {
         "expected_return": 0.0941833678992654,
         "volatility": 0.09691965955681102,
+        "historical_volatility": 0.09680946093157072,
         "sharpe_ratio": 0.6622327007003496,
         "historical_cagr": 0.09323709274445954,
         "historical_max_drawdown": 0.2657400968319301
@@ -1409,9 +1540,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.97e-05,
+        "solve_seconds": 5.77e-05,
         "iterations": 8,
-        "wall_seconds": 0.00042779999785125256,
+        "wall_seconds": 0.0004500000000007276,
         "constraint_violation": 1.1102230246251565e-16
       },
       "weights": {
@@ -1422,6 +1553,7 @@
       "metrics": {
         "expected_return": 0.09452870803158019,
         "volatility": 0.09754115885667637,
+        "historical_volatility": 0.09743025358049708,
         "sharpe_ratio": 0.6615536332349348,
         "historical_cagr": 0.09354556409314678,
         "historical_max_drawdown": 0.26989028980407126
@@ -1433,9 +1565,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 5.01e-05,
+        "solve_seconds": 5.81e-05,
         "iterations": 8,
-        "wall_seconds": 0.00044410000555217266,
+        "wall_seconds": 0.00044399999978850246,
         "constraint_violation": 5.551115123125783e-16
       },
       "weights": {
@@ -1446,6 +1578,7 @@
       "metrics": {
         "expected_return": 0.09487404816389504,
         "volatility": 0.09817355630096015,
+        "historical_volatility": 0.09806193198254232,
         "sharpe_ratio": 0.6608098006047333,
         "historical_cagr": 0.09385251462582626,
         "historical_max_drawdown": 0.2740213769502058
@@ -1457,9 +1590,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 5.09e-05,
+        "solve_seconds": 5.83e-05,
         "iterations": 8,
-        "wall_seconds": 0.00042830000165849924,
+        "wall_seconds": 0.0004455999996935134,
         "constraint_violation": 2.220446049250313e-15
       },
       "weights": {
@@ -1470,6 +1603,7 @@
       "metrics": {
         "expected_return": 0.09521938829621016,
         "volatility": 0.09881664265512916,
+        "historical_volatility": 0.09870428714107501,
         "sharpe_ratio": 0.6600040898356193,
         "historical_cagr": 0.09415794228021802,
         "historical_max_drawdown": 0.27813342328911317
@@ -1481,9 +1615,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 6.63e-05,
+        "solve_seconds": 6.05e-05,
         "iterations": 9,
-        "wall_seconds": 0.0008349000127054751,
+        "wall_seconds": 0.00044239999988349155,
         "constraint_violation": 2.9976021664879227e-15
       },
       "weights": {
@@ -1494,6 +1628,7 @@
       "metrics": {
         "expected_return": 0.0955647284285251,
         "volatility": 0.09947021060430242,
+        "historical_volatility": 0.0993571119769333,
         "sharpe_ratio": 0.6591393345827421,
         "historical_cagr": 0.09446184499362373,
         "historical_max_drawdown": 0.2822264977169219
@@ -1505,9 +1640,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 5.74e-05,
+        "solve_seconds": 6.08e-05,
         "iterations": 9,
-        "wall_seconds": 0.0005606999911833555,
+        "wall_seconds": 0.0004426999998941028,
         "constraint_violation": 4.6629367034256575e-15
       },
       "weights": {
@@ -1518,6 +1653,7 @@
       "metrics": {
         "expected_return": 0.09591006856084018,
         "volatility": 0.10014764200863958,
+        "historical_volatility": 0.10003377313496756,
         "sharpe_ratio": 0.6581290107175386,
         "historical_cagr": 0.09476274629733665,
         "historical_max_drawdown": 0.28444622214754134
@@ -1529,9 +1665,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 5.46e-05,
+        "solve_seconds": 5.98e-05,
         "iterations": 8,
-        "wall_seconds": 0.0005431000026874244,
+        "wall_seconds": 0.00044609999986278126,
         "constraint_violation": 2.886579864025407e-15
       },
       "weights": {
@@ -1542,6 +1678,7 @@
       "metrics": {
         "expected_return": 0.09625540869315456,
         "volatility": 0.10093735401048211,
+        "historical_volatility": 0.10082258722634138,
         "sharpe_ratio": 0.656401283178813,
         "historical_cagr": 0.09505084904739525,
         "historical_max_drawdown": 0.28465244432577874
@@ -1553,9 +1690,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 5.33e-05,
+        "solve_seconds": 5.91e-05,
         "iterations": 8,
-        "wall_seconds": 0.00046820001443848014,
+        "wall_seconds": 0.0004515999999057385,
         "constraint_violation": 2.220446049250313e-16
       },
       "weights": {
@@ -1566,6 +1703,7 @@
       "metrics": {
         "expected_return": 0.09660074882546885,
         "volatility": 0.10185281441357986,
+        "historical_volatility": 0.10173700674177666,
         "sharpe_ratio": 0.6538920815190462,
         "historical_cagr": 0.09532433858824155,
         "historical_max_drawdown": 0.284893743850948
@@ -1577,9 +1715,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 5.1e-05,
+        "solve_seconds": 5.78e-05,
         "iterations": 7,
-        "wall_seconds": 0.00044910001452080905,
+        "wall_seconds": 0.0004550000003291643,
         "constraint_violation": 2.886579864025407e-15
       },
       "weights": {
@@ -1590,6 +1728,7 @@
       "metrics": {
         "expected_return": 0.09694608895778403,
         "volatility": 0.10289066702968502,
+        "historical_volatility": 0.10277367930904528,
         "sharpe_ratio": 0.6506526868804281,
         "historical_cagr": 0.09558319944602531,
         "historical_max_drawdown": 0.2851700658694486
@@ -1601,9 +1740,9 @@
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 5.11e-05,
+        "solve_seconds": 5.92e-05,
         "iterations": 7,
-        "wall_seconds": 0.00045540000428445637,
+        "wall_seconds": 0.0004959000002600078,
         "constraint_violation": 2.9265478929119126e-12
       },
       "weights": {
@@ -1614,6 +1753,7 @@
       "metrics": {
         "expected_return": 0.09729142909060974,
         "volatility": 0.10404724921002234,
+        "historical_volatility": 0.10392894644384043,
         "sharpe_ratio": 0.6467391459314803,
         "historical_cagr": 0.09582741630288061,
         "historical_max_drawdown": 0.285481358310963
@@ -1621,5 +1761,5 @@
       "target_return": 0.09729142909009827
     }
   ],
-  "execution_seconds": 0.15735890000360087
+  "execution_seconds": 0.05848250000008193
 }

@@ -69,7 +69,7 @@ def _sample_estimate(values: np.ndarray, estimate, options: dict):
     return estimate_covariance(
         values,
         estimate.method,
-        folds=options.get("cv_folds", 5),
+        folds=options.get("cv_folds", 4),
         target=options.get("shrinkage_target", "identity"),
         fixed_parameters=estimate.parameters if estimate.method == "cv_linear" else None,
     )
@@ -176,7 +176,7 @@ def analyze_bootstrap(
         elif originals[objective].weights is None:
             summary["status"] = "incomplete"
         results[objective] = summary
-    data = data_diagnostics(panel, estimate)
+    data = data_diagnostics(panel, estimate, risk_free_rate)
     return {
         **data,
         "status": "complete"
@@ -294,7 +294,7 @@ def analyze_resampled_frontier(
             )
             point["risk_aversion"] = float(gamma)
             points.append(point)
-    data = data_diagnostics(panel, estimate)
+    data = data_diagnostics(panel, estimate, risk_free_rate)
     return {
         **data,
         **summary,

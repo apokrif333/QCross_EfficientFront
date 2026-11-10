@@ -4,7 +4,7 @@ export const percent = (n: number | null | undefined, digits = 2) =>
 export const number = (n: number | null | undefined, digits = 3) =>
   n == null ? "—" : n.toFixed(digits);
 export const displayedVolatility = (metrics: Metrics | null | undefined) =>
-  metrics?.historical_volatility ?? metrics?.volatility;
+  metrics?.volatility;
 export const visibleWeights = (
   weights: Portfolio["weights"] | undefined,
   digits = 2,

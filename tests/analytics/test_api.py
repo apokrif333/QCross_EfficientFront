@@ -31,7 +31,9 @@ def test_real_process_api_roundtrip(endpoint, panel, settings, session_factory):
         "frontier_points": 3,
         "bootstrap_iterations": 3,
         "asset_constraints": {"1": {"max": 0.4}},
-        "group_constraints": {"Equity": {"max": 1.0}},
+        "group_constraints": {"Equity": {"max": 1.0}, "Group 3": {"min": 0.1}},
+        "asset_groups": {"1": 1, "2": 3, "3": 5},
+        "user_weights": {"1": 1.0},
     }
     with TestClient(app) as client:
         response = client.post(f"/api/v1/analytics/{endpoint}", json=body)
@@ -46,6 +48,11 @@ def test_real_process_api_roundtrip(endpoint, panel, settings, session_factory):
         assert completed["result"]["currency"] == "USD"
         assert completed["result"]["execution_seconds"] > 0
         assert "period" in completed["result"] and "correlation" in completed["result"]
+        assert completed["result"]["allocation_groups"]["Group 3"] == ["2"]
+        if endpoint == "frontier":
+            user = completed["result"]["user_portfolio"]
+            assert user["weights"]["1"] == 1.0
+            assert not user["feasible"]
         provenance = completed["result"]["reproducibility"]
         expected = AnalyticsRequest.model_validate(body).model_dump(mode="json")
         if endpoint == "bootstrap":
@@ -126,6 +133,12 @@ def test_request_finiteness_and_defaults():
     from app.schemas.frontier import ResampledFrontierRequest
 
     assert AnalyticsRequest(instrument_ids=[1, 2]).bootstrap_iterations == 1000
+    assert AnalyticsRequest(instrument_ids=[1, 2]).cv_folds == 4
+    for k in range(2, 21, 2):
+        assert AnalyticsRequest(instrument_ids=[1, 2], cv_folds=k).cv_folds == k
+    for k in [0, 1, 3, 5, 19, 21, 4.0, True]:
+        with pytest.raises(ValidationError):
+            AnalyticsRequest(instrument_ids=[1, 2], cv_folds=k)
     assert ResampledFrontierRequest(instrument_ids=[1, 2]).bootstrap_iterations == 250
     for value in [float("nan"), float("inf")]:
         with pytest.raises(ValidationError):
@@ -138,7 +151,70 @@ def test_cv_api_minimum_history_rejected_before_submission(panel, settings, sess
     with TestClient(app) as client:
         response = client.post(
             "/api/v1/analytics/cross-validation",
-            json={"instrument_ids": [1, 2], "start_date": "2008-01-01", "cv_folds": 5},
+            json={"instrument_ids": [1, 2], "start_date": "2008-01-01", "cv_folds": 4},
         )
-        assert response.status_code == 422 and "120 training months" in response.text
+        assert response.status_code == 422 and "required minimum=240" in response.text
         assert len(app.state.analytics_jobs.jobs) == 0
+
+
+@pytest.mark.parametrize(
+    "endpoint", ["frontier", "cross-validation", "bootstrap", "resampled-frontier"]
+)
+def test_covariance_history_rejected_before_job_submission(
+    endpoint, panel, settings, session_factory
+):
+    seed_database(session_factory, panel)
+    app = create_app(settings)
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/v1/analytics/{endpoint}",
+            json={
+                "instrument_ids": [1, 2],
+                "covariance_method": "cv_linear",
+                "cv_folds": 20,
+            },
+        )
+        assert response.status_code == 422
+        assert "required minimum=" in response.text
+        assert "actual observations=240" in response.text
+        assert len(app.state.analytics_jobs.jobs) == 0
+
+
+@pytest.mark.parametrize("method", ["sample", "ledoit_wolf", "nonlinear", "cv_linear"])
+def test_frontier_still_supports_120_months(method, panel, settings, session_factory):
+    seed_database(session_factory, panel)
+    app = create_app(settings)
+    with TestClient(app) as client:
+        body = {
+            "instrument_ids": [1, 2],
+            "start_date": "2010-01-01",
+            "covariance_method": method,
+            "cv_folds": 4,
+            "frontier_points": 3,
+        }
+        preview = client.post("/api/v1/analytics/data-preview", json=body).json()
+        assert preview["period"]["observations"] == 120
+        assert preview["eligible_portfolio_folds"] == []
+        assert preview["eligible_covariance_folds"] == [2, 4]
+        response = client.post("/api/v1/analytics/frontier", json=body)
+        assert response.status_code == 202, response.text
+        assert wait_result(client, response.json())["status"] == "completed"
+        rejected = client.post("/api/v1/analytics/cross-validation", json=body)
+        assert rejected.status_code == 422 and "minimum=240" in rejected.text
+
+
+def test_worker_checks_cv_configuration_without_api(panel):
+    from app.analytics.jobs import _worker
+
+    class Connection:
+        payload = None
+
+        def send(self, payload):
+            self.payload = payload
+
+        def close(self):
+            pass
+
+    connection = Connection()
+    _worker(connection, panel, "cross-validation", {"cv_folds": 20})
+    assert "required minimum=1200" in connection.payload["error"]

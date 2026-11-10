@@ -14,6 +14,12 @@ test("Live asset builder, numbered constraints and a 100% VTI reference use actu
   await page.goto("/");
   await expect(page.locator(".js-plotly-plot")).toHaveCount(1);
   await page.getByRole("button", { name: "Live", exact: true }).click();
+  await expect(
+    page.getByRole("combobox", { name: "Метод ковариации", exact: true }),
+  ).toHaveValue("nonlinear");
+  await page
+    .getByRole("combobox", { name: "Метод ковариации", exact: true })
+    .selectOption("sample");
   await expect(page.getByLabel("Тикер 1")).toHaveValue("VTI");
   expect(
     await page
@@ -115,7 +121,7 @@ test("Live asset builder, numbered constraints and a 100% VTI reference use actu
     12,
   );
   expect(plotted.user!.x[0]).toBeCloseTo(
-    result.user_portfolio.metrics.historical_volatility,
+    result.user_portfolio.metrics.volatility,
     12,
   );
   const assetPoints = await page.locator(".js-plotly-plot").evaluate((el) => {
@@ -137,7 +143,7 @@ test("Live asset builder, numbered constraints and a 100% VTI reference use actu
       12,
     );
     expect(assetPoints!.x[index]).toBeCloseTo(
-      result.asset_portfolios[asset].metrics.historical_volatility,
+      result.asset_portfolios[asset].metrics.volatility,
       12,
     );
   }

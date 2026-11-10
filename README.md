@@ -642,8 +642,10 @@ frontier, optimization, bootstrap, Monte Carlo or frontend work is included.
 # Portfolio analytics (Task 3)
 
 The backend now includes constrained efficient-frontier optimization, four covariance
-estimators, classical K-fold CV with a weight ensemble, Stationary Bootstrap, weight
+estimators, bidirectional one-sided block CV with a weight ensemble, Stationary Bootstrap, weight
 stability, resampled portfolios/frontiers, and an equal-weight reference.
+
+Portfolio Lab selects **Analytical Nonlinear Shrinkage** (`nonlinear`) by default.
 
 - [Mathematical conventions and methodology](docs/analytics.md)
 - [API, schemas, execution limits and project structure](docs/analytics-api.md)

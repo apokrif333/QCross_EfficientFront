@@ -1,9 +1,68 @@
 {
+  "asset_portfolios": {
+    "1": {
+      "status": "reference",
+      "diagnostics": {
+        "asset_id": "1"
+      },
+      "weights": {
+        "1": 1.0,
+        "175": 0.0,
+        "243": 0.0
+      },
+      "metrics": {
+        "expected_return": 0.11462959090909089,
+        "volatility": 0.15057569179616906,
+        "historical_volatility": 0.1504044857239808,
+        "sharpe_ratio": 0.5620401932049701,
+        "historical_cagr": 0.1082183685203042,
+        "historical_max_drawdown": 0.5083887925389374
+      }
+    },
+    "175": {
+      "status": "reference",
+      "diagnostics": {
+        "asset_id": "175"
+      },
+      "weights": {
+        "1": 0.0,
+        "175": 1.0,
+        "243": 0.0
+      },
+      "metrics": {
+        "expected_return": 0.05864307272727273,
+        "volatility": 0.1182087071394186,
+        "historical_volatility": 0.11807430265349934,
+        "sharpe_ratio": 0.24230933084726414,
+        "historical_cagr": 0.052968604509000525,
+        "historical_max_drawdown": 0.477532483404392
+      }
+    },
+    "243": {
+      "status": "reference",
+      "diagnostics": {
+        "asset_id": "243"
+      },
+      "weights": {
+        "1": 0.0,
+        "175": 0.0,
+        "243": 1.0
+      },
+      "metrics": {
+        "expected_return": 0.07549789090909091,
+        "volatility": 0.15591313436230392,
+        "historical_volatility": 0.15573585956437122,
+        "sharpe_ratio": 0.29181563885031625,
+        "historical_cagr": 0.06535873856767521,
+        "historical_max_drawdown": 0.42910201370960366
+      }
+    }
+  },
   "reproducibility": {
     "engine": {
       "name": "qcross-portfolio-engine",
-      "version": "1.0.0",
-      "source_sha256": "6903bc897bb6676fc4d8f6788278f0c323edbcb8fedda5d6f040e175c03fe9e0",
+      "version": "1.3.0",
+      "source_sha256": "60b577436f15a6dbd68b8a8a05486c44da699dec7d846f52607e0a5b05c5d1d0",
       "dependencies": {
         "numpy": "2.5.3",
         "pandas": "3.0.6",
@@ -85,8 +144,10 @@
           "max": 0.4
         }
       },
+      "asset_groups": {},
+      "user_weights": null,
       "frontier_points": 51,
-      "cv_folds": 5,
+      "cv_folds": 4,
       "bootstrap_iterations": 1000,
       "expected_block_length": 12.0,
       "random_seed": 42,
@@ -132,14 +193,36 @@
           "max": 0.4
         }
       },
+      "asset_groups": {},
+      "user_weights": null,
       "frontier_points": 51,
-      "cv_folds": 5,
+      "cv_folds": 4,
       "bootstrap_iterations": 1000,
       "expected_block_length": 12.0,
       "random_seed": 42,
       "bootstrap_objectives": null,
       "risk_aversions": null
     }
+  },
+  "allocation_groups": {
+    "Equity": [
+      "1"
+    ],
+    "US Stocks": [
+      "1"
+    ],
+    "Fixed Income": [
+      "175"
+    ],
+    "US Fixed Income": [
+      "175"
+    ],
+    "Commodities": [
+      "243"
+    ],
+    "Commodity": [
+      "243"
+    ]
   },
   "period": {
     "start": "1990-01",
@@ -208,8 +291,22 @@
   "objective": "gmv",
   "target_return": null,
   "risk_free_rate": 0.03,
-  "cv_folds": 5,
-  "methodology": "classical_consecutive_kfold_no_shuffle",
+  "cv_folds": 4,
+  "methodology": "bidirectional_one_sided_block_kfold",
+  "total_observations": 440,
+  "validation_observations": 440,
+  "validation_coverage_fraction": 1.0,
+  "unvalidated_indices": [],
+  "minimum_portfolio_train": 120,
+  "minimum_portfolio_validation": 60,
+  "minimum_covariance_train": 60,
+  "minimum_covariance_validation": 30,
+  "eligible_portfolio_folds": [
+    2,
+    4,
+    6
+  ],
+  "validation_interpretation": "Sample sensitivity and allocation stability diagnostics. Some folds train on later observations; validation is not a historical investable backtest or independent forward out-of-sample performance. No embargo or purge gap.",
   "ensemble_evaluation": "full_sample_descriptive_not_independent_out_of_sample",
   "covariance_method": "sample",
   "covariance_parameters": {},
@@ -301,9 +398,9 @@
     "diagnostics": {
       "solver": "CLARABEL",
       "solver_status": "optimal",
-      "solve_seconds": 5.88e-05,
+      "solve_seconds": 6.7e-05,
       "iterations": 7,
-      "wall_seconds": 0.0024268999986816198,
+      "wall_seconds": 0.002443500000026688,
       "constraint_violation": 0.0
     },
     "weights": {
@@ -314,6 +411,7 @@
     "metrics": {
       "expected_return": 0.08002442247435997,
       "volatility": 0.08334084714927768,
+      "historical_volatility": 0.08324608776997104,
       "sharpe_ratio": 0.6002389486725241,
       "historical_cagr": 0.07930575547278615,
       "historical_max_drawdown": 0.2443250288917419
@@ -323,42 +421,45 @@
     {
       "fold": 1,
       "training": {
-        "start": "1997-05",
+        "start": "1999-03",
         "end": "2026-08",
-        "observations": 352,
+        "observations": 330,
         "segments": [
           {
-            "start": "1997-05",
+            "start": "1999-03",
             "end": "2026-08",
-            "observations": 352
+            "observations": 330
           }
         ]
       },
       "validation": {
         "start": "1990-01",
-        "end": "1997-04",
-        "observations": 88,
+        "end": "1999-02",
+        "observations": 110,
         "segments": [
           {
             "start": "1990-01",
-            "end": "1997-04",
-            "observations": 88
+            "end": "1999-02",
+            "observations": 110
           }
         ]
       },
-      "status": "optimal",
-      "diagnostics": {
-        "solver": "CLARABEL",
-        "solver_status": "optimal",
-        "solve_seconds": 5.32e-05,
-        "iterations": 8,
-        "wall_seconds": 0.002148200001101941,
-        "constraint_violation": 0.0
+      "training_direction": "train_after_validation",
+      "training_metrics": {
+        "expected_return": 0.07654455185920804,
+        "volatility": 0.08770299302438196,
+        "historical_volatility": 0.08757000887961527,
+        "sharpe_ratio": 0.5307065386727267,
+        "historical_cagr": 0.07517607533350996,
+        "historical_max_drawdown": 0.24764507678818903
       },
-      "weights": {
-        "1": 0.3367322151736892,
-        "175": 0.482614713151433,
-        "243": 0.1806530716748777
+      "validation_metrics": {
+        "realized_annual_arithmetic_return": 0.09630094732997307,
+        "realized_annual_volatility": 0.07090246391055562,
+        "realized_sharpe_ratio": 0.9351007521207244,
+        "realized_total_return": 1.3553396233633617,
+        "historical_cagr": 0.09796288253923087,
+        "historical_max_drawdown": 0.06910586651637018
       },
       "covariance_parameters": {},
       "covariance_diagnostics": {
@@ -366,82 +467,79 @@
         "symmetry_error": 0.0,
         "positive_semidefinite": true,
         "eigenvalues_before": [
-          0.001140644003613096,
-          0.002112812242849559,
-          0.0024224261695387547
+          0.001160618211814969,
+          0.002068161854251119,
+          0.0024854867625566618
         ],
         "eigenvalues_after": [
-          0.001140644003613096,
-          0.002112812242849559,
-          0.0024224261695387547
+          0.001160618211814969,
+          0.002068161854251119,
+          0.0024854867625566618
         ],
-        "condition_number_before": 2.123735505438589,
-        "condition_number_after": 2.123735505438589,
+        "condition_number_before": 2.1415196980838944,
+        "condition_number_after": 2.1415196980838944,
         "nearly_singular": false,
         "regularization": "none",
         "eigenvalue_floor": null,
         "frobenius_change": 0.0
       },
-      "training_metrics": {
-        "expected_return": 0.07933263103883431,
-        "volatility": 0.08748316739121119,
-        "sharpe_ratio": 0.5639099784559288,
-        "historical_cagr": 0.0781822919756964,
-        "historical_max_drawdown": 0.2492529445939884
+      "status": "optimal",
+      "diagnostics": {
+        "solver": "CLARABEL",
+        "solver_status": "optimal",
+        "solve_seconds": 6.11e-05,
+        "iterations": 8,
+        "wall_seconds": 0.0022054999999454594,
+        "constraint_violation": 0.0
       },
-      "validation_metrics": {
-        "realized_annual_arithmetic_return": 0.08537153430248982,
-        "realized_annual_volatility": 0.06604065632759117,
-        "realized_sharpe_ratio": 0.8384461539543501,
-        "realized_total_return": 0.8371652432592369,
-        "historical_cagr": 0.08647618661031797,
-        "historical_max_drawdown": 0.06883289591720732
+      "weights": {
+        "1": 0.3554234813039011,
+        "175": 0.47004750452175165,
+        "243": 0.17452901417434719
       }
     },
     {
       "fold": 2,
       "training": {
-        "start": "1990-01",
+        "start": "2008-05",
         "end": "2026-08",
-        "observations": 352,
+        "observations": 220,
         "segments": [
           {
-            "start": "1990-01",
-            "end": "1997-04",
-            "observations": 88
-          },
-          {
-            "start": "2004-09",
+            "start": "2008-05",
             "end": "2026-08",
-            "observations": 264
+            "observations": 220
           }
         ]
       },
       "validation": {
-        "start": "1997-05",
-        "end": "2004-08",
-        "observations": 88,
+        "start": "1999-03",
+        "end": "2008-04",
+        "observations": 110,
         "segments": [
           {
-            "start": "1997-05",
-            "end": "2004-08",
-            "observations": 88
+            "start": "1999-03",
+            "end": "2008-04",
+            "observations": 110
           }
         ]
       },
-      "status": "optimal",
-      "diagnostics": {
-        "solver": "CLARABEL",
-        "solver_status": "optimal",
-        "solve_seconds": 4.85e-05,
-        "iterations": 7,
-        "wall_seconds": 0.002085799991618842,
-        "constraint_violation": 1.1102230246251565e-16
+      "training_direction": "train_after_validation",
+      "training_metrics": {
+        "expected_return": 0.0802696524226372,
+        "volatility": 0.09785167535702191,
+        "historical_volatility": 0.09762903189366057,
+        "sharpe_ratio": 0.5137331807475263,
+        "historical_cagr": 0.07815565788209607,
+        "historical_max_drawdown": 0.24267508939251725
       },
-      "weights": {
-        "1": 0.34968015025380705,
-        "175": 0.4313294506592933,
-        "243": 0.21899039908689952
+      "validation_metrics": {
+        "realized_annual_arithmetic_return": 0.07450890402433401,
+        "realized_annual_volatility": 0.06383357223385486,
+        "realized_sharpe_ratio": 0.6972648164084448,
+        "realized_total_return": 0.9397262779332409,
+        "historical_cagr": 0.07495396809298342,
+        "historical_max_drawdown": 0.08021472775445648
       },
       "covariance_parameters": {},
       "covariance_diagnostics": {
@@ -449,82 +547,79 @@
         "symmetry_error": 0.0,
         "positive_semidefinite": true,
         "eigenvalues_before": [
-          0.001188366484637922,
-          0.001723676538468447,
-          0.0022100787960345676
+          0.001365142582671051,
+          0.002213026493187128,
+          0.0028450907939010354
         ],
         "eigenvalues_after": [
-          0.001188366484637922,
-          0.001723676538468447,
-          0.0022100787960345676
+          0.001365142582671051,
+          0.002213026493187128,
+          0.0028450907939010354
         ],
-        "condition_number_before": 1.8597619712474023,
-        "condition_number_after": 1.8597619712474023,
+        "condition_number_before": 2.084097903044167,
+        "condition_number_after": 2.084097903044167,
         "nearly_singular": false,
         "regularization": "none",
         "eigenvalue_floor": null,
         "frobenius_change": 0.0
       },
-      "training_metrics": {
-        "expected_return": 0.08412242312199515,
-        "volatility": 0.08550666080129543,
-        "sharpe_ratio": 0.6329614864480264,
-        "historical_cagr": 0.08350933270744554,
-        "historical_max_drawdown": 0.2383495184558625
+      "status": "optimal",
+      "diagnostics": {
+        "solver": "CLARABEL",
+        "solver_status": "optimal",
+        "solve_seconds": 5.44e-05,
+        "iterations": 7,
+        "wall_seconds": 0.002143100000012055,
+        "constraint_violation": 0.0
       },
-      "validation_metrics": {
-        "realized_annual_arithmetic_return": 0.0730677583992788,
-        "realized_annual_volatility": 0.0759158964306726,
-        "realized_sharpe_ratio": 0.567308830221202,
-        "realized_total_return": 0.6711189684188581,
-        "historical_cagr": 0.07253159773025927,
-        "historical_max_drawdown": 0.07579287365206067
+      "weights": {
+        "1": 0.3773515012794085,
+        "175": 0.43797574205130596,
+        "243": 0.18467275666928565
       }
     },
     {
       "fold": 3,
       "training": {
         "start": "1990-01",
-        "end": "2026-08",
-        "observations": 352,
+        "end": "2008-04",
+        "observations": 220,
         "segments": [
           {
             "start": "1990-01",
-            "end": "2004-08",
-            "observations": 176
-          },
-          {
-            "start": "2012-01",
-            "end": "2026-08",
-            "observations": 176
+            "end": "2008-04",
+            "observations": 220
           }
         ]
       },
       "validation": {
-        "start": "2004-09",
-        "end": "2011-12",
-        "observations": 88,
+        "start": "2008-05",
+        "end": "2017-06",
+        "observations": 110,
         "segments": [
           {
-            "start": "2004-09",
-            "end": "2011-12",
-            "observations": 88
+            "start": "2008-05",
+            "end": "2017-06",
+            "observations": 110
           }
         ]
       },
-      "status": "optimal",
-      "diagnostics": {
-        "solver": "CLARABEL",
-        "solver_status": "optimal",
-        "solve_seconds": 4.59e-05,
-        "iterations": 7,
-        "wall_seconds": 0.002051399991614744,
-        "constraint_violation": 0.0
+      "training_direction": "train_before_validation",
+      "training_metrics": {
+        "expected_return": 0.08027929414941297,
+        "volatility": 0.06283030197099469,
+        "historical_volatility": 0.0626873431919669,
+        "sharpe_ratio": 0.800239575048106,
+        "historical_cagr": 0.08119644746874431,
+        "historical_max_drawdown": 0.06729354238015317
       },
-      "weights": {
-        "1": 0.29328802397455284,
-        "175": 0.45793946715282907,
-        "243": 0.24877250887261806
+      "validation_metrics": {
+        "realized_annual_arithmetic_return": 0.07472281515460269,
+        "realized_annual_volatility": 0.1000580420256126,
+        "realized_sharpe_ratio": 0.4469687218460128,
+        "realized_total_return": 0.8923978340635748,
+        "historical_cagr": 0.07206110331870393,
+        "historical_max_drawdown": 0.10821589036766455
       },
       "covariance_parameters": {},
       "covariance_diagnostics": {
@@ -532,82 +627,79 @@
         "symmetry_error": 0.0,
         "positive_semidefinite": true,
         "eigenvalues_before": [
-          0.0009348946106474789,
-          0.0017523529664964543,
-          0.00185158108249778
+          0.000609856646544132,
+          0.0014369389095273827,
+          0.0016939915800549708
         ],
         "eigenvalues_after": [
-          0.0009348946106474789,
-          0.0017523529664964543,
-          0.00185158108249778
+          0.000609856646544132,
+          0.0014369389095273827,
+          0.0016939915800549708
         ],
-        "condition_number_before": 1.980523859491962,
-        "condition_number_after": 1.980523859491962,
+        "condition_number_before": 2.777688149591046,
+        "condition_number_after": 2.777688149591046,
         "nearly_singular": false,
         "regularization": "none",
         "eigenvalue_floor": null,
         "frobenius_change": 0.0
       },
-      "training_metrics": {
-        "expected_return": 0.07112099253868286,
-        "volatility": 0.08201027689233933,
-        "sharpe_ratio": 0.5014126777387337,
-        "historical_cagr": 0.06992310394920548,
-        "historical_max_drawdown": 0.2406930002152291
+      "status": "optimal",
+      "diagnostics": {
+        "solver": "CLARABEL",
+        "solver_status": "optimal",
+        "solve_seconds": 5.67e-05,
+        "iterations": 8,
+        "wall_seconds": 0.0020922000003338326,
+        "constraint_violation": 2.220446049250313e-16
       },
-      "validation_metrics": {
-        "realized_annual_arithmetic_return": 0.11179734694384993,
-        "realized_annual_volatility": 0.08935211251495219,
-        "realized_sharpe_ratio": 0.9154495024408288,
-        "realized_total_return": 1.1973438966059842,
-        "historical_cagr": 0.11332627536261089,
-        "historical_max_drawdown": 0.138122465527171
+      "weights": {
+        "1": 0.2172247949899743,
+        "175": 0.5418807124886186,
+        "243": 0.2408944925214073
       }
     },
     {
       "fold": 4,
       "training": {
         "start": "1990-01",
-        "end": "2026-08",
-        "observations": 352,
+        "end": "2017-06",
+        "observations": 330,
         "segments": [
           {
             "start": "1990-01",
-            "end": "2011-12",
-            "observations": 264
-          },
-          {
-            "start": "2019-05",
-            "end": "2026-08",
-            "observations": 88
+            "end": "2017-06",
+            "observations": 330
           }
         ]
       },
       "validation": {
-        "start": "2012-01",
-        "end": "2019-04",
-        "observations": 88,
+        "start": "2017-07",
+        "end": "2026-08",
+        "observations": 110,
         "segments": [
           {
-            "start": "2012-01",
-            "end": "2019-04",
-            "observations": 88
+            "start": "2017-07",
+            "end": "2026-08",
+            "observations": 110
           }
         ]
       },
-      "status": "optimal",
-      "diagnostics": {
-        "solver": "CLARABEL",
-        "solver_status": "optimal",
-        "solve_seconds": 4.4e-05,
-        "iterations": 7,
-        "wall_seconds": 0.0020763000065926462,
-        "constraint_violation": 0.0
+      "training_direction": "train_before_validation",
+      "training_metrics": {
+        "expected_return": 0.08208735118159406,
+        "volatility": 0.07477833902714144,
+        "historical_volatility": 0.07466495254944353,
+        "sharpe_ratio": 0.6965566748238218,
+        "historical_cagr": 0.08224692292555882,
+        "historical_max_drawdown": 0.1302481927753274
       },
-      "weights": {
-        "1": 0.28656441639883945,
-        "175": 0.47566575337708994,
-        "243": 0.23776983022407058
+      "validation_metrics": {
+        "realized_annual_arithmetic_return": 0.07274643251026512,
+        "realized_annual_volatility": 0.10564520406053746,
+        "realized_sharpe_ratio": 0.4046225561339283,
+        "realized_total_return": 0.8486852543521191,
+        "historical_cagr": 0.06933141252514256,
+        "historical_max_drawdown": 0.24946924302917894
       },
       "covariance_parameters": {},
       "covariance_diagnostics": {
@@ -615,114 +707,35 @@
         "symmetry_error": 0.0,
         "positive_semidefinite": true,
         "eigenvalues_before": [
-          0.0011378414544444167,
-          0.0020321127434577272,
-          0.0021867844380990876
+          0.0009441684750816713,
+          0.0018118064504064261,
+          0.002067218903565793
         ],
         "eigenvalues_after": [
-          0.0011378414544444167,
-          0.0020321127434577272,
-          0.0021867844380990876
+          0.0009441684750816713,
+          0.0018118064504064261,
+          0.002067218903565793
         ],
-        "condition_number_before": 1.9218709509637677,
-        "condition_number_after": 1.9218709509637677,
+        "condition_number_before": 2.189459781938787,
+        "condition_number_after": 2.189459781938787,
         "nearly_singular": false,
         "regularization": "none",
         "eigenvalue_floor": null,
         "frobenius_change": 0.0
       },
-      "training_metrics": {
-        "expected_return": 0.0851721170939904,
-        "volatility": 0.08623257822086627,
-        "sharpe_ratio": 0.6398059553858966,
-        "historical_cagr": 0.08458100961494418,
-        "historical_max_drawdown": 0.24431840471842925
-      },
-      "validation_metrics": {
-        "realized_annual_arithmetic_return": 0.05278345109302317,
-        "realized_annual_volatility": 0.07174098760361251,
-        "realized_sharpe_ratio": 0.3175792786531964,
-        "realized_total_return": 0.44439797864434505,
-        "historical_cagr": 0.051418181064468944,
-        "historical_max_drawdown": 0.09509602602592437
-      }
-    },
-    {
-      "fold": 5,
-      "training": {
-        "start": "1990-01",
-        "end": "2019-04",
-        "observations": 352,
-        "segments": [
-          {
-            "start": "1990-01",
-            "end": "2019-04",
-            "observations": 352
-          }
-        ]
-      },
-      "validation": {
-        "start": "2019-05",
-        "end": "2026-08",
-        "observations": 88,
-        "segments": [
-          {
-            "start": "2019-05",
-            "end": "2026-08",
-            "observations": 88
-          }
-        ]
-      },
       "status": "optimal",
       "diagnostics": {
         "solver": "CLARABEL",
         "solver_status": "optimal",
-        "solve_seconds": 4.66e-05,
+        "solve_seconds": 6.66e-05,
         "iterations": 8,
-        "wall_seconds": 0.0021106000058352947,
+        "wall_seconds": 0.0022795999998379557,
         "constraint_violation": 1.1102230246251565e-16
       },
       "weights": {
-        "1": 0.31746335144039806,
-        "175": 0.48527869184346034,
-        "243": 0.19725795671614157
-      },
-      "covariance_parameters": {},
-      "covariance_diagnostics": {
-        "finite": true,
-        "symmetry_error": 0.0,
-        "positive_semidefinite": true,
-        "eigenvalues_before": [
-          0.000923595878464271,
-          0.0017789902570562541,
-          0.001989410868674549
-        ],
-        "eigenvalues_after": [
-          0.000923595878464271,
-          0.0017789902570562541,
-          0.001989410868674549
-        ],
-        "condition_number_before": 2.153984134254134,
-        "condition_number_after": 2.153984134254134,
-        "nearly_singular": false,
-        "regularization": "none",
-        "eigenvalue_floor": null,
-        "frobenius_change": 0.0
-      },
-      "training_metrics": {
-        "expected_return": 0.08032487334238905,
-        "volatility": 0.07385178585027874,
-        "sharpe_ratio": 0.6814306893595466,
-        "historical_cagr": 0.08042672166533635,
-        "historical_max_drawdown": 0.13101036058772964
-      },
-      "validation_metrics": {
-        "realized_annual_arithmetic_return": 0.07740794373103897,
-        "realized_annual_volatility": 0.11445365700006163,
-        "realized_sharpe_ratio": 0.41421082535627013,
-        "realized_total_return": 0.6798122133471252,
-        "historical_cagr": 0.073290716437958,
-        "historical_max_drawdown": 0.24856828327504688
+        "1": 0.3192137185153745,
+        "175": 0.4887115823677547,
+        "243": 0.1920746991168707
       }
     }
   ],
@@ -732,37 +745,38 @@
       "constraint_violation": 0.0
     },
     "weights": {
-      "1": 0.3167456314482573,
-      "175": 0.46656561523682116,
-      "243": 0.2166887533149215
+      "1": 0.3173033740221646,
+      "175": 0.48465388535735776,
+      "243": 0.1980427406204777
     },
     "metrics": {
-      "expected_return": 0.08002880732052992,
-      "volatility": 0.08334087886242578,
-      "sharpe_ratio": 0.6002913336576944,
-      "historical_cagr": 0.0793104719170095,
-      "historical_max_drawdown": 0.24423607952925908
+      "expected_return": 0.07974575823150402,
+      "volatility": 0.08340322158971825,
+      "historical_volatility": 0.08330839129004707,
+      "sharpe_ratio": 0.5964488815098309,
+      "historical_cagr": 0.0790008092839922,
+      "historical_max_drawdown": 0.2484148364661497
     }
   },
   "stability": {
     "standard_deviation": {
-      "1": 0.024272726547314497,
-      "175": 0.020032788218479772,
-      "243": 0.025120521313543216
+      "1": 0.061396847564549994,
+      "175": 0.03769472798732756,
+      "243": 0.0255124575580548
     },
     "minimum": {
-      "1": 0.28656441639883945,
-      "175": 0.4313294506592933,
-      "243": 0.1806530716748777
+      "1": 0.2172247949899743,
+      "175": 0.43797574205130596,
+      "243": 0.17452901417434719
     },
     "maximum": {
-      "1": 0.34968015025380705,
-      "175": 0.48527869184346034,
-      "243": 0.24877250887261806
+      "1": 0.3773515012794085,
+      "175": 0.5418807124886186,
+      "243": 0.2408944925214073
     },
-    "mean_absolute_weight_deviation": 0.020395681789795457,
-    "maximum_weight_deviation": 0.03603568164004378,
-    "mean_allocation_turnover_from_original": 0.030593522684693182,
+    "mean_absolute_weight_deviation": 0.03403580917912962,
+    "maximum_weight_deviation": 0.10007857903219028,
+    "mean_allocation_turnover_from_original": 0.05651396660966085,
     "lower_bound_frequency": {
       "1": 0.0,
       "175": 0.0,
@@ -774,5 +788,5 @@
       "243": 0.0
     }
   },
-  "execution_seconds": 0.02071889999206178
+  "execution_seconds": 0.01980230000026495
 }

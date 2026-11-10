@@ -29,7 +29,7 @@ export const requestSchema = z.object({
   asset_groups: z.record(z.string(), n.int().min(1).max(5)).optional(),
   user_weights: z.record(z.string(), n.min(0).max(1)).nullable().optional(),
   frontier_points: n.int().min(2).max(201),
-  cv_folds: n.int().min(2).max(10),
+  cv_folds: n.int().min(2).max(20).multipleOf(2),
   bootstrap_iterations: n.int().min(1).max(2000),
   expected_block_length: n.min(3).max(24),
   random_seed: n.int().min(0).max(4294967295),
@@ -168,6 +168,12 @@ const results = {
     .passthrough(),
   "cross-validation": base
     .extend({
+      cv_folds: n.int().min(2).max(20).multipleOf(2),
+      methodology: z.literal("bidirectional_one_sided_block_kfold"),
+      total_observations: n.int(),
+      validation_observations: n.int(),
+      validation_coverage_fraction: n.min(0).max(1),
+      validation_interpretation: z.string(),
       original: portfolio,
       ensemble: portfolio.nullable(),
       stability: stability.nullable(),
@@ -175,11 +181,15 @@ const results = {
         z
           .object({
             fold: n.int(),
+            training_direction: z.enum([
+              "train_before_validation",
+              "train_after_validation",
+            ]),
             status: z.string(),
             weights: weights.nullable(),
             training: period.extend({ segments: z.array(period) }),
             validation: period,
-            training_metrics: metrics.optional(),
+            training_metrics: metrics.nullable().optional(),
             validation_metrics: z
               .object({
                 realized_annual_arithmetic_return: n,
@@ -187,6 +197,7 @@ const results = {
                 realized_sharpe_ratio: n.nullable(),
                 realized_total_return: n,
               })
+              .nullable()
               .optional(),
             diagnostics: z.record(z.string(), z.unknown()),
           })

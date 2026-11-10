@@ -23,6 +23,7 @@ def portfolio_metrics(
     return {
         "expected_return": expected,
         "volatility": volatility,
+        "historical_volatility": float(np.std(values @ weights, ddof=0) * np.sqrt(12)),
         "sharpe_ratio": (expected - risk_free_rate) / volatility if volatility > 1e-10 else None,
         **historical_metrics(values @ weights),
     }

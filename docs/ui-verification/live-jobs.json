@@ -1,91 +1,91 @@
 [
   {
     "kind": "frontier",
-    "seconds": 1.4496459999936633,
+    "seconds": 1.5559069000000818,
     "status": "complete",
     "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
   },
   {
     "kind": "cross-validation",
-    "seconds": 1.3391874000080861,
+    "seconds": 1.588148999999703,
     "status": "complete",
     "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
   },
   {
     "kind": "bootstrap",
-    "seconds": 9.361138199979905,
+    "seconds": 10.91305310000007,
     "status": "complete",
     "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
   },
   {
     "kind": "resampled-frontier",
-    "seconds": 8.393019199982518,
+    "seconds": 8.744087099999888,
     "status": "complete",
     "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
   },
   {
     "kind": "frontier",
-    "seconds": 1.4293773999961559,
+    "seconds": 1.4694408999998814,
     "status": "complete",
     "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
   },
   {
     "kind": "frontier",
-    "seconds": 1.2887266000034288,
+    "seconds": 3.068362200000138,
     "status": "complete",
     "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
   },
   {
     "kind": "frontier",
-    "seconds": 1.3736589000036474,
+    "seconds": 1.524638199999572,
     "status": "complete",
     "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
   },
   {
     "kind": "frontier",
-    "seconds": 1.3933942000148818,
+    "seconds": 1.5975539000000936,
     "status": "complete",
     "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
   },
   {
     "kind": "frontier",
-    "seconds": 1.363722800015239,
+    "seconds": 1.4886084999998275,
     "status": "complete",
     "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
   },
   {
     "kind": "frontier",
-    "seconds": 1.3849413000280038,
+    "seconds": 1.5040110999998433,
     "status": "complete",
     "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
   },
   {
     "kind": "frontier",
-    "seconds": 1.4615066999976989,
+    "seconds": 1.497320800000125,
     "status": "complete",
     "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
   },
   {
     "kind": "frontier",
-    "seconds": 1.4704812999989372,
+    "seconds": 1.5272174000001542,
     "status": "complete",
     "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
   },
   {
     "kind": "resampled-frontier",
-    "seconds": 8.373284899978898,
+    "seconds": 8.908092600000145,
     "status": "complete",
     "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
   },
   {
     "kind": "bootstrap",
-    "seconds": 9.169074100005673,
+    "seconds": 11.003182800000104,
     "status": "complete",
     "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
   },
   {
     "kind": "cross-validation",
-    "seconds": 1.3825015999900643,
+    "seconds": 1.4515591000003951,
     "status": "complete",
     "hash": "6262188ed8225a32891a102d25830664c38de6e1feca71494cac90d0f001bd9a"
   }

@@ -37,6 +37,7 @@ import {
   ResampledView,
 } from "./components/Results";
 import { number } from "./lib/display";
+import { cvHistoryError } from "./lib/cv";
 
 const TABS = [
   "Frontier",
@@ -60,6 +61,15 @@ async function loadDemo(): Promise<DemoBundle> {
   );
   return { catalog: manifest.catalog, calculations };
 }
+function defaultDemoRequest(bundle: DemoBundle): ApiRequest {
+  return (
+    bundle.calculations.find(
+      (c) =>
+        c.kind === "frontier" &&
+        c.request.covariance_method === DEFAULT_REQUEST.covariance_method,
+    ) ?? bundle.calculations[0]
+  ).request;
+}
 export default function App() {
   const [mode, setMode] = useState<Mode>("demo"),
     [tab, setTab] = useState<Tab>("Frontier");
@@ -79,6 +89,9 @@ export default function App() {
     [relTol, setRelTol] = useState(1e-6),
     [loaded, setLoaded] = useState(false);
   const [periodInfo, setPeriodInfo] = useState("");
+  const [commonObservations, setCommonObservations] = useState<
+    number | undefined
+  >();
   const [assetRows, setAssetRows] = useState<AssetRow[]>(() =>
     rowsFromRequest(DEFAULT_REQUEST),
   );
@@ -101,6 +114,7 @@ export default function App() {
   ]);
   useEffect(() => {
     setPeriodInfo("");
+    setCommonObservations(undefined);
     if (mode !== "live" || request.instrument_ids.length < 2) return;
     const abort = new AbortController();
     const timer = setTimeout(() => {
@@ -118,11 +132,12 @@ export default function App() {
         },
         abort.signal,
       )
-        .then((p) =>
+        .then((p) => {
+          setCommonObservations(p.period.observations);
           setPeriodInfo(
             `Выборка: ${p.period.start} — ${p.period.end} · ${p.period.observations} месяцев`,
-          ),
-        )
+          );
+        })
         .catch((e) => {
           if (!abort.signal.aborted)
             setPeriodInfo(`Выборка не подтверждена: ${e.message}`);
@@ -142,7 +157,7 @@ export default function App() {
         setDemo(bundle);
         setCatalog(bundle.catalog);
         setCalculations(bundle.calculations);
-        adoptRequest(bundle.calculations[0].request);
+        adoptRequest(defaultDemoRequest(bundle));
       })
       .catch((e) => {
         if (active) setError(e.message);
@@ -174,7 +189,7 @@ export default function App() {
         if (!demo) throw new Error("Demo ещё не загружен.");
         setCatalog(demo.catalog);
         setCalculations(demo.calculations);
-        adoptRequest(demo.calculations[0].request);
+        adoptRequest(defaultDemoRequest(demo));
         setLoaded(false);
         setBaseline([]);
         setComparisons([]);
@@ -234,6 +249,7 @@ export default function App() {
       setMessage(
         `Период ${p.period.start} — ${p.period.end}, ${p.period.observations} месяцев. ${p.warnings.join(" ")}`,
       );
+      setCommonObservations(p.period.observations);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -245,6 +261,8 @@ export default function App() {
     body: ApiRequest,
     signal: AbortSignal,
   ): Promise<Calculation> {
+    const cvError = cvHistoryError(body, kind, commonObservations);
+    if (cvError) throw new Error(cvError);
     const result = await runJob(kind, body, setProgress, signal);
     const calculation: Calculation = {
       id: crypto.randomUUID(),
@@ -530,6 +548,12 @@ export default function App() {
               locked={!!busy || mode === "demo"}
               onChange={changeRequest}
               onPreview={() => void preview()}
+              observations={
+                mode === "demo"
+                  ? visible?.result.period.observations
+                  : commonObservations
+              }
+              portfolioCV={tab === "Cross-validation"}
             />
             {mode === "demo" && (
               <label className="demo-method">
@@ -573,7 +597,7 @@ export default function App() {
                   {tab === "Frontier"
                     ? "Efficient Frontier"
                     : tab === "Cross-validation"
-                      ? "Classical K-Fold Cross-Validation"
+                      ? "Bidirectional One-Sided Block Cross-Validation"
                       : tab === "Bootstrap"
                         ? "Stationary Bootstrap"
                         : tab === "Compare"

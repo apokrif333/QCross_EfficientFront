@@ -13,7 +13,8 @@ app/
     metrics.py             # arithmetic expectations, monthly-rebalanced CAGR/drawdown
     optimizer.py           # CVXPY GMV, targets, maximum return and Max Sharpe
     frontier.py            # deterministic frontier and equal-weight benchmark
-    cross_validation.py    # classical K-fold portfolios and CV ensemble
+    cross_validation.py    # one-sided block portfolio CV and equal-weight CV ensemble
+    splitting.py           # shared portfolio/covariance CV splitting and feasibility
     bootstrap.py           # stationary bootstrap and resampled frontier
     jobs.py                # bounded spawned processes, deadlines and job retention
   api/routes/frontier.py   # analytics submission, status and result endpoints
@@ -76,7 +77,7 @@ Allocation fractions and return/volatility fractions use decimals, not percentag
     "Commodities": {"min": 0.0, "max": 0.4}
   },
   "frontier_points": 51,
-  "cv_folds": 5,
+  "cv_folds": 4,
   "bootstrap_iterations": 1000,
   "expected_block_length": 12,
   "random_seed": 42,
@@ -101,7 +102,7 @@ IDs through the existing instrument catalog in other databases.
 | asset_constraints | Up to 15 ID-keyed min/max bounds in [0,1] |
 | group_constraints | Up to 30 explicit named min/max bounds in [0,1] |
 | frontier_points | 2–201; default 51 |
-| cv_folds | 2–10; default 5; outer portfolio training must have 120 months |
+| cv_folds | Even integers 2–20; default 4; portfolio folds 120/60 train/validation months, covariance folds 60/30 |
 | bootstrap_iterations | 1–2,000; default 1,000; resampled frontier 1–500, default 250 |
 | expected_block_length | 3–24 months; default 12 |
 | random_seed | Integer 0 through 2^32−1; default 42 |
@@ -118,6 +119,23 @@ used to choose positions along the curve. Maximum work is 30,000 portfolio solve
 Invalid input, insufficient history or infeasible constraints return HTTP 422
 before job submission. Capacity exhaustion returns HTTP 429 with Retry-After: 5.
 Expired/unknown jobs return HTTP 404.
+
+CV feasibility is operation-aware. `/cross-validation` checks every outer 120/60
+fold and, for `cv_linear`, every inner 60/30 fold before starting a worker.
+Other operations check full-sample covariance folds only when using `cv_linear`;
+sample/Ledoit-Wolf/nonlinear frontiers remain available with 120 common months.
+Insufficient-history errors include requested K, actual T, required minimum,
+train/validation minima and eligible K. `/data-preview` reports separate
+`eligible_portfolio_folds` and `eligible_covariance_folds` for the aligned history.
+
+Both CV paths use `bidirectional_one_sided_block_kfold`; see [exact rules](analytics.md#bidirectional-one-sided-block-cross-validation).
+Results disclose `training_direction`, one contiguous training segment per fold,
+`total_observations`, `validation_observations`, `validation_coverage_fraction`,
+`unvalidated_indices`, `minimum_portfolio_train/validation`,
+`minimum_covariance_train/validation`, and `validation_interpretation`.
+K=2 may leave central months unvalidated; different folds may overlap in training.
+There is no embargo. Validation describes sample sensitivity and allocation
+stability, not a historical investable backtest or independent forward performance.
 
 ## Job response and retrieval
 
@@ -190,7 +208,7 @@ Install the project with dev extras, then run with the configured project interp
 ```
 
 The script requires actual stored VTI/TLT/GLD USD series, rejects missing/invalid
-histories, and has no synthetic fallback. It calculates all four frontiers, five-fold
+histories, and has no synthetic fallback. It calculates all four frontiers, four-fold one-sided block
 CV, 1,000 stationary bootstrap samples for both objectives, and a 250×51 resampled
 frontier. It also exercises all four API jobs through local FastAPI TestClient with
 real spawned worker processes, records timing and dependency versions, verifies

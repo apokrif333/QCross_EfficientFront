@@ -120,20 +120,27 @@ export interface FrontierResult extends BaseResult {
 }
 export interface Fold {
   fold: number;
+  training_direction: "train_before_validation" | "train_after_validation";
   status: string;
   weights: Record<string, number> | null;
   training: Period & { segments: Period[] };
   validation: Period;
-  training_metrics?: Metrics;
+  training_metrics?: Metrics | null;
   validation_metrics?: {
     realized_annual_arithmetic_return: number;
     realized_annual_volatility: number;
     realized_sharpe_ratio: number | null;
     realized_total_return: number;
-  };
+  } | null;
   diagnostics: Record<string, unknown>;
 }
 export interface CVResult extends BaseResult {
+  cv_folds: number;
+  methodology: "bidirectional_one_sided_block_kfold";
+  total_observations: number;
+  validation_observations: number;
+  validation_coverage_fraction: number;
+  validation_interpretation: string;
   original: Portfolio;
   folds: Fold[];
   ensemble: Portfolio | null;
@@ -268,7 +275,7 @@ export const DEFAULT_REQUEST: ApiRequest = {
   currency: "USD",
   start_date: "1990-01-01",
   end_date: null,
-  covariance_method: "sample",
+  covariance_method: "nonlinear",
   shrinkage_target: "identity",
   risk_free_rate: 0.03,
   objective: "gmv",
@@ -276,7 +283,7 @@ export const DEFAULT_REQUEST: ApiRequest = {
   asset_constraints: {},
   group_constraints: {},
   frontier_points: 51,
-  cv_folds: 5,
+  cv_folds: 4,
   bootstrap_iterations: 1000,
   expected_block_length: 12,
   random_seed: 42,

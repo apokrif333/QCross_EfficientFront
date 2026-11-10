@@ -2,9 +2,16 @@
 
 import numpy as np
 from sklearn.covariance import LedoitWolf
-from sklearn.model_selection import KFold
 
 from app.analytics.models import AnalyticsError, CovarianceEstimate
+from app.analytics.splitting import (
+    CV_METHODOLOGY,
+    MIN_COVARIANCE_TRAIN,
+    MIN_COVARIANCE_VALIDATION,
+    fold_direction,
+    one_sided_folds,
+    validation_metadata,
+)
 
 
 def validate_covariance(matrix: np.ndarray) -> tuple[np.ndarray, dict]:
@@ -101,14 +108,12 @@ def gaussian_nll(validation: np.ndarray, mean: np.ndarray, covariance: np.ndarra
     )
 
 
-def select_shrinkage(values: np.ndarray, folds: int = 5, target: str = "identity") -> dict:
-    if not 2 <= folds <= 10 or len(values) < folds * 2:
-        raise AnalyticsError(
-            "Shrinkage CV requires 2 to 10 folds and at least two months per fold."
-        )
+def select_shrinkage(values: np.ndarray, folds: int = 4, target: str = "identity") -> dict:
+    splits = one_sided_folds(
+        len(values), folds, min_train=MIN_COVARIANCE_TRAIN, min_validation=MIN_COVARIANCE_VALIDATION
+    )
     grid = np.linspace(0, 1, 101)
     totals = np.zeros(len(grid))
-    splits = list(KFold(n_splits=folds, shuffle=False).split(values))
     for train, validation in splits:
         training = values[train]
         for i, intensity in enumerate(grid):
@@ -116,13 +121,31 @@ def select_shrinkage(values: np.ndarray, folds: int = 5, target: str = "identity
             totals[i] += len(validation) * gaussian_nll(
                 values[validation], training.mean(0), matrix
             )
-    scores = totals / len(values)
+    # K=2 can leave a central unvalidated interval; average over validated rows only.
+    scores = totals / sum(len(validation) for _, validation in splits)
     best = int(np.argmin(scores))
     return {
         "target": target,
         "intensity": float(grid[best]),
         "folds": folds,
         "criterion": "validation_gaussian_nll",
+        "methodology": CV_METHODOLOGY,
+        **validation_metadata(len(values), splits),
+        "minimum_train": MIN_COVARIANCE_TRAIN,
+        "minimum_validation": MIN_COVARIANCE_VALIDATION,
+        "split_periods": [
+            {
+                "fold": number,
+                "training_start_index": int(train[0]),
+                "training_end_index": int(train[-1]),
+                "training_observations": len(train),
+                "validation_start_index": int(validation[0]),
+                "validation_end_index": int(validation[-1]),
+                "validation_observations": len(validation),
+                "training_direction": fold_direction(train, validation),
+            }
+            for number, (train, validation) in enumerate(splits, 1)
+        ],
         "grid": grid.tolist(),
         "nll_scores": scores.tolist(),
     }
@@ -132,7 +155,7 @@ def estimate_covariance(
     values: np.ndarray,
     method: str = "sample",
     *,
-    folds: int = 5,
+    folds: int = 4,
     target: str = "identity",
     fixed_parameters: dict | None = None,
 ) -> CovarianceEstimate:

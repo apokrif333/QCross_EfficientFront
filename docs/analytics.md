@@ -1,5 +1,8 @@
 # Portfolio analytics
 
+For the return/CAGR reconciliation, numbered user groups, user reference portfolio
+and UI conventions, see [return-conventions.md](return-conventions.md).
+
 The analytics engine takes aligned monthly simple total returns. Only `data_loader.py`
 imports SQLAlchemy; numerical modules have no FastAPI/database dependency. No historical
 observations, ingestion adapters or validated series metadata are changed.
@@ -39,9 +42,11 @@ correlations and Sharpe ratios are JSON null, not NaN or infinity.
 * `cv_linear`: `(1-alpha)*S + alpha*target` with `S` using `ddof=1`. Target is
   `identity` (trace-scaled identity) or `diagonal` (preserves individual sample
   variances). Choose alpha on a deterministic 101-value grid from 0 through 1,
-  minimizing per-observation Gaussian validation NLL. Consecutive unshuffled
-  K-folds; validation residuals use the training mean. NLL totals are weighted
-  by fold size. Ties select the first/smallest alpha. Return grid, NLL scores,
+  minimizing per-observation Gaussian validation NLL. Bidirectional one-sided
+  block folds use at least 60 training and 30 validation months per fold;
+  validation residuals use the training mean. NLL totals are weighted
+  by validation size and divided by the total validated observations (including
+  incomplete K=2 coverage). Ties select the first/smallest alpha. Return grid, NLL scores,
   target and intensity. No Sharpe-based estimator selection is used.
 
 Every estimate is checked for finiteness, symmetry and eigenvalues. Material
@@ -81,26 +86,74 @@ are separate; detailed proxy transitions may be unknown. Unequal endpoints,
 stale endpoints (>2 months), and common history shorter than 180 months are
 also disclosed.
 
-## Classical cross-validation
+## Bidirectional one-sided block cross-validation
 
-Split T observations into K approximately equal consecutive folds, without shuffle.
-For each validation fold, train on the other K−1 folds, including observations
-before and after validation. This is classical K-fold, not a time-ordered forecast
-experiment. K is 2–10 (default 5). Reject `T-ceil(T/K)<120` before fitting.
-Training periods disclose their disjoint consecutive segments.
+Method identifier: `bidirectional_one_sided_block_kfold`. K is even, 2 through 20,
+default 4. Even K gives paired validation blocks on the two halves of the sample
+without an odd central block; it does not guarantee equal direction counts when
+small samples and configurable limits create a tie.
+For K >= 4, use `np.array_split(np.arange(T), K)` equivalently: first `T % K`
+blocks get one extra month. Every observation is validated once. Train on the
+longer interval strictly before or strictly after the validation block; ties
+select the earlier interval. Never concatenate the two sides. Both periods are
+contiguous, increasing, deterministic, and disjoint within each fold. There is
+no embargo or purge gap. Training samples across separate folds may overlap:
+this deliberately measures sensitivity to different historical samples/regimes.
+
+Portfolio CV requires **120 train / 60 validation months per fold**. Covariance
+CV requires **60 / 30**. Ordinary frontier optimization still requires only
+120 common months globally; a sample/Ledoit-Wolf/nonlinear frontier does not
+require portfolio CV feasibility.
+
+For K=2, use a complete two-block chronological partition whenever both opposite
+training blocks meet the training minimum (including odd T). Otherwise use equal
+outer validation windows of size `min(floor(T/2), T-min_train)` with the complete
+opposite interval as training. Reject if either window is smaller than
+`min_validation`. Windows cannot overlap; central months may be unvalidated.
+At T=180 with portfolio 120/60, validate 0–59 against train 60–179, then validate
+120–179 against train 0–119 (zero-based inclusive). Coverage is 120/180; training
+overlaps over 60–119. At T=200, outer validation windows contain 80 months; at
+T=240, both contain 120. T=179 is invalid. Training overlaps are intentional.
+
+| K | Portfolio minimum T | Covariance minimum T |
+|---|---:|---:|
+| 2 | 180 | 90 |
+| 4 | 240 | 120 |
+| 6 | 360 | 180 |
+| 8 | 480 | 240 |
+| 10 | 600 | 300 |
+| 12 | 720 | 360 |
+| 14 | 840 | 420 |
+| 16 | 960 | 480 |
+| 18 | 1080 | 540 |
+| 20 | 1200 | 600 |
+
+At T=240, K=4, validation ranges are 0–59 / 60–119 / 120–179 / 180–239;
+training ranges are 60–239 / 120–239 / 0–119 / 0–179. At T=10,000, K=4,
+validation has 2,500 rows each and training has 7,500 / 5,000 / 5,000 / 7,500.
 
 Select GMV, Max Sharpe or an annual target return before CV. Keep that objective
 and all constraints fixed across folds. Each fold estimates its means and
-covariance using training observations only. For `cv_linear`, an inner classical
-K-fold selects alpha using only the outer training subset. Inner covariance
-fits do not optimize portfolios and therefore do not require 120 months each.
-No outer validation data tunes its evaluated portfolio.
+covariance using training observations only. For `cv_linear`, the same shared
+splitter performs inner CV exclusively on the extracted outer training subset,
+with the same K and the covariance 60/30 minimums. Select alpha by validation
+Gaussian NLL, then refit covariance on all outer training observations. Means and
+optimized weights also use only this subset. No outer validation data influences
+shrinkage selection, covariance, means, or weights. The separate full-sample
+original solution may estimate covariance on the full selected history.
 
 Apply each fold's fixed optimized weights to validation months. Return annualized
 realized arithmetic return, sample volatility, Sharpe (if defined), total return,
-CAGR and drawdown. These statistics are specific to that validation fold.
+CAGR and drawdown. These statistics are sample-sensitivity and allocation-stability
+diagnostics. Because training may occur later than validation, they are not a
+historical investable backtest or independent forward out-of-sample performance.
+Each fold reports direction, single-segment start/end/count, weights, training
+and validation metrics, covariance parameters/diagnostics and solver diagnostics.
+The overall result reports total and validated observations, coverage fraction,
+unvalidated indices, selected K and both sets of minimums.
 
-Average fold weights in identical asset ordering only when all folds succeed.
+Average fold weights equally in identical asset ordering only when all folds succeed,
+regardless of training length: `w_ensemble = sum(w_fold)/K`.
 Linear constraints survive averaging, and the averaged vector is checked again.
 Evaluate original and ensemble weights on the same full-sample mean, covariance
 and returns. Ensemble statistics are descriptive full-sample characteristics,

@@ -2,7 +2,7 @@ import time
 
 import numpy as np
 
-from app.analytics.constraints import build_constraints
+from app.analytics.constraints import build_constraints, user_allocation
 from app.analytics.estimators import estimate_covariance
 from app.analytics.metrics import correlation_diagnostics, portfolio_metrics
 from app.analytics.models import AnalyticsError, OptimizationResult, ReturnPanel
@@ -14,7 +14,7 @@ def prepare(
     panel: ReturnPanel,
     *,
     covariance_method: str = "sample",
-    cv_folds: int = 5,
+    cv_folds: int = 4,
     shrinkage_target: str = "identity",
     asset_constraints: dict | None = None,
     group_constraints: dict | None = None,
@@ -51,13 +51,24 @@ def describe(
     return output
 
 
-def data_diagnostics(panel: ReturnPanel, estimate) -> dict:
+def data_diagnostics(panel: ReturnPanel, estimate, risk_free_rate: float = 0.03) -> dict:
     correlation = correlation_diagnostics(panel.values, panel.assets)
     warnings = panel.warnings + correlation["warnings"]
     if estimate.diagnostics["nearly_singular"]:
         warnings.append("Nearly singular covariance: a disclosed eigenvalue floor was applied.")
     return {
+        "asset_portfolios": {
+            asset: describe(
+                OptimizationResult("reference", weights, {"asset_id": asset}),
+                panel,
+                panel.values.mean(0) * 12,
+                estimate.matrix * 12,
+                risk_free_rate,
+            )
+            for asset, weights in zip(panel.assets, np.eye(len(panel.assets)), strict=True)
+        },
         "reproducibility": panel_provenance(panel),
+        "allocation_groups": panel.groups,
         "period": {
             "start": str(panel.returns.index[0]),
             "end": str(panel.returns.index[-1]),
@@ -79,6 +90,7 @@ def analyze_frontier(
     risk_free_rate: float = 0.03,
     objective: str = "gmv",
     target_return: float | None = None,
+    user_weights: dict | None = None,
     **options,
 ) -> dict:
     if not 2 <= frontier_points <= 201 or not np.isfinite(risk_free_rate):
@@ -86,6 +98,7 @@ def analyze_frontier(
             "Frontier points must be 2 to 201 and the risk-free rate must be finite."
         )
     started = time.perf_counter()
+    allocation = user_allocation(panel.assets, user_weights)
     constraints, estimate, mean, covariance = prepare(panel, **options)
     optimizer = PortfolioOptimizer(mean, covariance, constraints)
     gmv, maximum, sharpe = (
@@ -109,6 +122,18 @@ def analyze_frontier(
     equal["label"] = (
         "Equal-weight benchmark" if equal["feasible"] else "Unconstrained equal-weight reference"
     )
+    user = None
+    if allocation is not None:
+        user = describe(
+            OptimizationResult("reference", allocation, {}),
+            panel,
+            mean,
+            covariance,
+            risk_free_rate,
+        )
+        user["feasible"] = constraints.violation(allocation) <= 1e-7
+        user["diagnostics"]["constraint_violation"] = constraints.violation(allocation)
+        user["label"] = "User portfolio" if user["feasible"] else "Unconstrained user reference"
     selected = optimizer.optimize(objective, risk_free_rate, target_return)
     success = all(r.weights is not None for r in (gmv, maximum, selected)) and all(
         p["status"] == "optimal" for p in points
@@ -117,7 +142,7 @@ def analyze_frontier(
         "status": "complete" if success and sharpe.weights is not None else "incomplete",
         "assets": panel.assets,
         "currency": "USD",
-        **data_diagnostics(panel, estimate),
+        **data_diagnostics(panel, estimate, risk_free_rate),
         "source_metadata": panel.metadata,
         "annual_expected_returns": dict(zip(panel.assets, mean.tolist(), strict=True)),
         "annual_covariance": covariance.tolist(),
@@ -130,6 +155,7 @@ def analyze_frontier(
         "maximum_return": describe(maximum, panel, mean, covariance, risk_free_rate),
         "selected_portfolio": describe(selected, panel, mean, covariance, risk_free_rate),
         "equal_weight": equal,
+        "user_portfolio": user,
         "frontier": points,
         "execution_seconds": time.perf_counter() - started,
     }

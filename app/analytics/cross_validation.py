@@ -1,31 +1,36 @@
-"""Classical unshuffled K-fold portfolio validation, not walk-forward validation."""
+"""Bidirectional one-sided block portfolio CV for allocation sample sensitivity."""
 
 import time
 
 import numpy as np
-from sklearn.model_selection import KFold
 
 from app.analytics.estimators import estimate_covariance
 from app.analytics.frontier import data_diagnostics, describe, prepare
 from app.analytics.metrics import historical_metrics, portfolio_metrics
 from app.analytics.models import AnalyticsError, OptimizationResult, ReturnPanel
 from app.analytics.optimizer import PortfolioOptimizer
+from app.analytics.splitting import (
+    CV_METHODOLOGY,
+    MIN_COVARIANCE_TRAIN,
+    MIN_COVARIANCE_VALIDATION,
+    MIN_PORTFOLIO_TRAIN,
+    MIN_PORTFOLIO_VALIDATION,
+    eligible_folds,
+    fold_direction,
+    one_sided_folds,
+    validate_cv_configuration,
+    validation_metadata,
+)
 
 
-def portfolio_folds(observations: int, folds: int = 5) -> list[tuple[np.ndarray, np.ndarray]]:
-    if not 2 <= folds <= 10:
-        raise AnalyticsError("Classical K-fold CV requires K from 2 to 10.")
-    training = observations - int(np.ceil(observations / folds))
-    if training < 120:
-        raise AnalyticsError(
-            f"{folds}-fold CV leaves only {training} training months per largest validation fold. "
-            "At least 120 training months are required (T - ceil(T/K) >= 120)."
-        )
-    return list(KFold(n_splits=folds, shuffle=False).split(np.arange(observations)))
+def portfolio_folds(observations: int, folds: int = 4) -> list[tuple[np.ndarray, np.ndarray]]:
+    return one_sided_folds(
+        observations, folds, min_train=MIN_PORTFOLIO_TRAIN, min_validation=MIN_PORTFOLIO_VALIDATION
+    )
 
 
 def period_description(panel: ReturnPanel, indices: np.ndarray) -> dict:
-    # Training is usually disjoint; explicitly disclose every consecutive segment.
+    # Preserve the segments field; one-sided folds always have exactly one segment.
     segments = np.split(indices, np.flatnonzero(np.diff(indices) != 1) + 1)
     return {
         "start": str(panel.returns.index[indices[0]]),
@@ -76,14 +81,19 @@ def weight_stability(weights: np.ndarray, original: np.ndarray, constraints) -> 
 def analyze_cross_validation(
     panel: ReturnPanel,
     *,
-    cv_folds: int = 5,
+    cv_folds: int = 4,
     objective: str = "gmv",
     target_return: float | None = None,
     risk_free_rate: float = 0.03,
     **options,
 ) -> dict:
     started = time.perf_counter()
-    splits = portfolio_folds(len(panel.values), cv_folds)
+    splits = validate_cv_configuration(
+        len(panel.values),
+        cv_folds,
+        portfolio=True,
+        covariance_method=options.get("covariance_method", "sample"),
+    )
     constraints, estimate, mean, covariance = prepare(panel, cv_folds=cv_folds, **options)
     original = PortfolioOptimizer(mean, covariance, constraints).optimize(
         objective, risk_free_rate, target_return
@@ -95,6 +105,11 @@ def analyze_cross_validation(
             "fold": number,
             "training": period_description(panel, training),
             "validation": period_description(panel, validation),
+            "training_direction": fold_direction(training, validation),
+            "training_metrics": None,
+            "validation_metrics": None,
+            "covariance_parameters": None,
+            "covariance_diagnostics": None,
         }
         try:
             # Inner covariance selection sees ONLY the outer training array.
@@ -159,7 +174,7 @@ def analyze_cross_validation(
         )
         stability = weight_stability(weights, original.weights, constraints)
     return {
-        **data_diagnostics(panel, estimate),
+        **data_diagnostics(panel, estimate, risk_free_rate),
         "status": "complete" if ensemble else "incomplete",
         "assets": panel.assets,
         "currency": "USD",
@@ -167,7 +182,22 @@ def analyze_cross_validation(
         "target_return": target_return,
         "risk_free_rate": risk_free_rate,
         "cv_folds": cv_folds,
-        "methodology": "classical_consecutive_kfold_no_shuffle",
+        "methodology": CV_METHODOLOGY,
+        **validation_metadata(len(panel.values), splits),
+        "minimum_portfolio_train": MIN_PORTFOLIO_TRAIN,
+        "minimum_portfolio_validation": MIN_PORTFOLIO_VALIDATION,
+        "minimum_covariance_train": MIN_COVARIANCE_TRAIN,
+        "minimum_covariance_validation": MIN_COVARIANCE_VALIDATION,
+        "eligible_portfolio_folds": eligible_folds(
+            len(panel.values),
+            min_train=MIN_PORTFOLIO_TRAIN,
+            min_validation=MIN_PORTFOLIO_VALIDATION,
+        ),
+        "validation_interpretation": (
+            "Sample sensitivity and allocation stability diagnostics. Some folds train on "
+            "later observations; validation is not a historical investable backtest or "
+            "independent forward out-of-sample performance. No embargo or purge gap."
+        ),
         "ensemble_evaluation": "full_sample_descriptive_not_independent_out_of_sample",
         "covariance_method": estimate.method,
         "covariance_parameters": estimate.parameters,

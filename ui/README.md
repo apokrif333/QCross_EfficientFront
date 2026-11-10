@@ -190,7 +190,7 @@ ui/
   src/components/Results.tsx    # Frontier, CV, Bootstrap, Compare
   src/components/Plot.tsx       # lazy browser-only Plotly adapter
   src/components/PortfolioTable.tsx
-  src/lib/{api,snapshot,validation,display}.ts
+  src/lib/{api,snapshot,validation,display,cv}.ts
   src/types.ts                  # shared API contracts
   src/styles.css
   src/test/                     # Vitest / Testing Library
@@ -201,3 +201,17 @@ ui/
 `lib/` и компоненты отделены от Vite; Plotly загружается после mount.
 Для Next.js нужны client component boundary и same-origin proxy/API URL,
 но сам перенос и публичное развёртывание в этой задаче не выполняются.
+
+## CV methodology
+
+The fold selector displays only even numbers K=2–20, default 4.
+Portfolio requirements are 120/60 train/validation months per fold; covariance requirements are 60/30.
+Aligned `/data-preview` counts disable unavailable choices for the current operation.
+Ordinary sample/Ledoit-Wolf/nonlinear frontiers still support 120 common months.
+CV LS uses the same K for internal covariance selection; nested selection sees
+only the outer training observations. Every training and validation interval is
+contiguous and disjoint within its fold, with training entirely before or after
+validation. There is no embargo. K=2 may leave central months unvalidated; the
+result shows the coverage fraction. These are sample sensitivity and allocation
+stability diagnostics, not a historical investable backtest. Exact rules and
+minimum tables: [analytics methodology](../docs/analytics.md#bidirectional-one-sided-block-cross-validation).

@@ -908,6 +908,31 @@
             "maxProperties": 30,
             "title": "Group Constraints"
           },
+          "asset_groups": {
+            "additionalProperties": {
+              "type": "integer",
+              "maximum": 5.0,
+              "minimum": 1.0
+            },
+            "type": "object",
+            "maxProperties": 15,
+            "title": "Asset Groups"
+          },
+          "user_weights": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object",
+                "maxProperties": 15
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Weights"
+          },
           "frontier_points": {
             "type": "integer",
             "maximum": 201.0,
@@ -917,10 +942,11 @@
           },
           "cv_folds": {
             "type": "integer",
-            "maximum": 10.0,
+            "multipleOf": 2.0,
+            "maximum": 20.0,
             "minimum": 2.0,
             "title": "Cv Folds",
-            "default": 5
+            "default": 4
           },
           "bootstrap_iterations": {
             "type": "integer",
@@ -1086,6 +1112,13 @@
             "type": "array",
             "title": "Assets"
           },
+          "asset_portfolios": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PortfolioRead"
+            },
+            "type": "object",
+            "title": "Asset Portfolios"
+          },
           "currency": {
             "type": "string",
             "const": "USD",
@@ -1195,6 +1228,7 @@
         "required": [
           "status",
           "assets",
+          "asset_portfolios",
           "currency",
           "covariance_method",
           "covariance_parameters",
@@ -1230,6 +1264,13 @@
             },
             "type": "array",
             "title": "Assets"
+          },
+          "asset_portfolios": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PortfolioRead"
+            },
+            "type": "object",
+            "title": "Asset Portfolios"
           },
           "currency": {
             "type": "string",
@@ -1319,6 +1360,43 @@
             "type": "integer",
             "title": "Cv Folds"
           },
+          "methodology": {
+            "type": "string",
+            "const": "bidirectional_one_sided_block_kfold",
+            "title": "Methodology"
+          },
+          "total_observations": {
+            "type": "integer",
+            "title": "Total Observations"
+          },
+          "validation_observations": {
+            "type": "integer",
+            "title": "Validation Observations"
+          },
+          "validation_coverage_fraction": {
+            "type": "number",
+            "title": "Validation Coverage Fraction"
+          },
+          "minimum_portfolio_train": {
+            "type": "integer",
+            "title": "Minimum Portfolio Train"
+          },
+          "minimum_portfolio_validation": {
+            "type": "integer",
+            "title": "Minimum Portfolio Validation"
+          },
+          "minimum_covariance_train": {
+            "type": "integer",
+            "title": "Minimum Covariance Train"
+          },
+          "minimum_covariance_validation": {
+            "type": "integer",
+            "title": "Minimum Covariance Validation"
+          },
+          "validation_interpretation": {
+            "type": "string",
+            "title": "Validation Interpretation"
+          },
           "ensemble_evaluation": {
             "type": "string",
             "title": "Ensemble Evaluation"
@@ -1361,6 +1439,7 @@
         "required": [
           "status",
           "assets",
+          "asset_portfolios",
           "currency",
           "covariance_method",
           "covariance_parameters",
@@ -1374,6 +1453,15 @@
           "correlation",
           "reproducibility",
           "cv_folds",
+          "methodology",
+          "total_observations",
+          "validation_observations",
+          "validation_coverage_fraction",
+          "minimum_portfolio_train",
+          "minimum_portfolio_validation",
+          "minimum_covariance_train",
+          "minimum_covariance_validation",
+          "validation_interpretation",
           "ensemble_evaluation",
           "original",
           "folds",
@@ -1387,6 +1475,14 @@
           "fold": {
             "type": "integer",
             "title": "Fold"
+          },
+          "training_direction": {
+            "type": "string",
+            "enum": [
+              "train_before_validation",
+              "train_after_validation"
+            ],
+            "title": "Training Direction"
           },
           "status": {
             "type": "string",
@@ -1426,6 +1522,7 @@
         "type": "object",
         "required": [
           "fold",
+          "training_direction",
           "status",
           "training",
           "validation",
@@ -1450,6 +1547,13 @@
             },
             "type": "array",
             "title": "Assets"
+          },
+          "asset_portfolios": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PortfolioRead"
+            },
+            "type": "object",
+            "title": "Asset Portfolios"
           },
           "currency": {
             "type": "string",
@@ -1550,6 +1654,16 @@
           "equal_weight": {
             "$ref": "#/components/schemas/PortfolioRead"
           },
+          "user_portfolio": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PortfolioRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "frontier": {
             "items": {
               "$ref": "#/components/schemas/PortfolioRead"
@@ -1563,6 +1677,7 @@
         "required": [
           "status",
           "assets",
+          "asset_portfolios",
           "currency",
           "covariance_method",
           "covariance_parameters",
@@ -1580,6 +1695,7 @@
           "maximum_return",
           "selected_portfolio",
           "equal_weight",
+          "user_portfolio",
           "frontier"
         ],
         "title": "FrontierResult"
@@ -1997,6 +2113,10 @@
             "type": "number",
             "title": "Volatility"
           },
+          "historical_volatility": {
+            "type": "number",
+            "title": "Historical Volatility"
+          },
           "sharpe_ratio": {
             "anyOf": [
               {
@@ -2021,6 +2141,7 @@
         "required": [
           "expected_return",
           "volatility",
+          "historical_volatility",
           "sharpe_ratio",
           "historical_cagr",
           "historical_max_drawdown"
@@ -2180,6 +2301,31 @@
             "maxProperties": 30,
             "title": "Group Constraints"
           },
+          "asset_groups": {
+            "additionalProperties": {
+              "type": "integer",
+              "maximum": 5.0,
+              "minimum": 1.0
+            },
+            "type": "object",
+            "maxProperties": 15,
+            "title": "Asset Groups"
+          },
+          "user_weights": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object",
+                "maxProperties": 15
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Weights"
+          },
           "frontier_points": {
             "type": "integer",
             "maximum": 201.0,
@@ -2189,10 +2335,11 @@
           },
           "cv_folds": {
             "type": "integer",
-            "maximum": 10.0,
+            "multipleOf": 2.0,
+            "maximum": 20.0,
             "minimum": 2.0,
             "title": "Cv Folds",
-            "default": 5
+            "default": 4
           },
           "bootstrap_iterations": {
             "type": "integer",
@@ -2275,6 +2422,13 @@
             },
             "type": "array",
             "title": "Assets"
+          },
+          "asset_portfolios": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PortfolioRead"
+            },
+            "type": "object",
+            "title": "Asset Portfolios"
           },
           "currency": {
             "type": "string",
@@ -2411,6 +2565,7 @@
         "required": [
           "status",
           "assets",
+          "asset_portfolios",
           "currency",
           "covariance_method",
           "covariance_parameters",

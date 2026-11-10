@@ -72,7 +72,9 @@ The SQLite database's SHA-256 before and after the final demonstration is identi
 
 Analytical nonlinear shrinkage rejects rank-deficient inputs rather than changing
 methods. Every accepted covariance transformation is disclosed. Bootstrap acceptance
-requires 95% successful iterations and is not a promise about future performance.
+requires 95% successful iterations for GMV/Max Sharpe and is not a promise about future
+performance. Target Return separates economic infeasibility from technical failures;
+see the policy below.
 Grouped negative-excess Max Sharpe can return a computational-limit failure when
 exhaustive enumeration would exceed 300,000 active bases. API jobs are bounded,
 process-local and not durable across restarts; the local API uses one ASGI process.
@@ -90,3 +92,106 @@ See [source, formula, refresh commands, API, revisions and verification](macro-a
 
 The complete 2026-11-10 verification log, exact commands, file inventory,
 local import proof and limitations are in [macro-verification.md](macro-verification.md).
+
+## Target Return Bootstrap (engine 2.1.0)
+
+Target Return now means minimum required annual arithmetic expected return
+(`mean @ weights >= target`), consistently in Frontier, CV and Bootstrap. The
+[methodology and API example](target-return-bootstrap.md) explain conditional
+weight statistics, feasibility denominators, zero feasible samples and failure policy.
+
+New deterministic coverage includes a complete default 1,000-iteration target run,
+constrained maximum-return feasibility, numerical tolerance, a nonbinding GMV target,
+all four covariance estimators in Nominal/Real mode, synchronized BIL indices,
+technical failures separate from infeasibility, conditional quantiles, infeasible
+original portfolios, and averages that fail the target on original estimates.
+Real FastAPI worker jobs cover both return bases and both risk-free modes with
+all three Bootstrap objectives. UI tests cover selection, feasibility counts,
+shortfall and snapshots with absent original portfolios and null stability.
+
+Changed/new files for this upgrade:
+
+```text
+README.md
+app/analytics/bootstrap.py
+app/analytics/optimizer.py
+app/analytics/provenance.py
+app/api/routes/frontier.py
+app/schemas/frontier.py
+docs/analytics.md
+docs/analytics-api.md
+docs/analytics-verification.md
+docs/target-return-bootstrap.md
+tests/analytics/test_target_bootstrap.py
+tests/analytics/test_target_bootstrap_api.py
+ui/src/App.tsx
+ui/src/types.ts
+ui/src/lib/validation.ts
+ui/src/components/Settings.tsx
+ui/src/components/Results.tsx
+ui/src/test/target-bootstrap.test.tsx
+```
+
+Verification commands run from repository root unless noted:
+
+```powershell
+.venv\Scripts\python.exe -m pytest --basetemp=./.target-final-testtmp -o cache_dir=./.target-pytest-cache --tb=short -q
+.venv\Scripts\python.exe -m ruff check app tests scripts
+cd ui
+npm.cmd test
+npm.cmd exec -- tsc -b
+npm.cmd run build
+npm.cmd exec -- prettier --check src
+```
+
+Results on 2026-11-10: **342 passed, 1 skipped, 1 deselected** in 136.90 seconds
+for the complete backend suite. The skip is unavailable Windows symlink creation;
+the deselected test is the opt-in live network test. Ruff: all checks passed.
+Vitest: **29 passed across 7 files**. TypeScript, Vite production build and Prettier
+checks passed. Existing dependency deprecations (Starlette/httpx, NumPy matlib),
+Rollup annotations in Zod and the Plotly bundle-size advisory remain non-failing.
+
+No database schema, source observations, ingestion, one-sided splitting or
+Stationary Bootstrap sampling mechanism changed. No live-source download or
+production deployment is required or claimed for this upgrade. The numerical
+bootstrap failure policy is intentionally stricter for Target Return: any technical
+failure suppresses its aggregate, while infeasible targets do not fail computation.
+
+## Target Return / Resampled Frontier interaction (engine 2.1.1)
+
+Resampled Frontier now accepts every supported global objective, including
+Target Return with no target or an infeasible target. Operation-aware API, client
+and snapshot validation require a target only where it is used. Shared risk-aversion
+optimization, stationary indices, averaging, covariance estimation, constraints,
+Nominal/Real and BIL calculations remain unchanged. The App forwards explicit
+`bootstrap_objectives` unchanged, including mixed Target Return/GMV requests.
+
+Regression tests compare identical curve weights, metrics, sampled indices and API
+calculation fingerprints across all global objectives in Nominal/Real modes. A
+guard test fails if Resampled Frontier ever calls target-return or Max Sharpe
+optimization. API worker tests, frontend payload/snapshot tests and real browser
+App tests cover a missing target and explicit Bootstrap objective lists. All prior
+Target Return Bootstrap feasibility/failure/conditional-statistics tests still pass.
+
+Commands executed on 2026-11-10:
+
+```powershell
+git -c safe.directory=H:/Miscellaneous/QCross_EfficientFront fetch origin main
+.venv\Scripts\python.exe -m pytest --basetemp=./.interaction-full-tmp -o cache_dir=./.interaction-pytest-cache --tb=short -q
+.venv\Scripts\python.exe -m ruff check app tests scripts
+cd ui
+npm.cmd test
+npm.cmd run build
+npm.cmd exec -- tsc -b
+npm.cmd exec -- prettier --check src e2e/target-objectives.spec.ts
+$env:QCROSS_LIVE_TEST = '1'
+npm.cmd exec -- playwright test --config=playwright.macro.config.ts
+```
+
+Results: backend **349 passed, 1 skipped, 1 deselected** in 140.19 seconds; Vitest
+**33 passed in 8 files**; Playwright/Chrome **11 passed** including Live API jobs,
+four-method comparison, Real BIL, snapshot replay and the two new App regressions.
+The backend skip is unavailable Windows symlinks; the live ingestion network test
+is opt-in and was excluded. Ruff, TypeScript, Vite and Prettier passed. The existing
+non-failing dependency deprecations, Zod annotation and Plotly-size advisories remain.
+No market data or ingestion was modified, and no production deployment is claimed.

@@ -63,16 +63,13 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
         elif kind == "cross-validation":
             options.update(objective=body.objective, target_return=body.target_return)
         else:
-            if body.objective == "target_return":
-                raise AnalyticsError(
-                    "Bootstrap supports GMV and Max Sharpe, not target-return optimization."
-                )
             options.update(
                 bootstrap_iterations=body.bootstrap_iterations,
                 expected_block_length=body.expected_block_length,
                 random_seed=body.random_seed,
             )
             if kind == "bootstrap":
+                options["target_return"] = body.target_return
                 options["objectives"] = body.bootstrap_objectives or (
                     [body.objective]
                     if "objective" in body.model_fields_set

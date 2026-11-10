@@ -43,8 +43,8 @@ class AnalyticsRequest(BaseModel):
     bootstrap_iterations: int = Field(default=1000, ge=1, le=2000)
     expected_block_length: float = Field(default=12, ge=3, le=24)
     random_seed: int = Field(default=42, ge=0, le=2**32 - 1)
-    bootstrap_objectives: list[Literal["gmv", "max_sharpe"]] | None = Field(
-        default=None, min_length=1, max_length=2
+    bootstrap_objectives: list[Literal["gmv", "max_sharpe", "target_return"]] | None = Field(
+        default=None, min_length=1, max_length=3
     )
     risk_aversions: list[float] | None = Field(default=None, min_length=2, max_length=201)
 
@@ -73,7 +73,7 @@ class AnalyticsRequest(BaseModel):
             raise ValueError("Select 2 to 15 distinct positive instrument IDs.")
         if self.start_date and self.end_date and self.start_date > self.end_date:
             raise ValueError("start_date must not exceed end_date.")
-        if self.objective == "target_return" and self.target_return is None:
+        if self.uses_target_return() and self.target_return is None:
             raise ValueError("The target_return objective requires an annual target_return.")
         if self.bootstrap_objectives and len(set(self.bootstrap_objectives)) != len(
             self.bootstrap_objectives
@@ -85,6 +85,11 @@ class AnalyticsRequest(BaseModel):
             ):
                 raise ValueError("Supply one risk aversion in (0, 1e6] per frontier point.")
         return self
+
+    def uses_target_return(self) -> bool:
+        return self.objective == "target_return" or "target_return" in (
+            self.bootstrap_objectives or []
+        )
 
     def estimator_options(self) -> dict:
         return {
@@ -98,6 +103,10 @@ class AnalyticsRequest(BaseModel):
 
 class ResampledFrontierRequest(AnalyticsRequest):
     bootstrap_iterations: int = Field(default=250, ge=1, le=500)
+
+    def uses_target_return(self) -> bool:
+        # The global selection is retained in provenance, not used by this curve.
+        return False
 
 
 class PortfolioMetrics(BaseModel):
@@ -190,7 +199,19 @@ class CrossValidationResult(AnalyticsResultBase):
 
 
 class BootstrapObjectiveRead(BaseModel):
+    model_config = ConfigDict(extra="allow")
     status: str
+    computational_status: str | None = None
+    target_return: float | None = None
+    target_feasibility_rate: float | None = None
+    target_feasible_iterations: int | None = None
+    target_infeasible_iterations: int | None = None
+    numerical_failure_iterations: int | None = None
+    feasibility_unknown_iterations: int | None = None
+    original_target_feasible: bool | None = None
+    statistics_condition: str | None = None
+    averaging_policy: str | None = None
+    resampled_target_evaluation: dict[str, Any] | None = None
     requested_iterations: int
     successful_iterations: int
     failed_iterations: int

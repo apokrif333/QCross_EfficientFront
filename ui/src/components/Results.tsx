@@ -498,6 +498,7 @@ export function BootstrapView({
 }) {
   const [objective, setObjective] = useState("gmv");
   const o = r.objectives[objective] ?? Object.values(r.objectives)[0];
+  const isTarget = o.target_return != null;
   const assets = r.assets,
     stats = o.stability?.assets;
   const data = useMemo(() => {
@@ -553,17 +554,73 @@ export function BootstrapView({
         {Object.keys(r.objectives).map((key) => (
           <button
             key={key}
-            className={objective === key ? "active" : ""}
+            className={o === r.objectives[key] ? "active" : ""}
             onClick={() => setObjective(key)}
           >
-            {key === "gmv" ? "GMV" : "Max Sharpe"}
+            {key === "gmv"
+              ? "GMV"
+              : key === "target_return"
+                ? "Target expected return"
+                : "Max Sharpe"}
           </button>
         ))}
       </div>
-      <p className={o.status === "complete" ? "hint" : "warning"}>
-        Статус {o.status} · {o.successful_iterations} / {o.requested_iterations}{" "}
-        успешных · ошибок {o.failed_iterations}
-      </p>
+      {isTarget ? (
+        <>
+          <p title="Доля исторических бутстрап-выборок, в которых заданная ожидаемая доходность достижима при выбранных ограничениях. Не является вероятностью будущей доходности.">
+            <strong>
+              Достижимость целевой доходности в Bootstrap:{" "}
+              {percent(o.target_feasibility_rate, 0)}
+            </strong>
+          </p>
+          <p className={o.status === "complete" ? "hint" : "warning"}>
+            Статус вычислений: {o.computational_status} · достижима{" "}
+            {o.target_feasible_iterations} / {o.requested_iterations}
+            {" · "}недостижима {o.target_infeasible_iterations} · численных
+            ошибок {o.numerical_failure_iterations}
+            {o.feasibility_unknown_iterations
+              ? ` · достижимость не определена ${o.feasibility_unknown_iterations}`
+              : ""}
+          </p>
+          {o.original_target_feasible === false && (
+            <p className="hint">
+              Цель недостижима на исходной выборке. Исходного целевого портфеля
+              нет.
+            </p>
+          )}
+          {o.stability && (
+            <p className="hint">
+              Средние веса и P5–P95 рассчитаны только по успешным выборкам с
+              достижимой целью.
+            </p>
+          )}
+          {o.numerical_failure_iterations ? (
+            <p className="hint">
+              Усреднение не выполнено из-за технических ошибок.
+            </p>
+          ) : null}
+          {o.resampled_target_evaluation && (
+            <p>
+              Усреднённый портфель на исходной выборке:{" "}
+              {percent(o.resampled_target_evaluation.expected_return)}
+              {" · "}
+              {o.resampled_target_evaluation.meets_target
+                ? "цель выполнена"
+                : "цель не выполнена"}
+              {" · "}недобор{" "}
+              {percent(o.resampled_target_evaluation.target_shortfall)}
+              {" · "}превышение{" "}
+              {percent(o.resampled_target_evaluation.target_surplus)}.
+              Усреднение не гарантирует выполнения цели.
+            </p>
+          )}
+        </>
+      ) : (
+        <p className={o.status === "complete" ? "hint" : "warning"}>
+          Статус {o.status} · {o.successful_iterations} /{" "}
+          {o.requested_iterations} успешных · ошибок {o.failed_iterations}
+        </p>
+      )}
       {o.failed_iterations > 0 && (
         <details open>
           <summary>Ошибки итераций</summary>
@@ -582,14 +639,16 @@ export function BootstrapView({
         {r.conditional_bootstrap &&
           " Conditional bootstrap: shrinkage-параметры фиксированы; неопределённость их выбора не включена."}
       </p>
-      <Plot
-        title="Bootstrap веса и P5–P95"
-        data={data}
-        layout={{
-          barmode: "group",
-          yaxis: { tickformat: ".0%", title: { text: "Вес" } },
-        }}
-      />
+      {(!isTarget || stats) && (
+        <Plot
+          title="Bootstrap веса и P5–P95"
+          data={data}
+          layout={{
+            barmode: "group",
+            yaxis: { tickformat: ".0%", title: { text: "Вес" } },
+          }}
+        />
+      )}
       {stats && (
         <div className="table-scroll">
           <table>
@@ -638,7 +697,7 @@ export function BootstrapView({
           </table>
         </div>
       )}
-      {o.stability && (
+      {o.stability?.allocation_distance && (
         <div className="metrics">
           <span>
             Allocation distance · mean
@@ -656,15 +715,17 @@ export function BootstrapView({
           </span>
         </div>
       )}
-      <Plot
-        title="Распределение bootstrap весов"
-        data={distributions}
-        layout={{
-          barmode: "overlay",
-          xaxis: { tickformat: ".0%", title: { text: "Вес" } },
-          yaxis: { title: { text: "Количество итераций" } },
-        }}
-      />
+      {(!isTarget || stats) && (
+        <Plot
+          title="Распределение bootstrap весов"
+          data={distributions}
+          layout={{
+            barmode: "overlay",
+            xaxis: { tickformat: ".0%", title: { text: "Вес" } },
+            yaxis: { title: { text: "Количество итераций" } },
+          }}
+        />
+      )}
       <PortfolioTable
         rows={[
           { label: "Original", portfolio: o.original },

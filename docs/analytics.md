@@ -69,6 +69,11 @@ category/subcategory and curated `analytics_groups` mappings support overlapping
 groups. `CATEGORY_GROUPS` documents the broad source-category mapping. Unknown
 groups or unselected assets are rejected, and infeasible bounds are never relaxed.
 
+Target return is a **minimum required annual arithmetic expected return**:
+`min w' covariance w` subject to `mean'w >= target` and the allocation constraints.
+It is expressed in the selected Nominal/Real basis, not CAGR. GMV is optimal if it
+already meets the target. This same optimizer is used by Frontier, CV and Bootstrap.
+
 For positive attainable excess return, Max Sharpe uses the homogeneous convex
 QP `min y' Sigma y` with `excess'y=1`, `sum(y)=k`, and every original allocation
 bound multiplied by k. Recover `w=y/sum(y)` and verify the original constraints.
@@ -187,10 +192,27 @@ uncertainty. Other estimators are fitted afresh, including Ledoit-Wolf intensity
 
 Keep all iteration records, including failed estimator/solver statuses, reasons,
 weights, numerical diagnostics and sample statistics. Require at least 95%
-successful iterations for each objective. Below that threshold return `incomplete`
+successful iterations for GMV and Max Sharpe. Below that threshold return `incomplete`
 and withhold a misleading accepted resampled portfolio. Successful weight vectors
 are averaged and checked against all constraints. Original and resampled portfolios
 are both evaluated on the original full-sample estimates and history.
+
+Target Return Bootstrap checks the constrained maximum achievable expected return
+for every sample (annual-return tolerance `1e-7`). `target_infeasible` is an economic
+outcome and does not count as a technical failure or activate the 95% gate.
+`target_feasibility_rate` counts certified feasible samples divided by **all requested**
+samples; a later target-solver failure can still have certified feasibility. Failed
+feasibility/estimation leaves feasibility unknown and is counted separately.
+For Target Return, any technical sample failure or failure to compute the original
+solution suppresses the aggregate (`incomplete`); no partial aggregate is accepted.
+When computation succeeds, average weights and intervals use only successful,
+feasible samples. Zero feasible samples is a completed result with null resampled
+portfolio and stability. An infeasible original target has no original portfolio;
+feasible resamples may still have conditional statistics, with null original weights
+and allocation distance. Evaluate the average on original full-sample estimates and
+report its actual return, target shortfall/surplus and whether it meets the target.
+Do not project the average onto the target constraint. Feasibility across historical
+resamples is not the probability of future target returns.
 
 Asset statistics include original, mean, median, population standard deviation,
 P5/P95, minimum/maximum and constraint-hit frequencies (tolerance `1e-6`). Allocation
@@ -206,6 +228,13 @@ average unrelated sample frontier points by index. Custom positive finite gamma
 values up to 1e6 are accepted. A sample succeeds only if every gamma succeeds;
 the same 95% sample threshold applies. Return this curve separately and label it
 as a resampled approximation, not the exact classical efficient frontier.
+
+Resampled Frontier is independent of the global portfolio objective and target
+return. It accepts GMV, Max Sharpe and Target Return selections, including a null
+or unattainable target, without altering the shared risk-aversion curve. Target
+Return Bootstrap remains a separate conditional allocation analysis. Explicit
+Bootstrap objective lists are sent unchanged by the frontend; defaults still
+select both GMV and Max Sharpe.
 
 
 ## Historical BIL and inflation

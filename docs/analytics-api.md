@@ -102,7 +102,7 @@ IDs through the existing instrument catalog in other databases.
 | risk_free_source | historical_bil or fixed_annual; new default historical_bil |
 | risk_free_rate | Manual fixed annual fraction; default 0.03 in fixed mode; finite in (-1,1] |
 | objective | gmv, max_sharpe, target_return; default gmv |
-| target_return | Required for target_return; annual arithmetic fraction in [-12,12] |
+| target_return | Required for target_return (including bootstrap_objectives), except for Resampled Frontier; minimum annual arithmetic fraction in [-12,12], in the selected return basis |
 | asset_constraints | Up to 15 ID-keyed min/max bounds in [0,1] |
 | group_constraints | Up to 30 explicit named min/max bounds in [0,1] |
 | frontier_points | 2–201; default 51 |
@@ -110,14 +110,21 @@ IDs through the existing instrument catalog in other databases.
 | bootstrap_iterations | 1–2,000; default 1,000; resampled frontier 1–500, default 250 |
 | expected_block_length | 3–24 months; default 12 |
 | random_seed | Integer 0 through 2^32−1; default 42 |
-| bootstrap_objectives | Optional distinct list of gmv/max_sharpe |
+| bootstrap_objectives | Optional distinct list of gmv/max_sharpe/target_return (up to three) |
 | risk_aversions | Optional one gamma in (0,1e6] per resampled frontier point |
 
 For `/bootstrap`, an explicit `bootstrap_objectives` selects those objectives.
 Otherwise an explicitly supplied `objective` selects that objective; when neither
-is supplied, run both GMV and Max Sharpe. Target-return bootstrap is rejected.
+is supplied, run both GMV and Max Sharpe. Target Return minimizes variance subject
+to expected annual arithmetic return >= target, including when GMV already meets
+the target. An infeasible target is returned as a completed analytical outcome,
+not an HTTP validation error. See [target feasibility fields and example](target-return-bootstrap.md).
 For `/resampled-frontier`, risk aversion defines the portfolios; `objective` is not
-used to choose positions along the curve. Maximum work is 30,000 portfolio solves
+used to choose positions along the curve. All valid global objectives are accepted,
+including `target_return` with a missing/null or unattainable target. `objective`,
+`target_return` and `bootstrap_objectives` are retained in the saved API request but
+do not enter curve construction. Target-presence validation applies only to the
+operations that use it. Maximum work is 30,000 portfolio solves
 (`frontier_points*bootstrap_iterations`) per resampled frontier job.
 
 Invalid input, insufficient history or infeasible constraints return HTTP 422

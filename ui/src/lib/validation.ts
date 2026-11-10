@@ -1,11 +1,12 @@
 import { z } from "zod";
+import type { Kind } from "../types";
 const n = z.number().finite(),
   hash = z.string().regex(/^[a-f0-9]{64}$/),
   weights = z.record(z.string(), n);
 const bounds = z
   .object({ min: n.min(0).max(1), max: n.min(0).max(1) })
   .refine((b) => b.min <= b.max);
-export const requestSchema = z.object({
+const requestFields = z.object({
   instrument_ids: z
     .array(z.number().int().positive())
     .min(2)
@@ -25,7 +26,7 @@ export const requestSchema = z.object({
   risk_free_source: z.enum(["historical_bil", "fixed_annual"]).optional(),
   risk_free_rate: n.gt(-1).max(1),
   objective: z.enum(["gmv", "max_sharpe", "target_return"]),
-  target_return: n.nullable(),
+  target_return: n.min(-12).max(12).nullable(),
   asset_constraints: z.record(z.string(), bounds),
   group_constraints: z.record(z.string(), bounds),
   asset_groups: z.record(z.string(), n.int().min(1).max(5)).optional(),
@@ -36,12 +37,29 @@ export const requestSchema = z.object({
   expected_block_length: n.min(3).max(24),
   random_seed: n.int().min(0).max(4294967295),
   bootstrap_objectives: z
-    .array(z.enum(["gmv", "max_sharpe"]))
+    .array(z.enum(["gmv", "max_sharpe", "target_return"]))
     .min(1)
-    .max(2)
+    .max(3)
+    .refine((items) => new Set(items).size === items.length)
     .nullable(),
   risk_aversions: z.array(n.positive()).nullable(),
 });
+export const requestSchema = requestFields.refine(
+  (r) =>
+    (r.objective !== "target_return" &&
+      !r.bootstrap_objectives?.includes("target_return")) ||
+    r.target_return !== null,
+  {
+    message: "Укажите минимальную целевую годовую доходность",
+    path: ["target_return"],
+  },
+);
+export const resampledRequestSchema = requestFields.extend({
+  bootstrap_iterations: n.int().min(1).max(500),
+});
+export function requestSchemaFor(kind: Kind) {
+  return kind === "resampled-frontier" ? resampledRequestSchema : requestSchema;
+}
 const metrics = z.object({
   expected_return: n,
   volatility: n,
@@ -91,7 +109,7 @@ const provenance = z
         }),
       )
       .min(2),
-    api_request: requestSchema,
+    api_request: requestFields,
     random_seed: n.int(),
     optimization_parameters: z.record(z.string(), z.unknown()),
   })
@@ -134,7 +152,7 @@ const stability = z
   })
   .passthrough();
 const assetStats = z.object({
-  original: n,
+  original: n.nullable(),
   mean: n,
   median: n,
   standard_deviation: n,
@@ -220,17 +238,55 @@ const results = {
             .object({
               ...failures,
               status: z.string(),
+              computational_status: z.string().nullable().optional(),
+              target_return: n.nullable().optional(),
+              target_feasibility_rate: n.min(0).max(1).nullable().optional(),
+              target_feasible_iterations: n
+                .int()
+                .nonnegative()
+                .nullable()
+                .optional(),
+              target_infeasible_iterations: n
+                .int()
+                .nonnegative()
+                .nullable()
+                .optional(),
+              numerical_failure_iterations: n
+                .int()
+                .nonnegative()
+                .nullable()
+                .optional(),
+              feasibility_unknown_iterations: n
+                .int()
+                .nonnegative()
+                .nullable()
+                .optional(),
+              original_target_feasible: z.boolean().nullable().optional(),
+              resampled_target_evaluation: z
+                .object({
+                  expected_return: n,
+                  target_return: n,
+                  target_shortfall: n.nonnegative(),
+                  target_surplus: n.nonnegative(),
+                  meets_target: z.boolean(),
+                  evaluation: z.string(),
+                  target_guaranteed: z.boolean(),
+                })
+                .nullable()
+                .optional(),
               original: portfolio,
               resampled: portfolio.nullable(),
               stability: z
                 .object({
                   assets: z.record(z.string(), assetStats),
-                  allocation_distance: z.object({
-                    mean: n,
-                    median: n,
-                    p5: n,
-                    p95: n,
-                  }),
+                  allocation_distance: z
+                    .object({
+                      mean: n,
+                      median: n,
+                      p5: n,
+                      p95: n,
+                    })
+                    .nullable(),
                 })
                 .nullable(),
               iterations: z.array(iteration),
@@ -260,13 +316,15 @@ export function validateRecord(value: unknown): void {
         "bootstrap",
         "resampled-frontier",
       ]),
-      request: requestSchema,
+      request: requestFields,
       origin: z.enum(["demo", "live"]),
       created_at: z.string(),
       result: z.unknown(),
     })
     .parse(value);
+  requestSchemaFor(record.kind).parse(record.request);
   const r = results[record.kind].parse(record.result);
+  requestSchemaFor(record.kind).parse(r.reproducibility.api_request);
   if (
     JSON.stringify(record.request) !==
     JSON.stringify(r.reproducibility.api_request)

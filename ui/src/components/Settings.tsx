@@ -222,8 +222,8 @@ export default function Settings({
           </HelpField>
         </div>
         <HelpField
-          label="Цель оптимизации для CV"
-          help="Выбирает портфель для обучения на CV-фолдах: GMV, Max Sharpe или заданная арифметическая доходность. Frontier независимо рассчитывает GMV, Max Sharpe и всю кривую target returns. В API эта цель также выбирает дополнительный selected_portfolio."
+          label="Цель оптимизации"
+          help="Цель для CV и Bootstrap. Frontier также рассчитывает GMV, Max Sharpe и кривую минимальной дисперсии."
         >
           <select
             value={value.objective}
@@ -231,6 +231,10 @@ export default function Settings({
               onChange({
                 ...value,
                 objective: e.target.value as ApiRequest["objective"],
+                bootstrap_objectives:
+                  e.target.value === "target_return"
+                    ? ["target_return"]
+                    : ["gmv", "max_sharpe"],
                 target_return:
                   e.target.value === "target_return"
                     ? (value.target_return ?? 0.08)
@@ -246,7 +250,7 @@ export default function Settings({
         {value.objective === "target_return" && (
           <HelpField
             label="Целевая арифметическая доходность, %"
-            help="Годовая арифметическая доходность, которую должен иметь портфель при обучении на каждом CV-фолде. Это не CAGR. Если цель недостижима, фолд возвращает ошибку."
+            help="Минимальная ожидаемая годовая арифметическая доходность в выбранном режиме до/после инфляции. В Bootstrap достижимость проверяется отдельно для каждой выборки. Это не CAGR."
           >
             <input
               type="number"
@@ -289,7 +293,7 @@ export default function Settings({
           <div className="two">
             <HelpField
               label="Повторений"
-              help="Число Stationary Bootstrap выборок. Bootstrap рассчитывает GMV и Max Sharpe; по умолчанию 1000 повторений для каждой цели. Для Resampled Frontier укажите до 500 повторений; стандартный сценарий — 250."
+              help="Число Stationary Bootstrap выборок: по умолчанию 1000. Для целевой доходности проверяется достижимость в каждой выборке; иначе рассчитываются GMV и Max Sharpe. Для Resampled Frontier — до 500 повторений, по умолчанию 250."
             >
               <input
                 type="number"

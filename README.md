@@ -666,3 +666,9 @@ Stationary Bootstrap. Estimated and historical Sharpe are reported separately.
 Legacy fixed-rate snapshots retain their original semantics.
 
 See [source, formula, refresh commands, API, revisions and verification](docs/macro-analytics.md).
+
+Stationary Bootstrap also supports `target_return`: minimum variance subject to
+an annual arithmetic expected return **at least** the target, in the selected
+Nominal/Real basis. Results separate target feasibility from numerical failures
+and show allocation stability conditional on feasible samples. See
+[Target Return Bootstrap](docs/target-return-bootstrap.md).

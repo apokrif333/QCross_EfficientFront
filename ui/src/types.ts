@@ -24,7 +24,7 @@ export interface ApiRequest {
   bootstrap_iterations: number;
   expected_block_length: number;
   random_seed: number;
-  bootstrap_objectives: ("gmv" | "max_sharpe")[] | null;
+  bootstrap_objectives: ("gmv" | "max_sharpe" | "target_return")[] | null;
   risk_aversions: number[] | null;
 }
 export interface Engine {
@@ -167,7 +167,7 @@ export interface CVResult extends BaseResult {
   } | null;
 }
 export interface WeightStats {
-  original: number;
+  original: number | null;
   mean: number;
   median: number;
   standard_deviation: number;
@@ -180,6 +180,25 @@ export interface WeightStats {
 }
 export interface BootstrapObjective {
   status: string;
+  computational_status?: string | null;
+  target_return?: number | null;
+  target_feasibility_rate?: number | null;
+  target_feasible_iterations?: number | null;
+  target_infeasible_iterations?: number | null;
+  numerical_failure_iterations?: number | null;
+  feasibility_unknown_iterations?: number | null;
+  original_target_feasible?: boolean | null;
+  statistics_condition?: string | null;
+  averaging_policy?: string | null;
+  resampled_target_evaluation?: {
+    expected_return: number;
+    target_return: number;
+    target_shortfall: number;
+    target_surplus: number;
+    meets_target: boolean;
+    evaluation: string;
+    target_guaranteed: boolean;
+  } | null;
   requested_iterations: number;
   successful_iterations: number;
   failed_iterations: number;
@@ -192,7 +211,7 @@ export interface BootstrapObjective {
       median: number;
       p5: number;
       p95: number;
-    };
+    } | null;
   } | null;
   iterations: {
     iteration: number;

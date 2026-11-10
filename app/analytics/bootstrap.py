@@ -28,14 +28,16 @@ def stationary_indices(observations: int, expected_block_length: float, rng) -> 
     return indices
 
 
-def bootstrap_weight_statistics(weights: np.ndarray, original: np.ndarray, constraints) -> dict:
+def bootstrap_weight_statistics(
+    weights: np.ndarray, original: np.ndarray | None, constraints
+) -> dict:
     if weights.ndim != 2 or len(weights) == 0:
         raise AnalyticsError("Weight statistics require at least one successful iteration.")
     by_asset = {}
     for i, asset in enumerate(constraints.assets):
         column = weights[:, i]
         by_asset[asset] = {
-            "original": float(original[i]),
+            "original": float(original[i]) if original is not None else None,
             "mean": float(column.mean()),
             "median": float(np.median(column)),
             "standard_deviation": float(column.std(ddof=0)),
@@ -46,7 +48,7 @@ def bootstrap_weight_statistics(weights: np.ndarray, original: np.ndarray, const
             "lower_bound_frequency": float(np.mean(np.abs(column - constraints.lower[i]) <= 1e-6)),
             "upper_bound_frequency": float(np.mean(np.abs(column - constraints.upper[i]) <= 1e-6)),
         }
-    distances = np.abs(weights - original).sum(1) / 2
+    distances = np.abs(weights - original).sum(1) / 2 if original is not None else None
     return {
         "assets": by_asset,
         "allocation_distance": {
@@ -54,7 +56,9 @@ def bootstrap_weight_statistics(weights: np.ndarray, original: np.ndarray, const
             "median": float(np.median(distances)),
             "p5": float(np.quantile(distances, 0.05)),
             "p95": float(np.quantile(distances, 0.95)),
-        },
+        }
+        if distances is not None
+        else None,
     }
 
 
@@ -90,6 +94,36 @@ def _summary(records: list[dict], requested: int) -> dict:
     }
 
 
+TARGET_TOLERANCE = 1e-7
+
+
+def _target_solution(engine, target, risk_free_rate):
+    maximum = engine.maximum_return()
+    diagnostics = {
+        "feasibility_solver": maximum.diagnostics,
+        "target_return": target,
+        "target_tolerance": TARGET_TOLERANCE,
+        "target_feasible": None,
+    }
+    if maximum.status != "optimal" or maximum.weights is None:
+        return OptimizationResult("solver_failed", None, diagnostics)
+    maximum_return = float(engine.mean @ maximum.weights)
+    feasible = maximum_return >= target - TARGET_TOLERANCE
+    diagnostics.update(maximum_achievable_return=maximum_return, target_feasible=feasible)
+    if not feasible:
+        return OptimizationResult("target_infeasible", None, diagnostics)
+    # At the feasibility boundary, permit only the disclosed annual-return tolerance.
+    effective_target = min(target, maximum_return)
+    diagnostics["effective_target_return"] = effective_target
+    result = engine.optimize("target_return", risk_free_rate, effective_target)
+    result.diagnostics.update(diagnostics)
+    if result.status != "optimal" or result.weights is None:
+        return OptimizationResult(
+            "solver_failed", None, {**result.diagnostics, "target_solver_status": result.status}
+        )
+    return result
+
+
 @reproducible
 def analyze_bootstrap(
     panel: ReturnPanel,
@@ -99,18 +133,30 @@ def analyze_bootstrap(
     random_seed: int = 42,
     objectives: list[str] | None = None,
     risk_free_rate: float = 0.03,
+    target_return: float | None = None,
     **options,
 ) -> dict:
     _validate_settings(bootstrap_iterations, expected_block_length, random_seed)
     objectives = objectives or ["gmv", "max_sharpe"]
-    if len(set(objectives)) != len(objectives) or not set(objectives) <= {"gmv", "max_sharpe"}:
+    if len(set(objectives)) != len(objectives) or not set(objectives) <= {
+        "gmv",
+        "max_sharpe",
+        "target_return",
+    }:
         raise AnalyticsError(
-            "Initial bootstrap supports distinct GMV and Max-Sharpe objectives only."
+            "Bootstrap supports distinct GMV, Max Sharpe and target_return objectives."
         )
+    if "target_return" in objectives and (target_return is None or not np.isfinite(target_return)):
+        raise AnalyticsError("Target Return Bootstrap requires a finite annual target_return.")
     started = time.perf_counter()
     constraints, estimate, mean, covariance = prepare(panel, **options)
     engine = PortfolioOptimizer(mean, covariance, constraints, **panel.differential)
-    originals = {objective: engine.optimize(objective, risk_free_rate) for objective in objectives}
+    originals = {
+        objective: _target_solution(engine, target_return, risk_free_rate)
+        if objective == "target_return"
+        else engine.optimize(objective, risk_free_rate)
+        for objective in objectives
+    }
     records = {objective: [] for objective in objectives}
     weight_vectors = {objective: [] for objective in objectives}
     rng, fingerprint = np.random.default_rng(random_seed), hashlib.sha256()
@@ -149,10 +195,19 @@ def analyze_bootstrap(
                 )
             continue
         for objective in objectives:
-            result = sample_engine.optimize(objective, risk_free_rate)
+            result = (
+                _target_solution(sample_engine, target_return, risk_free_rate)
+                if objective == "target_return"
+                else sample_engine.optimize(objective, risk_free_rate)
+            )
             record = {
                 "iteration": iteration,
                 "status": result.status,
+                **(
+                    {"target_feasible": result.diagnostics.get("target_feasible")}
+                    if objective == "target_return"
+                    else {}
+                ),
                 "diagnostics": result.diagnostics,
                 "weights": None,
                 "metrics": None,
@@ -184,14 +239,52 @@ def analyze_bootstrap(
     results = {}
     for objective in objectives:
         summary = _summary(records[objective], bootstrap_iterations)
+        if objective == "target_return":
+            technical = [
+                r for r in records[objective] if r["status"] not in {"optimal", "target_infeasible"}
+            ]
+            feasible = sum(r.get("target_feasible") is True for r in records[objective])
+            summary.update(
+                status="complete"
+                if not technical and originals[objective].status != "solver_failed"
+                else "incomplete",
+                computational_status="complete"
+                if not technical and originals[objective].status != "solver_failed"
+                else "incomplete",
+                target_return=target_return,
+                target_feasibility_rate=feasible / bootstrap_iterations,
+                target_feasible_iterations=feasible,
+                target_infeasible_iterations=sum(
+                    r["status"] == "target_infeasible" for r in records[objective]
+                ),
+                numerical_failure_iterations=len(technical),
+                feasibility_unknown_iterations=sum(
+                    r.get("target_feasible") is None for r in records[objective]
+                ),
+                failed_iterations=len(technical),
+                failures=technical,
+                failure_reasons=dict(Counter(r["status"] for r in technical)),
+                statistics_condition="successful_target_feasible_samples",
+                averaging_policy="no_aggregate_if_any_numerical_failure",
+                target_interpretation=(
+                    "Feasibility across historical resamples, not probability of future returns."
+                ),
+                original_target_feasible=originals[objective].diagnostics.get("target_feasible"),
+                resampled_target_evaluation=None,
+            )
         summary.update(
             original=describe(originals[objective], panel, mean, covariance, risk_free_rate),
             resampled=None,
             stability=None,
             iterations=records[objective],
         )
-        # Do not offer a partial average as an accepted resampled result below the 95% gate.
-        if summary["status"] == "complete" and originals[objective].weights is not None:
+        # GMV/Sharpe retain their 95% gate. Target outcomes need no technical failures;
+        # economically infeasible samples are excluded from conditional statistics.
+        if (
+            summary["status"] == "complete"
+            and weight_vectors[objective]
+            and (originals[objective].weights is not None or objective == "target_return")
+        ):
             weights = np.stack(weight_vectors[objective])
             average = weights.mean(0)
             constraints.require_feasible(average)
@@ -207,7 +300,18 @@ def analyze_bootstrap(
             summary["stability"] = bootstrap_weight_statistics(
                 weights, originals[objective].weights, constraints
             )
-        elif originals[objective].weights is None:
+            if objective == "target_return":
+                actual_return = float(average @ mean)
+                summary["resampled_target_evaluation"] = {
+                    "expected_return": actual_return,
+                    "target_return": target_return,
+                    "target_shortfall": max(0.0, target_return - actual_return),
+                    "target_surplus": max(0.0, actual_return - target_return),
+                    "meets_target": actual_return >= target_return - TARGET_TOLERANCE,
+                    "evaluation": "original_full_sample_estimates",
+                    "target_guaranteed": False,
+                }
+        elif originals[objective].weights is None and objective != "target_return":
             summary["status"] = "incomplete"
         results[objective] = summary
     data = data_diagnostics(panel, estimate, risk_free_rate)
@@ -257,8 +361,11 @@ def analyze_resampled_frontier(
     random_seed: int = 42,
     risk_aversions: list[float] | None = None,
     risk_free_rate: float = 0.03,
+    objective: str | None = None,
+    target_return: float | None = None,
     **options,
 ) -> dict:
+    # Global portfolio controls do not define this shared risk-aversion curve.
     _validate_settings(bootstrap_iterations, expected_block_length, random_seed)
     if not 2 <= frontier_points <= 201:
         raise AnalyticsError("Resampled frontier points must be from 2 to 201.")

@@ -326,17 +326,7 @@ export default function App() {
           setBusy(
             `${kind} · ${METHODS.find((m) => m.value === body.covariance_method)!.short}`,
           );
-          const actualBody =
-            kind === "bootstrap"
-              ? {
-                  ...body,
-                  bootstrap_objectives: [
-                    "gmv",
-                    "max_sharpe",
-                  ] as ApiRequest["bootstrap_objectives"],
-                }
-              : body;
-          const c = await execute(kind, actualBody, abort.signal);
+          const c = await execute(kind, body, abort.signal);
           if (c.result.status !== "complete")
             setMessage(
               "Получен неполный результат. Смотрите статусы, причины ошибок и численные диагностики.",

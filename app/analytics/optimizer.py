@@ -34,7 +34,7 @@ class PortfolioOptimizer:
         variance = cp.quad_form(self.weights, cp.psd_wrap(covariance))
         self.gmv_problem = cp.Problem(cp.Minimize(variance), self.rules)
         self.target_problem = cp.Problem(
-            cp.Minimize(variance), self.rules + [mean @ self.weights == self.target]
+            cp.Minimize(variance), self.rules + [mean @ self.weights >= self.target]
         )
         self.return_problem = cp.Problem(cp.Maximize(mean @ self.weights), self.rules)
         self.utility_problem = cp.Problem(
@@ -90,7 +90,7 @@ class PortfolioOptimizer:
     def target_return(self, target: float) -> OptimizationResult:
         self.target.value = target
         result = self._solve(self.target_problem, self.weights)
-        if result.weights is not None and abs(float(self.mean @ result.weights) - target) > 1e-7:
+        if result.weights is not None and float(self.mean @ result.weights) < target - 1e-7:
             return OptimizationResult("target_violation", None, result.diagnostics)
         return result
 

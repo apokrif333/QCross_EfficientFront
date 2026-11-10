@@ -62,6 +62,11 @@ export async function runJob(
   onProgress: (job: Job) => void,
   signal: AbortSignal,
 ): Promise<Result> {
+  body = {
+    ...body,
+    return_basis: body.return_basis ?? "nominal",
+    risk_free_source: body.risk_free_source ?? "fixed_annual",
+  };
   requestSchema.parse(body);
   let job = await requestJson<Job>(
     `/api/v1/analytics/${kind}`,

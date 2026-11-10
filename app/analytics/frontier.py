@@ -7,7 +7,8 @@ from app.analytics.estimators import estimate_covariance
 from app.analytics.metrics import correlation_diagnostics, portfolio_metrics
 from app.analytics.models import AnalyticsError, OptimizationResult, ReturnPanel
 from app.analytics.optimizer import PortfolioOptimizer
-from app.analytics.provenance import panel_provenance
+from app.analytics.provenance import panel_provenance, reproducible
+from app.analytics.references import differential_moments
 
 
 def prepare(
@@ -19,11 +20,20 @@ def prepare(
     asset_constraints: dict | None = None,
     group_constraints: dict | None = None,
 ) -> tuple:
+    if panel.risk_free_source == "historical_bil" and panel.risk_free_returns is None:
+        raise AnalyticsError("Historical BIL mode requires aligned monthly BIL observations.")
     constraints = build_constraints(
         panel.assets, asset_constraints, group_constraints, panel.groups
     )
     estimate = estimate_covariance(
         panel.values, covariance_method, folds=cv_folds, target=shrinkage_target
+    )
+    panel.differential = differential_moments(
+        panel.values,
+        panel.risk_free_returns,
+        covariance_method,
+        folds=cv_folds,
+        target=shrinkage_target,
     )
     mean = panel.values.mean(0) * 12
     covariance = estimate.matrix * 12
@@ -46,7 +56,13 @@ def describe(
     if result.weights is not None:
         output["weights"] = dict(zip(panel.assets, result.weights.tolist(), strict=True))
         output["metrics"] = portfolio_metrics(
-            result.weights, panel.values, mean, covariance, risk_free_rate
+            result.weights,
+            panel.values,
+            mean,
+            covariance,
+            risk_free_rate,
+            risk_free_returns=panel.risk_free_returns,
+            differential=panel.differential,
         )
     return output
 
@@ -57,6 +73,26 @@ def data_diagnostics(panel: ReturnPanel, estimate, risk_free_rate: float = 0.03)
     if estimate.diagnostics["nearly_singular"]:
         warnings.append("Nearly singular covariance: a disclosed eigenvalue floor was applied.")
     return {
+        "return_basis": panel.return_basis,
+        "risk_free_source": panel.risk_free_source,
+        "reference_metadata": panel.reference_metadata,
+        "risk_free_mean_return": float(panel.risk_free_returns.mean() * 12)
+        if panel.risk_free_returns is not None
+        else risk_free_rate,
+        "differential_covariance_parameters": panel.differential["differential_estimate"].parameters
+        if panel.differential
+        else {},
+        "differential_covariance_diagnostics": panel.differential[
+            "differential_estimate"
+        ].diagnostics
+        if panel.differential
+        else {},
+        "annual_differential_covariance": panel.differential["differential_covariance"].tolist()
+        if panel.differential
+        else None,
+        "annual_differential_mean": panel.differential["differential_mean"].tolist()
+        if panel.differential
+        else None,
         "asset_portfolios": {
             asset: describe(
                 OptimizationResult("reference", weights, {"asset_id": asset}),
@@ -83,6 +119,7 @@ def data_diagnostics(panel: ReturnPanel, estimate, risk_free_rate: float = 0.03)
     }
 
 
+@reproducible
 def analyze_frontier(
     panel: ReturnPanel,
     *,
@@ -100,7 +137,7 @@ def analyze_frontier(
     started = time.perf_counter()
     allocation = user_allocation(panel.assets, user_weights)
     constraints, estimate, mean, covariance = prepare(panel, **options)
-    optimizer = PortfolioOptimizer(mean, covariance, constraints)
+    optimizer = PortfolioOptimizer(mean, covariance, constraints, **panel.differential)
     gmv, maximum, sharpe = (
         optimizer.gmv(),
         optimizer.maximum_return(),
@@ -151,7 +188,12 @@ def analyze_frontier(
         "covariance_diagnostics": estimate.diagnostics,
         "risk_free_rate": risk_free_rate,
         "gmv": describe(gmv, panel, mean, covariance, risk_free_rate),
-        "max_sharpe": describe(sharpe, panel, mean, covariance, risk_free_rate),
+        "max_sharpe": {
+            **describe(sharpe, panel, mean, covariance, risk_free_rate),
+            "label": "Max Sharpe · BIL differential"
+            if panel.risk_free_source == "historical_bil"
+            else "Max Sharpe",
+        },
         "maximum_return": describe(maximum, panel, mean, covariance, risk_free_rate),
         "selected_portfolio": describe(selected, panel, mean, covariance, risk_free_rate),
         "equal_weight": equal,

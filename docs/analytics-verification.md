@@ -77,3 +77,16 @@ Grouped negative-excess Max Sharpe can return a computational-limit failure when
 exhaustive enumeration would exceed 300,000 active bases. API jobs are bounded,
 process-local and not durable across restarts; the local API uses one ASGI process.
 No frontend or production deployment was built.
+
+
+## BIL/inflation upgrade verification
+
+New Live requests default to historical monthly BIL and nominal USD. Real mode
+deflates the complete asset/BIL panel before estimation, optimization, CV and
+Stationary Bootstrap. Estimated and historical Sharpe are reported separately.
+Legacy fixed-rate snapshots retain their original semantics.
+
+See [source, formula, refresh commands, API, revisions and verification](macro-analytics.md).
+
+The complete 2026-11-10 verification log, exact commands, file inventory,
+local import proof and limitations are in [macro-verification.md](macro-verification.md).

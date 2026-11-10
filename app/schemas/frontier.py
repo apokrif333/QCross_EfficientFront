@@ -27,7 +27,9 @@ class AnalyticsRequest(BaseModel):
     end_date: date | None = None
     covariance_method: CovarianceMethod = "sample"
     shrinkage_target: ShrinkageTarget = "identity"
-    risk_free_rate: float = Field(default=0.03, ge=-1, le=1)
+    return_basis: Literal["nominal", "real"] = "nominal"
+    risk_free_source: Literal["historical_bil", "fixed_annual"] = "historical_bil"
+    risk_free_rate: float = Field(default=0.03, gt=-1, le=1)
     objective: Objective = "gmv"
     target_return: float | None = Field(default=None, ge=-12, le=12)
     asset_constraints: dict[str, WeightBounds] = Field(default_factory=dict, max_length=15)
@@ -45,6 +47,17 @@ class AnalyticsRequest(BaseModel):
         default=None, min_length=1, max_length=2
     )
     risk_aversions: list[float] | None = Field(default=None, min_length=2, max_length=201)
+
+    @model_validator(mode="before")
+    @classmethod
+    def legacy_rate(cls, value):
+        if (
+            isinstance(value, dict)
+            and "risk_free_source" not in value
+            and "risk_free_rate" in value
+        ):
+            value = {**value, "risk_free_source": "fixed_annual"}
+        return value
 
     @model_validator(mode="after")
     def valid_selection(self):
@@ -92,6 +105,8 @@ class PortfolioMetrics(BaseModel):
     volatility: float
     historical_volatility: float
     sharpe_ratio: float | None
+    historical_sharpe_ratio: float | None = None
+    risk_free_mean_return: float | None = None
     historical_cagr: float
     historical_max_drawdown: float
 
@@ -106,6 +121,14 @@ class PortfolioRead(BaseModel):
 
 class AnalyticsResultBase(BaseModel):
     model_config = ConfigDict(extra="allow")
+    return_basis: Literal["nominal", "real"]
+    risk_free_source: Literal["historical_bil", "fixed_annual"]
+    reference_metadata: dict[str, Any]
+    risk_free_mean_return: float
+    differential_covariance_parameters: dict[str, Any]
+    differential_covariance_diagnostics: dict[str, Any]
+    annual_differential_covariance: list[list[float]] | None
+    annual_differential_mean: list[float] | None
     status: Literal["complete", "incomplete"]
     assets: list[str]
     asset_portfolios: dict[str, PortfolioRead]

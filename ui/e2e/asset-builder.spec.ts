@@ -14,6 +14,11 @@ test("Live asset builder, numbered constraints and a 100% VTI reference use actu
   await page.goto("/");
   await expect(page.locator(".js-plotly-plot")).toHaveCount(1);
   await page.getByRole("button", { name: "Live", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "Безрисковая доходность", exact: true })
+    .selectOption("fixed_annual");
+  await page.getByLabel("Конец", { exact: true }).fill("2026-08-31");
+  await page.getByLabel("Конец", { exact: true }).press("Escape");
   await expect(
     page.getByRole("combobox", { name: "Метод ковариации", exact: true }),
   ).toHaveValue("nonlinear");
@@ -115,9 +120,9 @@ test("Live asset builder, numbered constraints and a 100% VTI reference use actu
       axis: plot.layout.yaxis.title.text,
     };
   });
-  expect(plotted.axis).toBe("Историческая CAGR");
+  expect(plotted.axis).toBe("Ожидаемая доходность (арифм.)");
   expect(plotted.user!.y[0]).toBeCloseTo(
-    result.user_portfolio.metrics.historical_cagr,
+    result.user_portfolio.metrics.expected_return,
     12,
   );
   expect(plotted.user!.x[0]).toBeCloseTo(
@@ -139,7 +144,7 @@ test("Live asset builder, numbered constraints and a 100% VTI reference use actu
   expect(assetPoints!.marker!.color).toBe("#d14b74");
   for (const [index, asset] of ["1", "175", "243"].entries()) {
     expect(assetPoints!.y[index]).toBeCloseTo(
-      result.asset_portfolios[asset].metrics.historical_cagr,
+      result.asset_portfolios[asset].metrics.expected_return,
       12,
     );
     expect(assetPoints!.x[index]).toBeCloseTo(

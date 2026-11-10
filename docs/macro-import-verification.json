@@ -1,0 +1,25 @@
+{
+  "import": {
+    "observations": 2806,
+    "start": "1793-01-31",
+    "end": "2026-10-31",
+    "statuses": {
+      "historical_reconstruction": 1440,
+      "published": 1364,
+      "assumed_zero_unpublished": 2
+    },
+    "snapshot": "1a84bf81fc5e274f77819f6d60791923203a6d9fe1ff3921bd0f496a30f4d968",
+    "pending_revisions": 0
+  },
+  "nominal_before": {
+    "series": 503,
+    "observations": 361179,
+    "sha256": "207810e3293e35c79a00d598d4726dd5759edf2e35ad9e1598d6bc02fee16080"
+  },
+  "nominal_after": {
+    "series": 503,
+    "observations": 361179,
+    "sha256": "207810e3293e35c79a00d598d4726dd5759edf2e35ad9e1598d6bc02fee16080"
+  },
+  "scope": "local SQLite only; not a Railway deployment"
+}

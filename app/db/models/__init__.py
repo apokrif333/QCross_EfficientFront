@@ -1,5 +1,10 @@
 from app.db.models.ingestion_state import IngestionState
 from app.db.models.instrument import Instrument
+from app.db.models.reference import (  # noqa: F401
+    ReferenceObservation,
+    ReferenceRevision,
+    ReferenceSeries,
+)
 from app.db.models.returns import MonthlyReturn, ReturnImport, ReturnRevision, ReturnSeries
 
 __all__ = [

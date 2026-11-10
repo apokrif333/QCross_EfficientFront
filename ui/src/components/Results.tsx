@@ -24,11 +24,14 @@ import PortfolioTable from "./PortfolioTable";
 
 const AXES = {
   xaxis: { title: { text: "Годовая волатильность" }, tickformat: ".1%" },
-  yaxis: { title: { text: "Историческая CAGR" }, tickformat: ".1%" },
+  yaxis: {
+    title: { text: "Ожидаемая доходность (арифм.)" },
+    tickformat: ".1%",
+  },
 };
 function hover(p: Portfolio, label: string, instruments: Instrument[]) {
   const m = p.metrics;
-  return `<b>${escape(label)}</b><br>Ожидаемая (арифм.) ${percent(m?.expected_return)}<br>Историческая CAGR ${percent(m?.historical_cagr)}<br>Волатильность ${percent(displayedVolatility(m))}<br>Sharpe ${number(m?.sharpe_ratio)}<br>${visibleWeights(
+  return `<b>${escape(label)}</b><br>Ожидаемая (арифм.) ${percent(m?.expected_return)}<br>Историческая CAGR ${percent(m?.historical_cagr)}<br>Волатильность ${percent(displayedVolatility(m))}<br>Estimated Sharpe ${number(m?.sharpe_ratio)}<br>Historical Sharpe ${number(m?.historical_sharpe_ratio)}<br>${visibleWeights(
     p.weights ?? {},
   )
     .map(([a, w]) => `${escape(ticker(a, instruments))}: ${percent(w)}`)
@@ -47,7 +50,7 @@ function trace(
     mode: line ? "lines+markers" : "markers",
     name: label,
     x: good.map((p) => displayedVolatility(p.metrics) ?? null),
-    y: good.map((p) => p.metrics!.historical_cagr),
+    y: good.map((p) => p.metrics!.expected_return),
     marker: { color, size: line ? 4 : 12 },
     line: { color, width: 2.5 },
     customdata: good as never,
@@ -68,7 +71,7 @@ function assetTrace(
       mode: "text+markers",
       name: "Активы",
       x: entries.map(([, p]) => displayedVolatility(p.metrics) ?? null),
-      y: entries.map(([, p]) => p.metrics!.historical_cagr),
+      y: entries.map(([, p]) => p.metrics!.expected_return),
       text: entries.map(([id]) => ticker(id, instruments)),
       textposition: "top center",
       textfont: { color: "#d14b74", size: 11 },
@@ -111,7 +114,10 @@ export function PointDetail({
           Волатильность<b>{percent(displayedVolatility(p.metrics))}</b>
         </span>
         <span>
-          Sharpe<b>{number(p.metrics?.sharpe_ratio)}</b>
+          Estimated Sharpe<b>{number(p.metrics?.sharpe_ratio)}</b>
+          <small>
+            Historical Sharpe {number(p.metrics?.historical_sharpe_ratio)}
+          </small>
         </span>
         <span>
           Историческая CAGR<b>{percent(p.metrics?.historical_cagr)}</b>
@@ -177,7 +183,10 @@ export function FrontierView({
         });
     const rows = [
       { label: "GMV", portfolio: result.gmv },
-      { label: "Max Sharpe", portfolio: result.max_sharpe },
+      {
+        label: result.max_sharpe.label ?? "Max Sharpe",
+        portfolio: result.max_sharpe,
+      },
       { label: "Equal Weight", portfolio: result.equal_weight },
       ...(result.user_portfolio
         ? [{ label: "Ваш портфель", portfolio: result.user_portfolio }]
@@ -360,7 +369,7 @@ export function CVView({
               <th>Веса</th>
               <th>Train arithmetic return / vol</th>
               <th>Validation arithmetic return / vol</th>
-              <th>Validation Sharpe</th>
+              <th>Historical Validation Sharpe</th>
             </tr>
           </thead>
           <tbody>

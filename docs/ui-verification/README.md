@@ -1,5 +1,12 @@
 # Portfolio Lab browser verification
 
+Latest macro upgrade (2026-11-10): 9 Playwright scenarios passed, followed by 2
+targeted final checks of Real/BIL results and legacy defaults. Actual local
+Real/BIL results are in `macro-real-bil-desktop.png` and
+`macro-real-bil-mobile.png`, both visually inspected. Settings-only snapshots
+`macro-settings-desktop.png` and `macro-settings-mobile.png` use a mocked preview.
+See [exact verification commands and evidence](../macro-verification.md).
+
 Verified locally in Chromium on 2026-10-06; no public deployment.
 
 - `demo-desktop.png`: desktop Frontier, real stored USD results.

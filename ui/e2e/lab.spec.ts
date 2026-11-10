@@ -110,6 +110,11 @@ test("all four Live jobs, four-method comparison and exact snapshot repeat throu
   await page.goto("/");
   await expect(page.locator(".js-plotly-plot")).toHaveCount(1);
   await page.getByRole("button", { name: "Live", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "Безрисковая доходность", exact: true })
+    .selectOption("fixed_annual");
+  await page.getByLabel("Конец", { exact: true }).fill("2026-08-31");
+  await page.getByLabel("Конец", { exact: true }).press("Escape");
   await expect(
     page.getByRole("combobox", { name: "Метод ковариации", exact: true }),
   ).toHaveValue("nonlinear");
@@ -215,6 +220,11 @@ test("API validation error stays visible and is never replaced with a Demo resul
     route.fulfill({ json: { engine: { version: "test" }, instruments: [] } }),
   );
   await page.getByRole("button", { name: "Live", exact: true }).click();
+  await page
+    .getByRole("combobox", { name: "Безрисковая доходность", exact: true })
+    .selectOption("fixed_annual");
+  await page.getByLabel("Конец", { exact: true }).fill("2026-08-31");
+  await page.getByLabel("Конец", { exact: true }).press("Escape");
   await page.route("**/api/v1/analytics/frontier", (route) =>
     route.fulfill({
       status: 422,

@@ -28,7 +28,7 @@ export function portfolioHover(
 ): string {
   const m: Metrics | null = portfolio.metrics;
   return m
-    ? `Ожидаемая (арифм.): ${percent(m.expected_return)}<br>Историческая CAGR: ${percent(m.historical_cagr)}<br>Волатильность: ${percent(displayedVolatility(m))}<br>Sharpe: ${number(m.sharpe_ratio)}<br><br>${visibleWeights(
+    ? `Ожидаемая (арифм.): ${percent(m.expected_return)}<br>Историческая CAGR: ${percent(m.historical_cagr)}<br>Волатильность: ${percent(displayedVolatility(m))}<br>Estimated Sharpe: ${number(m.sharpe_ratio)}<br>Historical Sharpe: ${number(m.historical_sharpe_ratio)}<br><br>${visibleWeights(
         portfolio.weights || {},
       )
         .map(([a, w]) => `${escapeHtml(ticker(a, catalog))}: ${percent(w)}`)

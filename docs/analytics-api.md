@@ -65,6 +65,8 @@ Allocation fractions and return/volatility fractions use decimals, not percentag
   "covariance_method": "cv_linear",
   "shrinkage_target": "diagonal",
   "risk_free_rate": 0.03,
+  "return_basis": "nominal",
+  "risk_free_source": "historical_bil",
   "objective": "gmv",
   "target_return": null,
   "asset_constraints": {
@@ -96,7 +98,9 @@ IDs through the existing instrument catalog in other databases.
 | start_date/end_date | Optional; inclusive calendar months; reported history intersection |
 | covariance_method | sample, ledoit_wolf, nonlinear, cv_linear; default sample |
 | shrinkage_target | identity or diagonal; used for cv_linear |
-| risk_free_rate | Explicit annual fraction, default 0.03; finite in [-1,1] |
+| return_basis | nominal or real; default nominal; applies to every calculation |
+| risk_free_source | historical_bil or fixed_annual; new default historical_bil |
+| risk_free_rate | Manual fixed annual fraction; default 0.03 in fixed mode; finite in (-1,1] |
 | objective | gmv, max_sharpe, target_return; default gmv |
 | target_return | Required for target_return; annual arithmetic fraction in [-12,12] |
 | asset_constraints | Up to 15 ID-keyed min/max bounds in [0,1] |
@@ -171,6 +175,7 @@ status
 weights: {instrument_id_string: allocation_fraction} | null
 metrics: {
   expected_return, volatility, sharpe_ratio | null,
+  historical_sharpe_ratio | null, risk_free_mean_return,
   historical_cagr, historical_max_drawdown
 } | null
 diagnostics: {solver_status, solver, iterations, timing, constraint_violation, ...}
@@ -214,3 +219,13 @@ frontier. It also exercises all four API jobs through local FastAPI TestClient w
 real spawned worker processes, records timing and dependency versions, verifies
 the SQLite database byte hash is unchanged, and produces JSON/PNG/SVG artifacts.
 `--skip-api` skips only the repeated API timing calculation.
+
+
+## Nominal/Real and risk-free requests
+
+New Live requests default to historical monthly BIL and nominal USD. Real mode
+deflates the complete asset/BIL panel before estimation, optimization, CV and
+Stationary Bootstrap. Estimated and historical Sharpe are reported separately.
+Legacy fixed-rate snapshots retain their original semantics.
+
+See [source, formula, refresh commands, API, revisions and verification](macro-analytics.md).

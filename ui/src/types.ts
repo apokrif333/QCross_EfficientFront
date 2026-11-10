@@ -10,6 +10,8 @@ export interface ApiRequest {
   end_date: string | null;
   covariance_method: Method;
   shrinkage_target: "identity" | "diagonal";
+  return_basis?: "nominal" | "real";
+  risk_free_source?: "historical_bil" | "fixed_annual";
   risk_free_rate: number;
   objective: "gmv" | "max_sharpe" | "target_return";
   target_return: number | null;
@@ -44,6 +46,7 @@ export interface SeriesIdentity {
 export interface Provenance {
   engine: Engine;
   returns_matrix_sha256: string;
+  reference_panel_sha256?: string;
   matrix_encoding: string;
   source_series: SeriesIdentity[];
   api_request?: ApiRequest;
@@ -70,6 +73,8 @@ export interface Metrics {
   volatility: number;
   historical_volatility?: number;
   sharpe_ratio: number | null;
+  historical_sharpe_ratio?: number | null;
+  risk_free_mean_return?: number;
   historical_cagr: number;
   historical_max_drawdown: number;
 }
@@ -89,6 +94,12 @@ export interface Period {
   observations: number;
 }
 export interface BaseResult {
+  return_basis?: "nominal" | "real";
+  risk_free_source?: "historical_bil" | "fixed_annual";
+  reference_metadata?: Record<string, unknown>;
+  risk_free_mean_return?: number;
+  differential_covariance_parameters?: Record<string, unknown>;
+  differential_covariance_diagnostics?: Record<string, unknown>;
   asset_portfolios?: Record<string, Portfolio>;
   status: "complete" | "incomplete";
   assets: string[];
@@ -271,6 +282,8 @@ export const METHODS: {
   },
 ];
 export const DEFAULT_REQUEST: ApiRequest = {
+  return_basis: "nominal",
+  risk_free_source: "historical_bil",
   instrument_ids: [1, 175, 243],
   currency: "USD",
   start_date: "1990-01-01",

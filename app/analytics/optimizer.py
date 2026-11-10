@@ -13,8 +13,19 @@ class PortfolioOptimizer:
     """Reusable parameterized CVXPY QPs; annual means/covariances at the boundary."""
 
     def __init__(
-        self, mean: np.ndarray, covariance: np.ndarray, constraints: AllocationConstraints
+        self,
+        mean: np.ndarray,
+        covariance: np.ndarray,
+        constraints: AllocationConstraints,
+        *,
+        differential_mean=None,
+        differential_covariance=None,
+        differential_estimate=None,
     ):
+        self.differential_mean, self.differential_covariance = (
+            differential_mean,
+            differential_covariance,
+        )
         self.mean, self.covariance, self.constraints = mean, covariance, constraints
         self.weights = cp.Variable(len(mean))
         self.target = cp.Parameter()
@@ -89,6 +100,12 @@ class PortfolioOptimizer:
         return self._solve(self.utility_problem, self.weights)
 
     def max_sharpe(self, risk_free_rate: float = 0.03) -> OptimizationResult:
+        if self.differential_mean is not None:
+            result = PortfolioOptimizer(
+                self.differential_mean, self.differential_covariance, self.constraints
+            ).max_sharpe(0)
+            result.diagnostics["sharpe_objective"] = "estimated_differential_returns"
+            return result
         excess = self.mean - risk_free_rate
         attainable = self.maximum_return()
         if attainable.weights is None:

@@ -45,7 +45,10 @@ def test_catalog_and_preview_are_read_only(panel, settings, session_factory):
         catalog = client.get("/api/v1/analytics/catalog").json()
         assert len(catalog["instruments"]) == 3
         assert "Equity" in catalog["instruments"][0]["groups"]
-        preview = client.post("/api/v1/analytics/data-preview", json={"instrument_ids": [1, 2]})
+        preview = client.post(
+            "/api/v1/analytics/data-preview",
+            json={"risk_free_source": "fixed_annual", "instrument_ids": [1, 2]},
+        )
         assert preview.status_code == 200
         result = preview.json()
         assert result["period"]["observations"] == 240
@@ -53,6 +56,10 @@ def test_catalog_and_preview_are_read_only(panel, settings, session_factory):
         assert not app.state.analytics_jobs.jobs
         invalid = client.post(
             "/api/v1/analytics/data-preview",
-            json={"instrument_ids": [1, 2], "start_date": "2018-01-01"},
+            json={
+                "risk_free_source": "fixed_annual",
+                "instrument_ids": [1, 2],
+                "start_date": "2018-01-01",
+            },
         )
         assert invalid.status_code == 422 and "120" in invalid.text

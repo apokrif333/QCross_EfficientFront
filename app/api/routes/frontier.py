@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.analytics.constraints import build_constraints, numbered_groups
-from app.analytics.data_loader import instrument_groups, load_returns
+from app.analytics.data_loader import attach_references, instrument_groups, load_returns
 from app.analytics.jobs import JobCapacityError
 from app.analytics.models import AnalyticsError
 from app.analytics.provenance import engine_identity, panel_provenance
@@ -33,6 +33,13 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
             currency=body.currency,
             start_date=body.start_date,
             end_date=body.end_date,
+        )
+        panel = attach_references(
+            session,
+            panel,
+            return_basis=body.return_basis,
+            risk_free_source=body.risk_free_source,
+            risk_free_rate=body.risk_free_rate,
         )
         options = body.estimator_options()
         panel = numbered_groups(panel, body.asset_groups)
@@ -139,7 +146,20 @@ def data_preview(body: AnalyticsRequest, session: DatabaseSession) -> dict:
             start_date=body.start_date,
             end_date=body.end_date,
         )
+        panel = attach_references(
+            session,
+            panel,
+            return_basis=body.return_basis,
+            risk_free_source=body.risk_free_source,
+            risk_free_rate=body.risk_free_rate,
+        )
         return {
+            "return_basis": panel.return_basis,
+            "risk_free_source": panel.risk_free_source,
+            "reference_metadata": panel.reference_metadata,
+            "risk_free_mean_return": float(panel.risk_free_returns.mean() * 12)
+            if panel.risk_free_returns is not None
+            else body.risk_free_rate,
             "assets": panel.assets,
             "period": {
                 "start": str(panel.returns.index[0]),

@@ -27,6 +27,7 @@ def test_real_process_api_roundtrip(endpoint, panel, settings, session_factory):
     seed_database(session_factory, panel)
     app = create_app(settings)
     body = {
+        "risk_free_source": "fixed_annual",
         "instrument_ids": [3, 1, 2],
         "frontier_points": 3,
         "bootstrap_iterations": 3,
@@ -71,7 +72,7 @@ def test_api_rejects_invalid_inputs_before_starting_workers(panel, settings, ses
     with TestClient(app) as client:
         cases = [
             {"currency": "EUR"},
-            {"instrument_ids": [1, 1]},
+            {"risk_free_source": "fixed_annual", "instrument_ids": [1, 1]},
             {"cv_folds": 11},
             {"asset_constraints": {"1": {"min": 0.8}, "2": {"min": 0.8}}},
             {"group_constraints": {"unknown": {"max": 0.1}}},
@@ -82,13 +83,19 @@ def test_api_rejects_invalid_inputs_before_starting_workers(panel, settings, ses
         ]
         for override in cases:
             response = client.post(
-                "/api/v1/analytics/frontier", json={"instrument_ids": [1, 2], **override}
+                "/api/v1/analytics/frontier",
+                json={"risk_free_source": "fixed_annual", "instrument_ids": [1, 2], **override},
             )
             assert response.status_code == 422, response.text
         assert len(app.state.analytics_jobs.jobs) == 0
         response = client.post(
             "/api/v1/analytics/resampled-frontier",
-            json={"instrument_ids": [1, 2], "frontier_points": 201, "bootstrap_iterations": 500},
+            json={
+                "risk_free_source": "fixed_annual",
+                "instrument_ids": [1, 2],
+                "frontier_points": 201,
+                "bootstrap_iterations": 500,
+            },
         )
         assert response.status_code == 422 and "30,000" in response.text
 
@@ -101,9 +108,16 @@ def test_api_capacity_and_timeout_are_bounded(panel, settings, session_factory):
     with TestClient(app) as client:
         job = client.post(
             "/api/v1/analytics/bootstrap",
-            json={"instrument_ids": [1, 2], "bootstrap_iterations": 2000},
+            json={
+                "risk_free_source": "fixed_annual",
+                "instrument_ids": [1, 2],
+                "bootstrap_iterations": 2000,
+            },
         ).json()
-        second = client.post("/api/v1/analytics/bootstrap", json={"instrument_ids": [1, 2]})
+        second = client.post(
+            "/api/v1/analytics/bootstrap",
+            json={"risk_free_source": "fixed_annual", "instrument_ids": [1, 2]},
+        )
         assert second.status_code == 429 and second.headers["Retry-After"] == "5"
         started = time.monotonic()
         assert client.get("/health").status_code == 200
@@ -120,7 +134,11 @@ def test_worker_error_is_retrievable(panel, settings, session_factory):
     with TestClient(create_app(settings)) as client:
         job = client.post(
             "/api/v1/analytics/frontier",
-            json={"instrument_ids": [1, 2], "covariance_method": "nonlinear"},
+            json={
+                "risk_free_source": "fixed_annual",
+                "instrument_ids": [1, 2],
+                "covariance_method": "nonlinear",
+            },
         ).json()
         terminal = wait_result(client, job)
         assert terminal["status"] == "failed"
@@ -151,7 +169,12 @@ def test_cv_api_minimum_history_rejected_before_submission(panel, settings, sess
     with TestClient(app) as client:
         response = client.post(
             "/api/v1/analytics/cross-validation",
-            json={"instrument_ids": [1, 2], "start_date": "2008-01-01", "cv_folds": 4},
+            json={
+                "risk_free_source": "fixed_annual",
+                "instrument_ids": [1, 2],
+                "start_date": "2008-01-01",
+                "cv_folds": 4,
+            },
         )
         assert response.status_code == 422 and "required minimum=240" in response.text
         assert len(app.state.analytics_jobs.jobs) == 0
@@ -169,6 +192,7 @@ def test_covariance_history_rejected_before_job_submission(
         response = client.post(
             f"/api/v1/analytics/{endpoint}",
             json={
+                "risk_free_source": "fixed_annual",
                 "instrument_ids": [1, 2],
                 "covariance_method": "cv_linear",
                 "cv_folds": 20,
@@ -186,6 +210,7 @@ def test_frontier_still_supports_120_months(method, panel, settings, session_fac
     app = create_app(settings)
     with TestClient(app) as client:
         body = {
+            "risk_free_source": "fixed_annual",
             "instrument_ids": [1, 2],
             "start_date": "2010-01-01",
             "covariance_method": method,

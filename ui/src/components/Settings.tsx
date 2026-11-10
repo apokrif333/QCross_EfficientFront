@@ -152,20 +152,62 @@ export default function Settings({
             </select>
           </HelpField>
         )}
-        <div className="two">
-          <HelpField
-            label="Безрисковая ставка, %"
-            help="Постоянная годовая ставка для Sharpe: вычитается из арифметической ожидаемой доходности. Это заданное значение, а не исторический ряд ставок."
+        <div className="help-field">
+          <label>База доходности</label>
+          <div className="segmented" role="group" aria-label="База доходности">
+            {(["nominal", "real"] as const).map((basis) => (
+              <button
+                type="button"
+                key={basis}
+                className={
+                  (value.return_basis ?? "nominal") === basis ? "active" : ""
+                }
+                aria-pressed={(value.return_basis ?? "nominal") === basis}
+                onClick={() => set("return_basis", basis)}
+              >
+                {basis === "nominal" ? "До инфляции" : "После инфляции"}
+              </button>
+            ))}
+            <span
+              tabIndex={0}
+              title="Инфляция США восстановлена из LazyPortfolioETF BIL. До 1913 года — исторические оценки; 1913–1947 — CPI без сезонной корректировки, с 1948 — с корректировкой. Неопубликованные месяцы временно принимаются за 0%."
+              aria-label="Методология инфляции"
+            >
+              ⓘ
+            </span>
+          </div>
+        </div>
+        <label>
+          Безрисковая доходность
+          <select
+            value={value.risk_free_source ?? "fixed_annual"}
+            onChange={(e) =>
+              set(
+                "risk_free_source",
+                e.target.value as ApiRequest["risk_free_source"],
+              )
+            }
           >
-            <input
-              type="number"
-              min="-100"
-              max="100"
-              step="any"
-              value={value.risk_free_rate * 100}
-              onChange={(e) => set("risk_free_rate", +e.target.value / 100)}
-            />
-          </HelpField>
+            <option value="historical_bil">Историческая BIL</option>
+            <option value="fixed_annual">Фиксированная ставка</option>
+          </select>
+        </label>
+        <div className="two">
+          {(value.risk_free_source ?? "fixed_annual") === "fixed_annual" && (
+            <HelpField
+              label="Безрисковая ставка, %"
+              help="Постоянная годовая ставка для Sharpe: вычитается из арифметической ожидаемой доходности. Это заданное значение, а не исторический ряд ставок."
+            >
+              <input
+                type="number"
+                min="-100"
+                max="100"
+                step="any"
+                value={value.risk_free_rate * 100}
+                onChange={(e) => set("risk_free_rate", +e.target.value / 100)}
+              />
+            </HelpField>
+          )}
           <HelpField
             label="Точки Frontier"
             help="Число оптимизированных портфелей вдоль кривой от GMV до максимальной достижимой ожидаемой доходности. По умолчанию 51 точка."

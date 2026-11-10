@@ -9,6 +9,8 @@ from app.analytics.frontier import data_diagnostics, describe, prepare
 from app.analytics.metrics import historical_metrics, portfolio_metrics
 from app.analytics.models import AnalyticsError, OptimizationResult, ReturnPanel
 from app.analytics.optimizer import PortfolioOptimizer
+from app.analytics.provenance import reproducible
+from app.analytics.references import differential_moments
 from app.analytics.splitting import (
     CV_METHODOLOGY,
     MIN_COVARIANCE_TRAIN,
@@ -78,6 +80,7 @@ def weight_stability(weights: np.ndarray, original: np.ndarray, constraints) -> 
     }
 
 
+@reproducible
 def analyze_cross_validation(
     panel: ReturnPanel,
     *,
@@ -95,7 +98,7 @@ def analyze_cross_validation(
         covariance_method=options.get("covariance_method", "sample"),
     )
     constraints, estimate, mean, covariance = prepare(panel, cv_folds=cv_folds, **options)
-    original = PortfolioOptimizer(mean, covariance, constraints).optimize(
+    original = PortfolioOptimizer(mean, covariance, constraints, **panel.differential).optimize(
         objective, risk_free_rate, target_return
     )
     fold_results, fold_weights = [], []
@@ -123,13 +126,31 @@ def analyze_cross_validation(
                 train_values.mean(0) * 12,
                 training_estimate.matrix * 12,
             )
-            result = PortfolioOptimizer(training_mean, training_covariance, constraints).optimize(
-                objective, risk_free_rate, target_return
+            training_rf = (
+                panel.risk_free_returns[training] if panel.risk_free_returns is not None else None
             )
+            differential = differential_moments(
+                train_values,
+                training_rf,
+                options.get("covariance_method", "sample"),
+                folds=cv_folds,
+                target=options.get("shrinkage_target", "identity"),
+            )
+            result = PortfolioOptimizer(
+                training_mean, training_covariance, constraints, **differential
+            ).optimize(objective, risk_free_rate, target_return)
             fold.update(
                 status=result.status,
                 diagnostics=result.diagnostics,
                 weights=None,
+                differential_covariance_parameters=differential["differential_estimate"].parameters
+                if differential
+                else {},
+                differential_covariance_diagnostics=differential[
+                    "differential_estimate"
+                ].diagnostics
+                if differential
+                else {},
                 covariance_parameters=training_estimate.parameters,
                 covariance_diagnostics=training_estimate.diagnostics,
                 training_metrics=None,
@@ -140,7 +161,13 @@ def analyze_cross_validation(
                 fold_weights.append(weights)
                 fold["weights"] = dict(zip(panel.assets, weights.tolist(), strict=True))
                 fold["training_metrics"] = portfolio_metrics(
-                    weights, train_values, training_mean, training_covariance, risk_free_rate
+                    weights,
+                    train_values,
+                    training_mean,
+                    training_covariance,
+                    risk_free_rate,
+                    risk_free_returns=training_rf,
+                    differential=differential,
                 )
                 realized = validation_values @ weights
                 realized_return = float(realized.mean() * 12)
@@ -154,7 +181,27 @@ def analyze_cross_validation(
                     else None,
                     "realized_total_return": float(np.prod(1 + realized) - 1),
                     **historical_metrics(realized),
+                    "historical_sharpe_ratio": None,
                 }
+                validation_rf = (
+                    panel.risk_free_returns[validation]
+                    if panel.risk_free_returns is not None
+                    else np.full(len(validation), (1 + risk_free_rate) ** (1 / 12) - 1)
+                )
+                differences = realized - validation_rf
+                deviation = differences.std(ddof=1)
+                ratio = (
+                    float(np.sqrt(12) * differences.mean() / deviation)
+                    if deviation > 1e-12
+                    else None
+                )
+                fold["validation_metrics"].update(
+                    {
+                        "historical_sharpe_ratio": ratio,
+                        "risk_free_mean_return": float(validation_rf.mean() * 12),
+                        "realized_sharpe_ratio": ratio,
+                    }
+                )
         except (AnalyticsError, np.linalg.LinAlgError) as exc:
             fold.update(status="failed", weights=None, diagnostics={"reason": str(exc)})
         fold_results.append(fold)

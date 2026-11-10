@@ -23,7 +23,8 @@ export default function PortfolioTable({
             <th>Портфель</th>
             <th>Ожидаемая (арифм.)</th>
             <th>Волатильность</th>
-            <th>Sharpe</th>
+            <th>Estimated Sharpe</th>
+            <th>Historical Sharpe</th>
             <th>Историческая CAGR</th>
             <th>Просадка</th>
             <th>Веса</th>
@@ -46,6 +47,7 @@ export default function PortfolioTable({
               <td>{percent(p.metrics?.expected_return)}</td>
               <td>{percent(displayedVolatility(p.metrics))}</td>
               <td>{number(p.metrics?.sharpe_ratio)}</td>
+              <td>{number(p.metrics?.historical_sharpe_ratio)}</td>
               <td>{percent(p.metrics?.historical_cagr)}</td>
               <td>{percent(p.metrics?.historical_max_drawdown)}</td>
               <td className="weight-cell">

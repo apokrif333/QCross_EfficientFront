@@ -85,7 +85,7 @@ def nonlinear_covariance(values: np.ndarray) -> np.ndarray:
 def linear_covariance(values: np.ndarray, intensity: float, target: str) -> np.ndarray:
     if not 0 <= intensity <= 1 or target not in {"identity", "diagonal"}:
         raise AnalyticsError("Invalid linear shrinkage intensity or target.")
-    sample = np.cov(values, rowvar=False, ddof=1)
+    sample = np.atleast_2d(np.cov(values, rowvar=False, ddof=1))
     destination = (
         np.eye(sample.shape[0]) * np.trace(sample) / sample.shape[0]
         if target == "identity"
@@ -160,11 +160,11 @@ def estimate_covariance(
     fixed_parameters: dict | None = None,
 ) -> CovarianceEstimate:
     values = np.asarray(values, dtype=float)
-    if values.ndim != 2 or len(values) < 2 or values.shape[1] < 2 or not np.isfinite(values).all():
+    if values.ndim != 2 or len(values) < 2 or values.shape[1] < 1 or not np.isfinite(values).all():
         raise AnalyticsError("Covariance estimation requires a finite monthly return matrix.")
     parameters = {}
     if method == "sample":
-        matrix = np.cov(values, rowvar=False, ddof=1)
+        matrix = np.atleast_2d(np.cov(values, rowvar=False, ddof=1))
     elif method == "ledoit_wolf":
         estimator = LedoitWolf().fit(values)
         matrix = estimator.covariance_

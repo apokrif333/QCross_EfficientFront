@@ -20,12 +20,18 @@ export function settingsKey(request: ApiRequest): string {
     bootstrap_objectives: _objectives,
     risk_aversions: _aversions,
     ...rest
-  } = request;
+  } = {
+    ...request,
+    return_basis: request.return_basis ?? "nominal",
+    risk_free_source: request.risk_free_source ?? "fixed_annual",
+  };
   return stable(rest);
 }
 export function compatible(a: Calculation, b: Calculation): boolean {
   return (
     settingsKey(a.request) === settingsKey(b.request) &&
+    a.result.reproducibility.reference_panel_sha256 ===
+      b.result.reproducibility.reference_panel_sha256 &&
     a.result.reproducibility.returns_matrix_sha256 ===
       b.result.reproducibility.returns_matrix_sha256
   );

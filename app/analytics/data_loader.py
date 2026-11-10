@@ -207,3 +207,115 @@ def load_returns(
     if len(frame) < 180:
         warnings.append("Short common history: fewer than 180 monthly observations.")
     return ReturnPanel(frame, list(frame.columns), groups, metadata, warnings)
+
+
+def attach_references(
+    session,
+    panel,
+    *,
+    return_basis="nominal",
+    risk_free_source="historical_bil",
+    risk_free_rate=0.03,
+):
+    """One database pass per request, before jobs and all numerical loops."""
+    import numpy as np
+    from sqlalchemy import inspect
+
+    from app.analytics.references import real_returns
+    from app.db.models.reference import ReferenceObservation, ReferenceSeries
+    from app.ingestion.lazyportfolio.inflation import UNPUBLISHED
+    from app.ingestion.lazyportfolio.macro_service import INFLATION, bil_series
+
+    months = panel.returns.index
+    refs = {
+        "effective_start_date": str(months[0]),
+        "effective_end_date": str(months[-1]),
+        "effective_observation_count": len(months),
+    }
+    if risk_free_source == "historical_bil":
+        try:
+            bil = bil_series(session)
+        except ValueError as exc:
+            raise AnalyticsError(str(exc)) from exc
+        rows = list(session.scalars(select(MonthlyReturn).where(MonthlyReturn.series_id == bil.id)))
+        by_month = {pd.Period(r.date, freq="M"): r.return_value for r in rows}
+        missing = [str(m) for m in months if m not in by_month]
+        if missing:
+            raise AnalyticsError(
+                f"BIL reference lacks requested months {missing[:12]}; "
+                "refresh validated BIL returns."
+            )
+        risk_free = np.array([float(by_month[m]) for m in months])
+        version = hashlib.sha256(
+            json.dumps([[str(m), str(by_month[m])] for m in months]).encode()
+        ).hexdigest()
+        refs.update(
+            risk_free_instrument="BIL",
+            risk_free_source_series_id=bil.id,
+            risk_free_data_version=version,
+            bil_start_date=str(bil.start_date),
+            bil_end_date=str(bil.end_date),
+            bil_observation_count=bil.observation_count,
+        )
+    else:
+        if risk_free_rate <= -1:
+            raise AnalyticsError("Fixed nominal annual risk-free rate must exceed -100%.")
+        risk_free = np.full(len(months), np.expm1(np.log1p(risk_free_rate) / 12))
+        refs.update(fixed_annual_rate=risk_free_rate, monthly_convention="(1+annual)^(1/12)-1")
+    if return_basis == "real":
+        if not inspect(session.get_bind()).has_table("reference_series"):
+            raise AnalyticsError(
+                "Inflation reference unavailable: run Alembic upgrade head "
+                "and macro import-bil-inflation."
+            )
+        series = session.scalar(
+            select(ReferenceSeries).where(ReferenceSeries.series_code == INFLATION)
+        )
+        if series is None:
+            raise AnalyticsError("Inflation reference unavailable: run macro import-bil-inflation.")
+        rows = {
+            pd.Period(o.month, freq="M"): o
+            for o in session.scalars(
+                select(ReferenceObservation).where(ReferenceObservation.series_id == series.id)
+            )
+        }
+        rates, statuses = [], []
+        for month in months:
+            row = rows.get(month)
+            if row is None and str(month) not in UNPUBLISHED:
+                raise AnalyticsError(
+                    f"Unknown inflation gap at {month}; import/resolve source history, "
+                    "no automatic zero fill."
+                )
+            rates.append(float(row.value) if row else 0.0)
+            statuses.append(row.status if row else "assumed_zero_unpublished")
+        inflation = np.array(rates)
+        refs.update(
+            inflation_source="LazyPortfolioETF BIL capitalBase/capitalNoInfl",
+            inflation_data_version=series.data_version,
+            inflation_historical_reconstruction=[
+                str(m)
+                for m, s in zip(months, statuses, strict=True)
+                if s == "historical_reconstruction"
+            ],
+            inflation_assumed_zero_months=[
+                str(m)
+                for m, s in zip(months, statuses, strict=True)
+                if s == "assumed_zero_unpublished"
+            ],
+            inflation_observations=[
+                [str(m), float(v), s] for m, v, s in zip(months, inflation, statuses, strict=True)
+            ],
+        )
+        refs["inflation_assumed_zero_count"] = len(refs["inflation_assumed_zero_months"])
+        panel.returns = pd.DataFrame(
+            real_returns(panel.values, inflation), index=months, columns=panel.assets
+        )
+        risk_free = real_returns(risk_free, inflation)
+    panel.return_basis, panel.risk_free_source = return_basis, risk_free_source
+    panel.reference_metadata = refs
+    # Legacy nominal fixed-mode keeps the existing model-based 3% objective.
+    panel.risk_free_returns = (
+        risk_free if risk_free_source == "historical_bil" or return_basis == "real" else None
+    )
+    return panel

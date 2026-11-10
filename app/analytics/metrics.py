@@ -17,14 +17,40 @@ def portfolio_metrics(
     mean: np.ndarray,
     covariance: np.ndarray,
     risk_free_rate: float = 0.03,
+    *,
+    risk_free_returns=None,
+    differential=None,
 ) -> dict:
     expected = float(weights @ mean)
     volatility = float(np.sqrt(max(0, weights @ covariance @ weights)))
+    if risk_free_returns is None:
+        monthly_rf = (1 + risk_free_rate) ** (1 / 12) - 1
+        differences = values @ weights - monthly_rf
+        deviation = differences.std(ddof=1)
+        sharpe = {
+            "sharpe_ratio": (expected - risk_free_rate) / volatility
+            if volatility > 1e-10
+            else None,
+            "historical_sharpe_ratio": float(np.sqrt(12) * differences.mean() / deviation)
+            if deviation > 1e-12
+            else None,
+            "risk_free_mean_return": risk_free_rate,
+        }
+    else:
+        from app.analytics.references import sharpe_metrics
+
+        sharpe = sharpe_metrics(
+            weights,
+            values,
+            risk_free_returns,
+            differential["differential_mean"],
+            differential["differential_covariance"],
+        )
     return {
+        **sharpe,
         "expected_return": expected,
         "volatility": volatility,
         "historical_volatility": float(np.std(values @ weights, ddof=0) * np.sqrt(12)),
-        "sharpe_ratio": (expected - risk_free_rate) / volatility if volatility > 1e-10 else None,
         **historical_metrics(values @ weights),
     }
 

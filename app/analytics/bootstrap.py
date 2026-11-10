@@ -11,6 +11,8 @@ from app.analytics.frontier import data_diagnostics, describe, prepare
 from app.analytics.metrics import portfolio_metrics
 from app.analytics.models import AnalyticsError, OptimizationResult, ReturnPanel
 from app.analytics.optimizer import PortfolioOptimizer
+from app.analytics.provenance import reproducible
+from app.analytics.references import differential_moments
 
 
 def stationary_indices(observations: int, expected_block_length: float, rng) -> np.ndarray:
@@ -88,6 +90,7 @@ def _summary(records: list[dict], requested: int) -> dict:
     }
 
 
+@reproducible
 def analyze_bootstrap(
     panel: ReturnPanel,
     *,
@@ -106,7 +109,7 @@ def analyze_bootstrap(
         )
     started = time.perf_counter()
     constraints, estimate, mean, covariance = prepare(panel, **options)
-    engine = PortfolioOptimizer(mean, covariance, constraints)
+    engine = PortfolioOptimizer(mean, covariance, constraints, **panel.differential)
     originals = {objective: engine.optimize(objective, risk_free_rate) for objective in objectives}
     records = {objective: [] for objective in objectives}
     weight_vectors = {objective: [] for objective in objectives}
@@ -118,7 +121,22 @@ def analyze_bootstrap(
         try:
             sample_estimate = _sample_estimate(values, estimate, options)
             sample_mean, sample_covariance = values.mean(0) * 12, sample_estimate.matrix * 12
-            sample_engine = PortfolioOptimizer(sample_mean, sample_covariance, constraints)
+            sample_rf = (
+                panel.risk_free_returns[indices] if panel.risk_free_returns is not None else None
+            )
+            differential = differential_moments(
+                values,
+                sample_rf,
+                estimate.method,
+                folds=options.get("cv_folds", 4),
+                target=options.get("shrinkage_target", "identity"),
+                fixed_parameters=panel.differential["differential_estimate"].parameters
+                if estimate.method == "cv_linear" and panel.differential
+                else None,
+            )
+            sample_engine = PortfolioOptimizer(
+                sample_mean, sample_covariance, constraints, **differential
+            )
         except (AnalyticsError, np.linalg.LinAlgError) as exc:
             for objective in objectives:
                 records[objective].append(
@@ -139,12 +157,28 @@ def analyze_bootstrap(
                 "weights": None,
                 "metrics": None,
                 "covariance_diagnostics": sample_estimate.diagnostics,
+                "differential_covariance_parameters": differential[
+                    "differential_estimate"
+                ].parameters
+                if differential
+                else {},
+                "differential_covariance_diagnostics": differential[
+                    "differential_estimate"
+                ].diagnostics
+                if differential
+                else {},
             }
             if result.weights is not None:
                 weight_vectors[objective].append(result.weights)
                 record["weights"] = dict(zip(panel.assets, result.weights.tolist(), strict=True))
                 record["metrics"] = portfolio_metrics(
-                    result.weights, values, sample_mean, sample_covariance, risk_free_rate
+                    result.weights,
+                    values,
+                    sample_mean,
+                    sample_covariance,
+                    risk_free_rate,
+                    risk_free_returns=sample_rf,
+                    differential=differential,
                 )
             records[objective].append(record)
     results = {}
@@ -213,6 +247,7 @@ def analyze_bootstrap(
     }
 
 
+@reproducible
 def analyze_resampled_frontier(
     panel: ReturnPanel,
     *,

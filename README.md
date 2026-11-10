@@ -656,3 +656,13 @@ Install the numerical and test dependencies with the project's configured interp
 using `-m pip install -e ".[dev]"`. Run the reproducible stored-history demonstration
 with `-m scripts.analytics_demo`. Analytics reads existing validated return series;
 historical data and ingestion mechanisms are unchanged.
+
+
+## Historical BIL and real-return analytics
+
+New Live requests default to historical monthly BIL and nominal USD. Real mode
+deflates the complete asset/BIL panel before estimation, optimization, CV and
+Stationary Bootstrap. Estimated and historical Sharpe are reported separately.
+Legacy fixed-rate snapshots retain their original semantics.
+
+See [source, formula, refresh commands, API, revisions and verification](docs/macro-analytics.md).

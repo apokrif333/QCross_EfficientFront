@@ -2,13 +2,39 @@
 
 import hashlib
 import json
-from functools import lru_cache
+from functools import lru_cache, wraps
 from importlib.metadata import version
+from inspect import signature
 from pathlib import Path
 
 from app.analytics.models import ReturnPanel
 
-ENGINE_VERSION = "1.3.0"
+ENGINE_VERSION = "2.0.0"
+
+
+def reproducible(function):
+    """Include estimator parameters and effective settings in calculation identity."""
+
+    @wraps(function)
+    def calculate(*args, **kwargs):
+        result = function(*args, **kwargs)
+        bound = signature(function).bind(*args, **kwargs)
+        bound.apply_defaults()
+        settings = {k: v for k, v in bound.arguments.items() if k != "panel"}
+        identity = {
+            "panel": result["reproducibility"]["reference_panel_sha256"],
+            "engine": engine_identity(),
+            "settings": settings,
+            "asset_parameters": result["covariance_parameters"],
+            "differential_parameters": result["differential_covariance_parameters"],
+            "sample_fingerprint": result.get("sample_fingerprint"),
+        }
+        result["reproducibility"]["calculation_sha256"] = hashlib.sha256(
+            json.dumps(identity, sort_keys=True, default=str).encode()
+        ).hexdigest()
+        return result
+
+    return calculate
 
 
 @lru_cache
@@ -17,6 +43,7 @@ def engine_identity() -> dict:
     directory = Path(__file__).parent
     for name in (
         "models.py",
+        "references.py",
         "data_loader.py",
         "estimators.py",
         "constraints.py",
@@ -46,7 +73,21 @@ def panel_provenance(panel: ReturnPanel) -> dict:
     digest = hashlib.sha256(json.dumps(header, sort_keys=True, separators=(",", ":")).encode())
     digest.update(b"\n")
     digest.update(panel.values.astype("<f8").tobytes(order="C"))
+    reference_digest = hashlib.sha256(digest.digest())
+    reference_digest.update(
+        json.dumps(
+            {
+                "basis": panel.return_basis,
+                "risk_free_source": panel.risk_free_source,
+                "references": panel.reference_metadata,
+            },
+            sort_keys=True,
+        ).encode()
+    )
+    if panel.risk_free_returns is not None:
+        reference_digest.update(panel.risk_free_returns.astype("<f8").tobytes())
     return {
+        "reference_panel_sha256": reference_digest.hexdigest(),
         "engine": engine_identity(),
         "returns_matrix_sha256": digest.hexdigest(),
         "matrix_encoding": "canonical JSON {assets,months}, LF, row-major little-endian float64",

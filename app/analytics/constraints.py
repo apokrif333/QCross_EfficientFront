@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import cvxpy as cp
 import numpy as np
@@ -13,7 +13,7 @@ def numbered_groups(panel: ReturnPanel, mapping: dict[str, int]) -> ReturnPanel:
         if asset not in panel.assets or isinstance(group, bool) or group not in range(1, 6):
             raise AnalyticsError("User groups require selected asset IDs and group numbers 1 to 5.")
         groups.setdefault(f"Group {group}", []).append(asset)
-    return ReturnPanel(panel.returns, panel.assets, groups, panel.metadata, panel.warnings)
+    return replace(panel, groups=groups)
 
 
 def user_allocation(assets: list[str], weights: dict | None) -> np.ndarray | None:

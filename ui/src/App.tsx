@@ -20,6 +20,7 @@ import {
   createSnapshot,
   downloadJson,
   parseSnapshot,
+  stable,
   type Comparison,
 } from "./lib/snapshot";
 import Settings from "./components/Settings";
@@ -97,7 +98,11 @@ export default function App() {
   );
   const formError = allocationError(assetRows);
   const adoptRequest = (next: ApiRequest) => {
-    setRequest(next);
+    setRequest({
+      ...next,
+      return_basis: next.return_basis ?? "nominal",
+      risk_free_source: next.risk_free_source ?? "fixed_annual",
+    });
     setAssetRows(rowsFromRequest(next));
   };
   const updateRows = (rows: AssetRow[]) => {
@@ -111,6 +116,9 @@ export default function App() {
     request.instrument_ids,
     request.start_date,
     request.end_date,
+    request.return_basis,
+    request.risk_free_source,
+    request.risk_free_rate,
   ]);
   useEffect(() => {
     setPeriodInfo("");
@@ -126,6 +134,9 @@ export default function App() {
           body: JSON.stringify({
             instrument_ids: request.instrument_ids,
             currency: "USD",
+            return_basis: request.return_basis ?? "nominal",
+            risk_free_source: request.risk_free_source ?? "fixed_annual",
+            risk_free_rate: request.risk_free_rate,
             start_date: request.start_date,
             end_date: request.end_date,
           }),
@@ -199,6 +210,8 @@ export default function App() {
         if (!loaded && mode === "demo") {
           const next = {
             ...request,
+            return_basis: "nominal" as const,
+            risk_free_source: "historical_bil" as const,
             asset_constraints: {},
             group_constraints: {},
             asset_groups: {},
@@ -241,6 +254,9 @@ export default function App() {
           body: JSON.stringify({
             instrument_ids: request.instrument_ids,
             currency: "USD",
+            return_basis: request.return_basis ?? "nominal",
+            risk_free_source: request.risk_free_source ?? "fixed_annual",
+            risk_free_rate: request.risk_free_rate,
             start_date: request.start_date,
             end_date: request.end_date,
           }),
@@ -261,6 +277,11 @@ export default function App() {
     body: ApiRequest,
     signal: AbortSignal,
   ): Promise<Calculation> {
+    body = {
+      ...body,
+      return_basis: body.return_basis ?? "nominal",
+      risk_free_source: body.risk_free_source ?? "fixed_annual",
+    };
     const cvError = cvHistoryError(body, kind, commonObservations);
     if (cvError) throw new Error(cvError);
     const result = await runJob(kind, body, setProgress, signal);
@@ -410,9 +431,7 @@ export default function App() {
     }
   }
   const stale =
-    visible &&
-    mode === "live" &&
-    JSON.stringify(visible.request) !== JSON.stringify(request);
+    visible && mode === "live" && stable(visible.request) !== stable(request);
   const resultLabel = loaded
     ? "JSON Snapshot"
     : mode === "demo"
@@ -559,6 +578,7 @@ export default function App() {
               <label className="demo-method">
                 {loaded ? "Метод в снимке" : "Метод в Demo"}
                 <select
+                  disabled={!demo || !!busy}
                   value={request.covariance_method}
                   onChange={(e) =>
                     changeRequest({
@@ -606,7 +626,7 @@ export default function App() {
                 </h2>
                 <p>
                   {visible
-                    ? `${visible.result.period.start} — ${visible.result.period.end} · ${visible.result.period.observations} месяцев · ${visible.request.covariance_method}`
+                    ? `${visible.request.return_basis === "real" ? "Real" : "Nominal"} USD · ${visible.request.risk_free_source === "historical_bil" ? "Historical BIL" : "Fixed annual"} · ${visible.result.period.start} — ${visible.result.period.end} · ${visible.result.period.observations} месяцев · ${visible.request.covariance_method}`
                     : "Выберите активы и запустите расчёт"}
                 </p>
               </div>
@@ -869,6 +889,11 @@ export default function App() {
                     {
                       parameters: visible.result.covariance_parameters,
                       diagnostics: visible.result.covariance_diagnostics,
+                      differential_parameters:
+                        visible.result.differential_covariance_parameters,
+                      differential_diagnostics:
+                        visible.result.differential_covariance_diagnostics,
+                      references: visible.result.reference_metadata,
                       provenance: visible.result.reproducibility,
                     },
                     null,

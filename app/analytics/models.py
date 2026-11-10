@@ -20,6 +20,11 @@ class ReturnPanel:
     groups: dict[str, list[str]] = field(default_factory=dict)
     metadata: list[dict[str, Any]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    risk_free_returns: np.ndarray | None = None
+    reference_metadata: dict = field(default_factory=dict)
+    return_basis: str = "nominal"
+    risk_free_source: str = "fixed_annual"
+    differential: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not 2 <= len(self.assets) <= 15:
@@ -38,6 +43,13 @@ class ReturnPanel:
             raise AnalyticsError("A maximum of 10,000 monthly observations is supported.")
         if not np.isfinite(values).all() or (values < -1).any():
             raise AnalyticsError("Monthly returns must be finite and at least -100%.")
+        if self.risk_free_returns is not None:
+            self.risk_free_returns = np.asarray(self.risk_free_returns, dtype=float)
+            if (
+                self.risk_free_returns.shape != (len(values),)
+                or not np.isfinite(self.risk_free_returns).all()
+            ):
+                raise AnalyticsError("Risk-free observations must match every aligned asset month.")
         periods = pd.PeriodIndex(self.returns.index, freq="M")
         if not periods.equals(pd.period_range(periods[0], periods[-1], freq="M")):
             raise AnalyticsError("The aligned period contains missing or duplicate months.")

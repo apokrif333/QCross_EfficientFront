@@ -5,7 +5,8 @@ and UI conventions, see [return-conventions.md](return-conventions.md).
 
 The analytics engine takes aligned monthly simple total returns. Only `data_loader.py`
 imports SQLAlchemy; numerical modules have no FastAPI/database dependency. No historical
-observations, ingestion adapters or validated series metadata are changed.
+nominal observations or validated nominal series metadata are changed. Versioned
+macro reference storage and ingestion are documented in [macro-analytics.md](macro-analytics.md).
 
 ## Data and mathematical conventions
 
@@ -17,8 +18,10 @@ An internal missing month is an error, never a zero or a filled observation. Req
 
 Expected annual return is `12 * mean(monthly_return)`. Annual covariance is
 `12 * monthly_covariance`; annual volatility is the square root of portfolio annual
-variance. The annual risk-free rate defaults to 0.03 and is subtracted from expected
-annual arithmetic return to calculate Sharpe. Historical returns assume monthly
+variance. New requests default to monthly historical BIL. Estimated Sharpe uses
+the mean and estimated covariance of asset-minus-BIL monthly differences;
+historical Sharpe uses their observed sample standard deviation. An explicit
+legacy fixed annual mode retains its original model-based objective. Historical returns assume monthly
 rebalancing: `r_p,t = returns[t] @ weights`. CAGR is compounded separately, using
 `exp(12 * mean(log(1 + r_p,t))) - 1`. Maximum drawdown includes initial wealth before
 the first observation. Drawdown is reported as a positive loss fraction. Undefined
@@ -203,3 +206,13 @@ average unrelated sample frontier points by index. Custom positive finite gamma
 values up to 1e6 are accepted. A sample succeeds only if every gamma succeeds;
 the same 95% sample threshold applies. Return this curve separately and label it
 as a resampled approximation, not the exact classical efficient frontier.
+
+
+## Historical BIL and inflation
+
+New Live requests default to historical monthly BIL and nominal USD. Real mode
+deflates the complete asset/BIL panel before estimation, optimization, CV and
+Stationary Bootstrap. Estimated and historical Sharpe are reported separately.
+Legacy fixed-rate snapshots retain their original semantics.
+
+See [source, formula, refresh commands, API, revisions and verification](macro-analytics.md).

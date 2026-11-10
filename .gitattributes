@@ -1,0 +1,2 @@
+# Preserve captured provider HTML byte-for-byte; source formatting is not code style.
+tests/fixtures/lazyportfolio_bil_inflation.html -text -whitespace

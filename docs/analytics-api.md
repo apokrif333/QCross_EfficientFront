@@ -239,6 +239,10 @@ See [source, formula, refresh commands, API, revisions and verification](macro-a
 
 # Portfolio efficiency robustness API
 
+For the current training-only portfolio comparison and paired Bootstrap output,
+see [paired Validation API and methodology](paired-validation.md). The rolling
+endpoint documented below is retained solely for compatibility with old clients.
+
 Set `user_weights` (asset IDs as keys, weights totaling one) and
 `include_efficiency_robustness: true` on `/cross-validation` or `/bootstrap` to
 add fixed-allocation distance diagnostics without changing their existing

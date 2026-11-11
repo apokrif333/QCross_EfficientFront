@@ -14,6 +14,7 @@ from app.analytics.frontier import data_diagnostics, describe, prepare
 from app.analytics.metrics import portfolio_metrics
 from app.analytics.models import AnalyticsError, OptimizationResult, ReturnPanel
 from app.analytics.optimizer import PortfolioOptimizer
+from app.analytics.paired_comparison import PairedBootstrap
 from app.analytics.provenance import reproducible
 from app.analytics.references import differential_moments
 
@@ -139,6 +140,7 @@ def analyze_bootstrap(
     target_return: float | None = None,
     user_weights: dict | None = None,
     include_efficiency_robustness: bool = True,
+    include_paired_comparison: bool = True,
     **options,
 ) -> dict:
     _validate_settings(bootstrap_iterations, expected_block_length, random_seed)
@@ -147,24 +149,28 @@ def analyze_bootstrap(
         "gmv",
         "max_sharpe",
         "target_return",
+        "max_return_at_user_risk",
     }:
         raise AnalyticsError(
             "Bootstrap supports distinct GMV, Max Sharpe and target_return objectives."
         )
     if "target_return" in objectives and (target_return is None or not np.isfinite(target_return)):
         raise AnalyticsError("Target Return Bootstrap requires a finite annual target_return.")
+    if user_weights and include_paired_comparison and bootstrap_iterations % 2:
+        raise AnalyticsError("Paired Bootstrap requires an even number of generated datasets.")
     started = time.perf_counter()
     constraints, estimate, mean, covariance = prepare(panel, **options)
-    fixed_user_weights = (
-        user_allocation(panel.assets, user_weights)
-        if include_efficiency_robustness and user_weights
+    fixed_user_weights = user_allocation(panel.assets, user_weights) if user_weights else None
+    paired = (
+        PairedBootstrap(panel.assets, fixed_user_weights, constraints)
+        if fixed_user_weights is not None and include_paired_comparison
         else None
     )
     engine = PortfolioOptimizer(mean, covariance, constraints, **panel.differential)
     originals = {
         objective: _target_solution(engine, target_return, risk_free_rate)
         if objective == "target_return"
-        else engine.optimize(objective, risk_free_rate)
+        else engine.optimize(objective, risk_free_rate, user_weights=fixed_user_weights)
         for objective in objectives
     }
     records = {objective: [] for objective in objectives}
@@ -203,8 +209,19 @@ def analyze_bootstrap(
                     "portfolio_metrics": {},
                     "portfolio_metrics_diagnostics": {"reason": str(exc)},
                 }
+        paired_consumed = False
         try:
             sample_estimate = _sample_estimate(values, estimate, options)
+            if paired is not None:
+                paired.consume(
+                    iteration,
+                    values,
+                    sample_rf
+                    if sample_rf is not None
+                    else np.full(len(values), (1 + risk_free_rate) ** (1 / 12) - 1),
+                    sample_estimate,
+                )
+                paired_consumed = True
             sample_mean, sample_covariance = values.mean(0) * 12, sample_estimate.matrix * 12
             if fixed_user_weights is not None:
                 try:
@@ -256,6 +273,15 @@ def analyze_bootstrap(
                 sample_mean, sample_covariance, constraints, **differential
             )
         except (AnalyticsError, np.linalg.LinAlgError) as exc:
+            if paired is not None and not paired_consumed:
+                paired.consume(
+                    iteration,
+                    values,
+                    sample_rf
+                    if sample_rf is not None
+                    else np.full(len(values), (1 + risk_free_rate) ** (1 / 12) - 1),
+                    None,
+                )
             if fixed_user_weights is not None and len(efficiency_records) == iteration:
                 efficiency_records.append(
                     {
@@ -279,7 +305,9 @@ def analyze_bootstrap(
             result = (
                 _target_solution(sample_engine, target_return, risk_free_rate)
                 if objective == "target_return"
-                else sample_engine.optimize(objective, risk_free_rate)
+                else sample_engine.optimize(
+                    objective, risk_free_rate, user_weights=fixed_user_weights
+                )
             )
             record = {
                 "iteration": iteration,
@@ -428,6 +456,7 @@ def analyze_bootstrap(
         "interpretation": "Allocation sensitivity; not guaranteed future-return intervals.",
         "portfolio_evaluation": "original_and_resampled_on_same_original_full_sample",
         "objectives": results,
+        "paired_comparison": paired.result(len(panel.values)) if paired is not None else None,
         "efficiency_robustness": {
             "user_weights": dict(zip(panel.assets, fixed_user_weights.tolist(), strict=True)),
             "evaluation": "stationary_bootstrap_resampled_scenarios_not_future_probability",

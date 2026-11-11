@@ -16,6 +16,7 @@ export function stable(value: unknown): string {
 export function effectiveRequest(request: ApiRequest): ApiRequest {
   return {
     ...request,
+    include_paired_comparison: request.include_paired_comparison ?? false,
     include_efficiency_robustness:
       request.include_efficiency_robustness ?? true,
     rolling_window_months: request.rolling_window_months ?? 120,

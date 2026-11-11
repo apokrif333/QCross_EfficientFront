@@ -31,6 +31,7 @@ def test_real_process_api_roundtrip(endpoint, panel, settings, session_factory):
         "instrument_ids": [3, 1, 2],
         "frontier_points": 3,
         "bootstrap_iterations": 3,
+        "include_paired_comparison": False,
         "asset_constraints": {"1": {"max": 0.4}},
         "group_constraints": {"Equity": {"max": 1.0}, "Group 3": {"min": 0.1}},
         "asset_groups": {"1": 1, "2": 3, "3": 5},

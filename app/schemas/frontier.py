@@ -39,6 +39,7 @@ class AnalyticsRequest(BaseModel):
     )
     user_weights: dict[str, float] | None = Field(default=None, max_length=15)
     include_efficiency_robustness: bool = True
+    include_paired_comparison: bool = True
     rolling_window_months: int = Field(default=120, ge=120, le=10000)
     rolling_step_months: int = Field(default=12, ge=1, le=120)
     frontier_points: int = Field(default=51, ge=2, le=201)
@@ -46,9 +47,9 @@ class AnalyticsRequest(BaseModel):
     bootstrap_iterations: int = Field(default=1000, ge=1, le=2000)
     expected_block_length: float = Field(default=12, ge=3, le=24)
     random_seed: int = Field(default=42, ge=0, le=2**32 - 1)
-    bootstrap_objectives: list[Literal["gmv", "max_sharpe", "target_return"]] | None = Field(
-        default=None, min_length=1, max_length=3
-    )
+    bootstrap_objectives: (
+        list[Literal["gmv", "max_sharpe", "target_return", "max_return_at_user_risk"]] | None
+    ) = Field(default=None, min_length=1, max_length=4)
     risk_aversions: list[float] | None = Field(default=None, min_length=2, max_length=201)
 
     @model_validator(mode="before")
@@ -69,7 +70,12 @@ class AnalyticsRequest(BaseModel):
             not 1 <= group <= 5 for group in self.asset_groups.values()
         ):
             raise ValueError("Groups require selected instrument IDs and numbers from 1 to 5.")
-        user_allocation(assets, self.user_weights)
+        allocation = user_allocation(assets, self.user_weights)
+        if (
+            self.objective == "max_return_at_user_risk"
+            or "max_return_at_user_risk" in (self.bootstrap_objectives or [])
+        ) and allocation is None:
+            raise ValueError("My Portfolio requires explicit user_weights.")
         if any(i <= 0 for i in self.instrument_ids) or len(set(self.instrument_ids)) != len(
             self.instrument_ids
         ):

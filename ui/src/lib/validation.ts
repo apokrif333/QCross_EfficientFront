@@ -25,7 +25,12 @@ const requestFields = z.object({
   return_basis: z.enum(["nominal", "real"]).optional(),
   risk_free_source: z.enum(["historical_bil", "fixed_annual"]).optional(),
   risk_free_rate: n.gt(-1).max(1),
-  objective: z.enum(["gmv", "max_sharpe", "target_return"]),
+  objective: z.enum([
+    "gmv",
+    "max_sharpe",
+    "target_return",
+    "max_return_at_user_risk",
+  ]),
   target_return: n.min(-12).max(12).nullable(),
   asset_constraints: z.record(z.string(), bounds),
   group_constraints: z.record(z.string(), bounds),
@@ -37,26 +42,42 @@ const requestFields = z.object({
   expected_block_length: n.min(3).max(24),
   random_seed: n.int().min(0).max(4294967295),
   bootstrap_objectives: z
-    .array(z.enum(["gmv", "max_sharpe", "target_return"]))
+    .array(
+      z.enum(["gmv", "max_sharpe", "target_return", "max_return_at_user_risk"]),
+    )
     .min(1)
-    .max(3)
+    .max(4)
     .refine((items) => new Set(items).size === items.length)
     .nullable(),
   risk_aversions: z.array(n.positive()).nullable(),
   include_efficiency_robustness: z.boolean().optional(),
+  include_paired_comparison: z.boolean().optional(),
   rolling_window_months: n.int().min(120).max(10000).optional(),
   rolling_step_months: n.int().min(1).max(120).optional(),
 });
-export const requestSchema = requestFields.refine(
-  (r) =>
-    (r.objective !== "target_return" &&
-      !r.bootstrap_objectives?.includes("target_return")) ||
-    r.target_return !== null,
-  {
-    message: "Укажите минимальную целевую годовую доходность",
-    path: ["target_return"],
-  },
-);
+export const requestSchema = requestFields
+  .refine(
+    (r) =>
+      (r.objective !== "max_return_at_user_risk" &&
+        !r.bootstrap_objectives?.includes("max_return_at_user_risk")) ||
+      Math.abs(
+        Object.values(r.user_weights ?? {}).reduce((a, b) => a + b, 0) - 1,
+      ) < 1e-8,
+    {
+      message: "Укажите веса вашего портфеля, сумма 100%",
+      path: ["user_weights"],
+    },
+  )
+  .refine(
+    (r) =>
+      (r.objective !== "target_return" &&
+        !r.bootstrap_objectives?.includes("target_return")) ||
+      r.target_return !== null,
+    {
+      message: "Укажите минимальную целевую годовую доходность",
+      path: ["target_return"],
+    },
+  );
 export const resampledRequestSchema = requestFields.extend({
   bootstrap_iterations: n.int().min(1).max(500),
 });
@@ -80,6 +101,17 @@ export const rollingRequestSchema = requestFields.refine(
 export function requestSchemaFor(kind: Kind) {
   if (kind === "resampled-frontier") return resampledRequestSchema;
   if (kind === "rolling-efficiency") return rollingRequestSchema;
+  if (kind === "bootstrap")
+    return requestSchema.refine(
+      (r) =>
+        !r.user_weights ||
+        r.include_paired_comparison === false ||
+        r.bootstrap_iterations % 2 === 0,
+      {
+        message: "Для парного Bootstrap нужно чётное число генераций",
+        path: ["bootstrap_iterations"],
+      },
+    );
   return requestSchema;
 }
 const metrics = z.object({
@@ -196,7 +228,57 @@ const efficiencyDistribution = distanceSummary
     distributions: z.record(z.string(), bootstrapMetricDistribution).optional(),
   })
   .passthrough();
+const pairedComparison = z
+  .object({
+    generated_datasets: n.int().nonnegative().optional(),
+    horizon_months: n.int().positive().optional(),
+    clouds: z
+      .array(
+        z.object({
+          pair: n.int().positive(),
+          assets: z.record(
+            z.string(),
+            z.object({ expected_return: n, volatility: n.nonnegative() }),
+          ),
+          user: z.object({ expected_return: n, volatility: n.nonnegative() }),
+          optimized: z
+            .object({ expected_return: n, volatility: n.nonnegative() })
+            .nullable(),
+        }),
+      )
+      .optional(),
+    validation_frontier: z
+      .array(z.object({ expected_return: n, volatility: n.nonnegative() }))
+      .optional(),
+    valid_count: n.int().nonnegative(),
+    failed_count: n.int().nonnegative(),
+    requested_comparisons: n.int().nonnegative(),
+    differences: z.record(
+      z.string(),
+      z
+        .object({
+          mean: n,
+          median: n,
+          p5: n,
+          p95: n,
+          minimum: n,
+          maximum: n,
+          valid_count: n.int().nonnegative(),
+        })
+        .nullable(),
+    ),
+    win_frequencies: z.record(
+      z.string(),
+      z.object({
+        fraction: n.min(0).max(1).nullable(),
+        denominator: n.int().nonnegative(),
+      }),
+    ),
+    results: z.array(z.object({ status: z.string() }).passthrough()),
+  })
+  .passthrough();
 const base = z.object({
+  paired_comparison: pairedComparison.nullable().optional(),
   efficiency_robustness: efficiencyDistribution.nullable().optional(),
   asset_portfolios: z.record(z.string(), portfolio).optional(),
   status: z.enum(["complete", "incomplete"]),
@@ -441,9 +523,17 @@ export function validateRecord(value: unknown): void {
       result: z.unknown(),
     })
     .parse(value);
-  requestSchemaFor(record.kind).parse(record.request);
+  requestSchemaFor(record.kind).parse({
+    ...record.request,
+    include_paired_comparison:
+      record.request.include_paired_comparison ?? false,
+  });
   const r = results[record.kind].parse(record.result);
-  requestSchemaFor(record.kind).parse(r.reproducibility.api_request);
+  requestSchemaFor(record.kind).parse({
+    ...r.reproducibility.api_request,
+    include_paired_comparison:
+      r.reproducibility.api_request.include_paired_comparison ?? false,
+  });
   if (
     JSON.stringify(record.request) !==
     JSON.stringify(r.reproducibility.api_request)

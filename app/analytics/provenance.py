@@ -9,7 +9,7 @@ from pathlib import Path
 
 from app.analytics.models import ReturnPanel
 
-ENGINE_VERSION = "2.2.1"
+ENGINE_VERSION = "2.3.0"
 
 
 def reproducible(function):
@@ -54,6 +54,7 @@ def engine_identity() -> dict:
         "splitting.py",
         "bootstrap.py",
         "bootstrap_metrics.py",
+        "paired_comparison.py",
         "efficiency_distance.py",
         "rolling_efficiency.py",
         "provenance.py",

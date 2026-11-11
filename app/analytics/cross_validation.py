@@ -11,6 +11,7 @@ from app.analytics.frontier import data_diagnostics, describe, prepare
 from app.analytics.metrics import historical_metrics, portfolio_metrics
 from app.analytics.models import AnalyticsError, OptimizationResult, ReturnPanel
 from app.analytics.optimizer import PortfolioOptimizer
+from app.analytics.paired_comparison import compare_validation, summarize
 from app.analytics.provenance import reproducible
 from app.analytics.references import differential_moments
 from app.analytics.splitting import (
@@ -92,6 +93,7 @@ def analyze_cross_validation(
     risk_free_rate: float = 0.03,
     user_weights: dict | None = None,
     include_efficiency_robustness: bool = True,
+    include_paired_comparison: bool = True,
     **options,
 ) -> dict:
     started = time.perf_counter()
@@ -102,16 +104,13 @@ def analyze_cross_validation(
         covariance_method=options.get("covariance_method", "sample"),
     )
     constraints, estimate, mean, covariance = prepare(panel, cv_folds=cv_folds, **options)
-    fixed_user_weights = (
-        user_allocation(panel.assets, user_weights)
-        if include_efficiency_robustness and user_weights
-        else None
-    )
+    fixed_user_weights = user_allocation(panel.assets, user_weights) if user_weights else None
     original = PortfolioOptimizer(mean, covariance, constraints, **panel.differential).optimize(
-        objective, risk_free_rate, target_return
+        objective, risk_free_rate, target_return, fixed_user_weights
     )
     fold_results, fold_weights = [], []
     for number, (training, validation) in enumerate(splits, 1):
+        training_mean, training_covariance = None, None
         train_values, validation_values = panel.values[training], panel.values[validation]
         fold = {
             "fold": number,
@@ -147,7 +146,7 @@ def analyze_cross_validation(
             )
             result = PortfolioOptimizer(
                 training_mean, training_covariance, constraints, **differential
-            ).optimize(objective, risk_free_rate, target_return)
+            ).optimize(objective, risk_free_rate, target_return, fixed_user_weights)
             fold.update(
                 status=result.status,
                 diagnostics=result.diagnostics,
@@ -243,6 +242,35 @@ def analyze_cross_validation(
                     "status": "failed",
                     "diagnostics": {"reason": str(exc)},
                 }
+        if fixed_user_weights is not None and include_paired_comparison:
+            try:
+                if training_mean is None or training_covariance is None:
+                    raise AnalyticsError("Training covariance unavailable for paired comparison.")
+                trained = PortfolioOptimizer(
+                    training_mean, training_covariance, constraints
+                ).max_return_at_user_risk(fixed_user_weights)
+                trained.diagnostics.update(
+                    covariance_parameters=training_estimate.parameters,
+                    covariance_diagnostics=training_estimate.diagnostics,
+                )
+                rf = (
+                    panel.risk_free_returns[validation]
+                    if panel.risk_free_returns is not None
+                    else np.full(len(validation), (1 + risk_free_rate) ** (1 / 12) - 1)
+                )
+                fold["paired_comparison"] = compare_validation(
+                    validation_values, rf, fixed_user_weights, trained, panel.assets
+                )
+                fold["paired_comparison"].update(
+                    fold=number,
+                    training_direction=fold["training_direction"],
+                    validation=fold["validation"],
+                )
+            except Exception as exc:
+                fold["paired_comparison"] = {
+                    "status": "failed",
+                    "diagnostics": {"reason": str(exc)},
+                }
         fold_results.append(fold)
     ensemble, stability = None, None
     if len(fold_weights) == cv_folds and original.weights is not None:
@@ -292,6 +320,11 @@ def analyze_cross_validation(
         "source_metadata": panel.metadata,
         "original": describe(original, panel, mean, covariance, risk_free_rate),
         "folds": fold_results,
+        "paired_comparison": summarize(
+            [f["paired_comparison"] for f in fold_results if "paired_comparison" in f]
+        )
+        if fixed_user_weights is not None and include_paired_comparison
+        else None,
         "efficiency_robustness": {
             "user_weights": dict(zip(panel.assets, fixed_user_weights.tolist(), strict=True)),
             "evaluation": "retrospective_validation_sample_frontiers",

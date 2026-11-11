@@ -11,7 +11,6 @@ import type {
   Kind,
   Mode,
   ResampledResult,
-  RollingEfficiencyResult,
 } from "./types";
 import { DEFAULT_REQUEST, METHODS } from "./types";
 import { fetchCatalog, requestJson, runJob } from "./lib/api";
@@ -37,14 +36,11 @@ import {
   BootstrapView,
   CVView,
   FrontierView,
-  RollingEfficiencyView,
   ResampledView,
 } from "./components/Results";
 import { number } from "./lib/display";
 import { cvHistoryError } from "./lib/cv";
 
-const RUN_ROLLING_LABEL =
-  "\u0420\u0430\u0441\u0441\u0447\u0438\u0442\u0430\u0442\u044c \u0443\u0441\u0442\u043e\u0439\u0447\u0438\u0432\u043e\u0441\u0442\u044c \u043d\u0430 \u0441\u043a\u043e\u043b\u044c\u0437\u044f\u0449\u0438\u0445 10-\u043b\u0435\u0442\u043d\u0438\u0445 \u043e\u043a\u043d\u0430\u0445";
 const TABS = [
   "Frontier",
   "Cross-validation",
@@ -188,12 +184,11 @@ export default function App() {
   );
   const frontier = records.find((c) => c.kind === "frontier"),
     cv = records.find((c) => c.kind === "cross-validation"),
-    rolling = records.find((c) => c.kind === "rolling-efficiency"),
     bootstrap = records.find((c) => c.kind === "bootstrap"),
     resampled = records.find((c) => c.kind === "resampled-frontier");
   const visible =
     tab === "Cross-validation"
-      ? (cv ?? rolling)
+      ? cv
       : tab === "Bootstrap"
         ? (bootstrap ?? resampled)
         : frontier;
@@ -222,6 +217,7 @@ export default function App() {
             group_constraints: {},
             asset_groups: {},
             user_weights: null,
+            include_paired_comparison: true,
             start_date: null,
             end_date: null,
             bootstrap_objectives: [
@@ -402,7 +398,11 @@ export default function App() {
         );
         const next = await execute(
           original.kind,
-          original.request,
+          {
+            ...original.request,
+            include_paired_comparison:
+              original.request.include_paired_comparison ?? false,
+          },
           abort.signal,
         );
         setComparisons((prev) => [
@@ -686,21 +686,6 @@ export default function App() {
                 {cv && (
                   <CVView
                     result={cv.result as CVResult}
-                    instruments={instruments}
-                  />
-                )}
-                {mode === "live" && request.user_weights && (
-                  <button
-                    className="secondary"
-                    disabled={!!busy}
-                    onClick={() => void calculate(["rolling-efficiency"])}
-                  >
-                    {RUN_ROLLING_LABEL}
-                  </button>
-                )}
-                {rolling && (
-                  <RollingEfficiencyView
-                    result={rolling.result as RollingEfficiencyResult}
                     instruments={instruments}
                   />
                 )}

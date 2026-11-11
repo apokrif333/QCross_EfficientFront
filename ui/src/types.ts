@@ -17,7 +17,7 @@ export interface ApiRequest {
   return_basis?: "nominal" | "real";
   risk_free_source?: "historical_bil" | "fixed_annual";
   risk_free_rate: number;
-  objective: "gmv" | "max_sharpe" | "target_return";
+  objective: "gmv" | "max_sharpe" | "target_return" | "max_return_at_user_risk";
   target_return: number | null;
   asset_constraints: Record<string, Bounds>;
   group_constraints: Record<string, Bounds>;
@@ -28,9 +28,12 @@ export interface ApiRequest {
   bootstrap_iterations: number;
   expected_block_length: number;
   random_seed: number;
-  bootstrap_objectives: ("gmv" | "max_sharpe" | "target_return")[] | null;
+  bootstrap_objectives:
+    | ("gmv" | "max_sharpe" | "target_return" | "max_return_at_user_risk")[]
+    | null;
   risk_aversions: number[] | null;
   include_efficiency_robustness?: boolean;
+  include_paired_comparison?: boolean;
   rolling_window_months?: number;
   rolling_step_months?: number;
 }
@@ -101,6 +104,7 @@ export interface Period {
   observations: number;
 }
 export interface BaseResult {
+  paired_comparison?: PairedComparison | null;
   return_basis?: "nominal" | "real";
   risk_free_source?: "historical_bil" | "fixed_annual";
   reference_metadata?: Record<string, unknown>;
@@ -443,3 +447,51 @@ export const DEFAULT_REQUEST: ApiRequest = {
   rolling_window_months: 120,
   rolling_step_months: 12,
 };
+
+export interface PairedComparison {
+  user_weights?: Record<string, number>;
+  valid_count: number;
+  failed_count: number;
+  requested_comparisons: number;
+  generated_datasets?: number;
+  horizon_months?: number;
+  differences: Record<
+    string,
+    {
+      mean: number;
+      median: number;
+      p5: number;
+      p95: number;
+      minimum: number;
+      maximum: number;
+      valid_count: number;
+    } | null
+  >;
+  win_frequencies: Record<
+    string,
+    { fraction: number | null; denominator: number }
+  >;
+  results: {
+    status: string;
+    pair?: number;
+    fold?: number;
+    training_direction?: string;
+    validation?: Period;
+    user?: Record<string, number | null>;
+    optimized?: Record<string, number | null> | null;
+    differences?: Record<string, number | null>;
+    weights?: Record<string, number> | null;
+    diagnostics?: Record<string, unknown>;
+  }[];
+  clouds?: {
+    pair: number;
+    assets: Record<string, RiskReturn>;
+    user: RiskReturn;
+    optimized: RiskReturn | null;
+  }[];
+  validation_frontier?: RiskReturn[];
+}
+export interface RiskReturn {
+  expected_return: number;
+  volatility: number;
+}

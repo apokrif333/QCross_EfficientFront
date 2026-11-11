@@ -171,7 +171,7 @@ def analyze_frontier(
         user["feasible"] = constraints.violation(allocation) <= 1e-7
         user["diagnostics"]["constraint_violation"] = constraints.violation(allocation)
         user["label"] = "User portfolio" if user["feasible"] else "Unconstrained user reference"
-    selected = optimizer.optimize(objective, risk_free_rate, target_return)
+    selected = optimizer.optimize(objective, risk_free_rate, target_return, allocation)
     success = all(r.weights is not None for r in (gmv, maximum, selected)) and all(
         p["status"] == "optimal" for p in points
     )

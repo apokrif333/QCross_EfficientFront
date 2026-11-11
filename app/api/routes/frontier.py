@@ -49,9 +49,16 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
         )
         options = body.estimator_options()
         panel = numbered_groups(panel, body.asset_groups)
-        build_constraints(
+        constraints = build_constraints(
             panel.assets, options["asset_constraints"], options["group_constraints"], panel.groups
         )
+        if body.objective == "max_return_at_user_risk" or "max_return_at_user_risk" in (
+            body.bootstrap_objectives or []
+        ):
+            allocation = user_allocation(panel.assets, body.user_weights)
+            if allocation is None:
+                raise AnalyticsError("My Portfolio requires explicit user_weights.")
+            constraints.require_feasible(allocation)
         options["risk_free_rate"] = body.risk_free_rate
         if kind != "rolling-efficiency":
             validate_cv_configuration(
@@ -73,6 +80,7 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
                 target_return=body.target_return,
                 user_weights=body.user_weights,
                 include_efficiency_robustness=body.include_efficiency_robustness,
+                include_paired_comparison=body.include_paired_comparison,
             )
         elif kind == "rolling-efficiency":
             if user_allocation(panel.assets, body.user_weights) is None:
@@ -94,6 +102,15 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
                 random_seed=body.random_seed,
             )
             if kind == "bootstrap":
+                if (
+                    body.user_weights
+                    and body.include_paired_comparison
+                    and body.bootstrap_iterations % 2
+                ):
+                    raise AnalyticsError(
+                        "Paired Bootstrap requires an even number of generated datasets."
+                    )
+                options["include_paired_comparison"] = body.include_paired_comparison
                 options["target_return"] = body.target_return
                 options["user_weights"] = body.user_weights
                 options["include_efficiency_robustness"] = body.include_efficiency_robustness

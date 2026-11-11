@@ -231,10 +231,12 @@ export default function Settings({
               onChange({
                 ...value,
                 objective: e.target.value as ApiRequest["objective"],
-                bootstrap_objectives:
-                  e.target.value === "target_return"
-                    ? ["target_return"]
-                    : ["gmv", "max_sharpe"],
+                bootstrap_objectives: [
+                  "target_return",
+                  "max_return_at_user_risk",
+                ].includes(e.target.value)
+                  ? [e.target.value as ApiRequest["objective"]]
+                  : ["gmv", "max_sharpe"],
                 target_return:
                   e.target.value === "target_return"
                     ? (value.target_return ?? 0.08)
@@ -245,6 +247,9 @@ export default function Settings({
             <option value="gmv">GMV · minimum variance</option>
             <option value="max_sharpe">Maximum Sharpe</option>
             <option value="target_return">Target expected return</option>
+            <option value="max_return_at_user_risk">
+              Мой портфель — максимум доходности при моём риске
+            </option>
           </select>
         </HelpField>
         {value.objective === "target_return" && (

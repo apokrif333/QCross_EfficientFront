@@ -254,6 +254,12 @@ See [source, formula, refresh commands, API, revisions and verification](macro-a
 
 # Portfolio efficiency robustness
 
+This section describes legacy diagnostics. The primary portfolio comparison now
+uses [training-only selection and paired Validation](paired-validation.md).
+The rolling endpoint and snapshot schema are retained for compatibility, and
+its launch controls have been removed. Ex-post distances are collapsed under
+additional retrospective diagnostics.
+
 For an explicitly supplied, feasible user allocation, analytics can calculate two
 exact constrained distances to each sample's own mean/variance frontier. Return
 shortfall holds annual volatility at the user's level; excess volatility holds

@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 CovarianceMethod = Literal["sample", "ledoit_wolf", "nonlinear", "cv_linear"]
-Objective = Literal["gmv", "max_sharpe", "target_return"]
+Objective = Literal["gmv", "max_sharpe", "target_return", "max_return_at_user_risk"]
 ShrinkageTarget = Literal["identity", "diagonal"]
 
 

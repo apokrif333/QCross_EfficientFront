@@ -126,7 +126,12 @@ def test_bootstrap_horizon_is_full_selected_history_not_rolling_window(months):
 def test_path_metrics_survive_frontier_and_estimator_failures(panel, monkeypatch):
     import app.analytics.bootstrap as module
 
-    settings = {"bootstrap_iterations": 3, "objectives": ["gmv"], "user_weights": {"1": 1.0}}
+    settings = {
+        "bootstrap_iterations": 3,
+        "include_paired_comparison": False,
+        "objectives": ["gmv"],
+        "user_weights": {"1": 1.0},
+    }
 
     def fail(*args, **kwargs):
         raise AnalyticsError("injected failure")
@@ -152,6 +157,7 @@ def test_zero_differential_volatility_and_complete_loss_are_explicit(panel):
     result = analyze_bootstrap(
         panel,
         bootstrap_iterations=3,
+        include_paired_comparison=False,
         objectives=["gmv"],
         user_weights=dict(zip(panel.assets, weights, strict=True)),
     )

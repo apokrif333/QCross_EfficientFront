@@ -211,6 +211,11 @@ it("shows CV summaries above the existing table and adds one user-portfolio colu
     excess_volatility: stats,
   };
   render(<CVView result={r} instruments={instruments} />);
+  fireEvent.click(
+    screen.getByText(
+      "Ретроспективные расстояния до границы (дополнительная диагностика)",
+    ),
+  );
   const column = screen.getByRole("columnheader", {
     name: "Your Port on Valid arithmetic return / vol",
   });
@@ -335,6 +340,11 @@ it("plots Bootstrap scenarios and reports failed robustness samples separately",
   };
   r.efficiency_robustness = robustness;
   render(<BootstrapView result={r} instruments={instruments} />);
+  fireEvent.click(
+    screen.getByText(
+      "Ретроспективные расстояния до границы (дополнительная диагностика)",
+    ),
+  );
   const histogram = plots.mock.calls
     .map(([p]) => p)
     .find((p) => p.title.startsWith("Bootstrap:"));

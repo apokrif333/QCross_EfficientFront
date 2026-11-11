@@ -84,6 +84,27 @@ class PortfolioOptimizer:
     def gmv(self) -> OptimizationResult:
         return self._solve(self.gmv_problem, self.weights)
 
+    def max_return_at_user_risk(self, user_weights) -> OptimizationResult:
+        if user_weights is None:
+            raise AnalyticsError("My Portfolio requires explicit user_weights.")
+        user_weights = np.asarray(user_weights, dtype=float)
+        if user_weights.shape != self.mean.shape or not np.isfinite(user_weights).all():
+            raise AnalyticsError("My Portfolio requires aligned finite user_weights.")
+        self.constraints.require_feasible(user_weights)
+        limit = float(user_weights @ self.covariance @ user_weights)
+        problem = cp.Problem(
+            cp.Maximize(self.mean @ self.weights),
+            self.rules + [cp.quad_form(self.weights, cp.psd_wrap(self.covariance)) <= limit],
+        )
+        result = self._solve(problem, self.weights)
+        result.diagnostics["training_user_volatility"] = float(np.sqrt(max(0, limit)))
+        result.diagnostics["risk_tolerance"] = 1e-7
+        if result.weights is not None:
+            risk = float(np.sqrt(max(0, result.weights @ self.covariance @ result.weights)))
+            if risk > np.sqrt(max(0, limit)) + 1e-7:
+                return OptimizationResult("risk_violation", None, result.diagnostics)
+        return result
+
     def maximum_return(self) -> OptimizationResult:
         return self._solve(self.return_problem, self.weights)
 
@@ -185,10 +206,16 @@ class PortfolioOptimizer:
         )
 
     def optimize(
-        self, objective: str, risk_free_rate: float = 0.03, target_return: float | None = None
+        self,
+        objective: str,
+        risk_free_rate: float = 0.03,
+        target_return: float | None = None,
+        user_weights=None,
     ) -> OptimizationResult:
         if objective == "gmv":
             return self.gmv()
+        if objective == "max_return_at_user_risk":
+            return self.max_return_at_user_risk(user_weights)
         if objective == "max_sharpe":
             return self.max_sharpe(risk_free_rate)
         if objective == "target_return" and target_return is not None:

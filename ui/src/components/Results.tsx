@@ -24,6 +24,7 @@ import {
 } from "../lib/display";
 import Plot from "./Plot";
 import PortfolioTable from "./PortfolioTable";
+import PairedComparisonView from "./PairedComparisonView";
 
 const AXES = {
   xaxis: { title: { text: "Годовая волатильность" }, tickformat: ".1%" },
@@ -769,21 +770,30 @@ export function CVView({
           yaxis: { tickformat: ".0%", title: { text: "Вес" } },
         }}
       />
+      <PairedComparisonView
+        value={r.paired_comparison}
+        instruments={instruments}
+      />
       {userEfficiency && (
-        <div className="metrics efficiency-metrics cv-efficiency-summary">
-          <span>
-            Упущенная годовая доходность (указанного портфеля), п.п.
-            <b className="efficiency-summary">
-              {formatEfficiencySummary(userEfficiency.return_shortfall)}
-            </b>
-          </span>
-          <span>
-            Избыточная годовая волатильность (указанного портфеля), п.п.
-            <b className="efficiency-summary">
-              {formatEfficiencySummary(userEfficiency.excess_volatility)}
-            </b>
-          </span>
-        </div>
+        <details>
+          <summary>
+            Ретроспективные расстояния до границы (дополнительная диагностика)
+          </summary>
+          <div className="metrics efficiency-metrics cv-efficiency-summary">
+            <span>
+              Упущенная годовая доходность (указанного портфеля), п.п.
+              <b className="efficiency-summary">
+                {formatEfficiencySummary(userEfficiency.return_shortfall)}
+              </b>
+            </span>
+            <span>
+              Избыточная годовая волатильность (указанного портфеля), п.п.
+              <b className="efficiency-summary">
+                {formatEfficiencySummary(userEfficiency.excess_volatility)}
+              </b>
+            </span>
+          </div>
+        </details>
       )}
       <div className="table-scroll">
         <table>
@@ -1011,15 +1021,26 @@ export function BootstrapView({
               ? "GMV"
               : key === "target_return"
                 ? "Target expected return"
-                : "Max Sharpe"}
+                : key === "max_return_at_user_risk"
+                  ? "Мой портфель"
+                  : "Max Sharpe"}
           </button>
         ))}
       </div>
-      <EfficiencyPanel
-        title="Stationary Bootstrap"
-        value={r.efficiency_robustness}
+      <PairedComparisonView
+        value={r.paired_comparison}
         instruments={instruments}
       />
+      <details>
+        <summary>
+          Ретроспективные расстояния до границы (дополнительная диагностика)
+        </summary>
+        <EfficiencyPanel
+          title="Stationary Bootstrap"
+          value={r.efficiency_robustness}
+          instruments={instruments}
+        />
+      </details>
       <BootstrapPortfolioMetrics result={r} />
       {isTarget ? (
         <>

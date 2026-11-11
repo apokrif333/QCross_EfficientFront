@@ -1,9 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { resolve } from "node:path";
 
 test("Live Real BIL calculation uses reference metadata and both Sharpe metrics", async ({
   page,
-}) => {
+}, testInfo) => {
   test.skip(
     !process.env.QCROSS_LIVE_TEST,
     "Requires imported local BIL/inflation references.",
@@ -48,7 +47,7 @@ test("Live Real BIL calculation uses reference metadata and both Sharpe metrics"
     page.getByRole("columnheader", { name: "Historical Sharpe", exact: true }),
   ).toBeVisible();
   await page.screenshot({
-    path: resolve("../docs/ui-verification/macro-real-bil-desktop.png"),
+    path: testInfo.outputPath("macro-real-bil-desktop.png"),
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -62,7 +61,7 @@ test("Live Real BIL calculation uses reference metadata and both Sharpe metrics"
     )
     .toBeLessThan(365);
   await page.screenshot({
-    path: resolve("../docs/ui-verification/macro-real-bil-mobile.png"),
+    path: testInfo.outputPath("macro-real-bil-mobile.png"),
     fullPage: true,
   });
   expect(
@@ -74,7 +73,7 @@ test("Live Real BIL calculation uses reference metadata and both Sharpe metrics"
 
 test("legacy Demo basis is explicit and new Live requests default to BIL", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "Efficient Frontier", exact: true }),
@@ -111,12 +110,12 @@ test("legacy Demo basis is explicit and new Live requests default to BIL", async
     page.getByRole("button", { name: "После инфляции", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
   await page.screenshot({
-    path: resolve("../docs/ui-verification/macro-settings-desktop.png"),
+    path: testInfo.outputPath("macro-settings-desktop.png"),
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({
-    path: resolve("../docs/ui-verification/macro-settings-mobile.png"),
+    path: testInfo.outputPath("macro-settings-mobile.png"),
     fullPage: true,
   });
 });

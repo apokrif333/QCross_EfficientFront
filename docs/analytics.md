@@ -229,6 +229,12 @@ values up to 1e6 are accepted. A sample succeeds only if every gamma succeeds;
 the same 95% sample threshold applies. Return this curve separately and label it
 as a resampled approximation, not the exact classical efficient frontier.
 
+When user weights are supplied, the resampled-frontier result also reports the
+fixed portfolio on the original sample and its average annual expected return
+and estimated volatility across the same successful bootstrap samples. The
+curve uses averaged weights evaluated on the original sample; the sample-average
+point uses per-sample moments and is identified separately on the chart.
+
 Resampled Frontier is independent of the global portfolio objective and target
 return. It accepts GMV, Max Sharpe and Target Return selections, including a null
 or unattainable target, without altering the shared risk-aversion curve. Target
@@ -245,3 +251,54 @@ Stationary Bootstrap. Estimated and historical Sharpe are reported separately.
 Legacy fixed-rate snapshots retain their original semantics.
 
 See [source, formula, refresh commands, API, revisions and verification](macro-analytics.md).
+
+# Portfolio efficiency robustness
+
+For an explicitly supplied, feasible user allocation, analytics can calculate two
+exact constrained distances to each sample's own mean/variance frontier. Return
+shortfall holds annual volatility at the user's level; excess volatility holds
+annual arithmetic return at the user's level. Each is solved as a convex
+optimization with Clarabel and the selected asset/group constraints. No plotted
+frontier grid is used, and fixed user weights are never changed.
+
+Rolling robustness uses complete 120-month windows at 12-month steps. CV results
+use each validation block's ex-post estimated frontier; these are retrospective
+benchmarks, while trained CV allocations and metrics remain unchanged. For
+`cv_linear`, validation covariance uses the shrinkage parameters selected on its
+training subset. Bootstrap robustness reuses the exact existing stationary
+bootstrap samples and covariance estimates. Its percentiles describe historical
+resampled scenarios, not confidence intervals or future-return probabilities.
+An allocation that violates the selected constraints is marked
+`not_comparable`; numerical failures remain explicit and do not alter the main
+CV or Bootstrap computation status.
+
+See [verification commands, regression coverage and measured performance](efficiency-robustness-verification.md).
+
+## Fixed-portfolio Bootstrap distributions
+
+Each existing stationary sample also evaluates the unchanged user allocation's
+CAGR, annual arithmetic return, historical annual volatility, maximum drawdown,
+historical differential-return Sharpe and terminal wealth from $1. Annual
+volatility follows the established historical convention (monthly standard
+deviation with ddof=0, multiplied by sqrt(12)); Sharpe uses ddof=1 on the monthly
+portfolio-minus-aligned-risk-free series. The estimated volatility used for the
+efficiency distances remains separately available as `user_volatility`.
+
+The asset and BIL arrays use the same existing sampled indices, after the global
+Nominal/Real transformation. No additional samples are generated. Every sample
+has the full T months of the selected common return panel: a 240-month history
+produces 240-month synthetic scenarios, not 120-month scenarios. Rolling
+Efficiency continues to use separate 120-month windows with 12-month steps.
+
+All eight metrics expose mean, median, P5, P95, minimum and maximum, along with
+their scenario horizon. CAGR, arithmetic return, volatility, Sharpe and the two
+efficiency distances are annualized. Drawdown and terminal wealth cover the
+entire scenario horizon. Real terminal wealth is in units of initial purchasing
+power from one initial USD. Drawdown includes initial wealth in the running peak.
+
+Path metrics use all samples in which that metric is defined, independently of
+frontier-solver success. Distances require successful comparable frontier solves.
+Each distribution discloses its available/unavailable counts; zero differential
+volatility gives a null Sharpe, and unrepresentable wealth/CAGR values are null.
+Percentiles describe historical resampled scenarios and are not calibrated
+probabilities of future returns.

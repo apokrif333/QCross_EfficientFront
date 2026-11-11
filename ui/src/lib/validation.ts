@@ -43,6 +43,9 @@ const requestFields = z.object({
     .refine((items) => new Set(items).size === items.length)
     .nullable(),
   risk_aversions: z.array(n.positive()).nullable(),
+  include_efficiency_robustness: z.boolean().optional(),
+  rolling_window_months: n.int().min(120).max(10000).optional(),
+  rolling_step_months: n.int().min(1).max(120).optional(),
 });
 export const requestSchema = requestFields.refine(
   (r) =>
@@ -57,8 +60,27 @@ export const requestSchema = requestFields.refine(
 export const resampledRequestSchema = requestFields.extend({
   bootstrap_iterations: n.int().min(1).max(500),
 });
+export const rollingRequestSchema = requestFields.refine(
+  (r) => {
+    const entries = Object.entries(r.user_weights ?? {});
+    return (
+      entries.length > 0 &&
+      entries.every(([asset]) =>
+        r.instrument_ids.map(String).includes(asset),
+      ) &&
+      Math.abs(entries.reduce((total, [, weight]) => total + weight, 0) - 1) <=
+        1e-8
+    );
+  },
+  {
+    message: "Rolling efficiency requires explicit user weights totaling 100%.",
+    path: ["user_weights"],
+  },
+);
 export function requestSchemaFor(kind: Kind) {
-  return kind === "resampled-frontier" ? resampledRequestSchema : requestSchema;
+  if (kind === "resampled-frontier") return resampledRequestSchema;
+  if (kind === "rolling-efficiency") return rollingRequestSchema;
+  return requestSchema;
 }
 const metrics = z.object({
   expected_return: n,
@@ -114,7 +136,68 @@ const provenance = z
     optimization_parameters: z.record(z.string(), z.unknown()),
   })
   .passthrough();
+const efficiencyDistance = z
+  .object({
+    status: z.string(),
+    return_shortfall: n.nonnegative().nullable().optional(),
+    excess_volatility: n.nonnegative().nullable().optional(),
+    user_expected_return: n.nullable().optional(),
+    user_volatility: n.nonnegative().nullable().optional(),
+    diagnostics: z.record(z.string(), z.unknown()),
+    portfolio_metrics: z.record(z.string(), n.nullable()).optional(),
+  })
+  .passthrough()
+  .refine(
+    (r) =>
+      r.status !== "optimal" ||
+      (r.return_shortfall != null && r.excess_volatility != null),
+  );
+const distanceStats = z.object({
+  mean: n.nonnegative(),
+  median: n.nonnegative(),
+  p5: n.nonnegative(),
+  p95: n.nonnegative(),
+  minimum: n.nonnegative().optional(),
+  maximum: n.nonnegative(),
+});
+const distanceSummary = z.object({
+  valid_count: n.int().nonnegative(),
+  failed_count: n.int().nonnegative(),
+  return_shortfall: distanceStats.nullable(),
+  excess_volatility: distanceStats.nullable(),
+});
+const bootstrapMetricDistribution = z.object({
+  mean: n.nullable(),
+  median: n.nullable(),
+  p5: n.nullable(),
+  p95: n.nullable(),
+  minimum: n.nullable(),
+  maximum: n.nullable(),
+  valid_count: n.int().nonnegative(),
+  unavailable_count: n.int().nonnegative(),
+  horizon_months: n.int().positive(),
+  horizon_years: n.positive(),
+  annualized: z.boolean(),
+  units: z.string(),
+});
+const efficiencyDistribution = distanceSummary
+  .extend({
+    user_weights: weights,
+    results: z.array(efficiencyDistance).optional(),
+    horizon: z
+      .object({
+        months: n.int().positive(),
+        years: n.positive(),
+        initial_wealth: n.positive(),
+        sample_length_policy: z.string(),
+        rebalancing: z.string(),
+      })
+      .optional(),
+    distributions: z.record(z.string(), bootstrapMetricDistribution).optional(),
+  })
+  .passthrough();
 const base = z.object({
+  efficiency_robustness: efficiencyDistribution.nullable().optional(),
   asset_portfolios: z.record(z.string(), portfolio).optional(),
   status: z.enum(["complete", "incomplete"]),
   assets: z.array(z.string()).min(2).max(15),
@@ -301,8 +384,43 @@ const results = {
     .extend({
       ...failures,
       frontier: z.array(portfolio),
+      user_portfolio: portfolio.nullable().optional(),
+      user_sample_average: z
+        .object({
+          expected_return: n,
+          volatility: n.nonnegative(),
+          successful_samples: n.int().positive(),
+        })
+        .nullable()
+        .optional(),
       risk_aversions: z.array(n),
       conditional_bootstrap: z.boolean(),
+    })
+    .passthrough(),
+  "rolling-efficiency": z
+    .object({
+      status: z.enum(["complete", "incomplete"]),
+      methodology: z.string(),
+      windows: z.array(
+        z
+          .object({
+            window_number: n.int(),
+            start_month: z.string(),
+            end_month: z.string(),
+            observations: n.int(),
+          })
+          .passthrough()
+          .and(efficiencyDistance),
+      ),
+      summary: distanceSummary,
+      user_weights: weights,
+      period: period,
+      assets: z.array(z.string()),
+      currency: z.literal("USD"),
+      source_metadata: z.array(z.unknown()),
+      warnings: z.array(z.string()),
+      execution_seconds: n,
+      reproducibility: provenance,
     })
     .passthrough(),
 };
@@ -315,6 +433,7 @@ export function validateRecord(value: unknown): void {
         "cross-validation",
         "bootstrap",
         "resampled-frontier",
+        "rolling-efficiency",
       ]),
       request: requestFields,
       origin: z.enum(["demo", "live"]),

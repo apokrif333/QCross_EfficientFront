@@ -159,6 +159,7 @@ the engine source fingerprint.
 
 Paths are relative to the repository root. Pre-existing unrelated changes are
 excluded. Regenerated outputs with identical bytes are identified separately.
+The verification screenshots originally listed here were removed during cleanup.
 
 ```text
 README.md
@@ -204,14 +205,6 @@ docs/analytics-demo/resampled-frontier.json
 docs/analytics-demo/summary.json
 docs/analytics-demo/weight-stability.svg
 docs/ui-verification/README.md
-docs/ui-verification/one-sided-cv-desktop.png            new
-docs/ui-verification/one-sided-cv-mobile.png             new
-docs/ui-verification/demo-desktop.png
-docs/ui-verification/demo-mobile.png
-docs/ui-verification/live-compare.png
-docs/ui-verification/live-jobs.json
-docs/ui-verification/asset-builder-live-desktop.png
-docs/ui-verification/asset-builder-live-mobile.png
 ```
 
 Also regenerated with identical bytes: `docs/analytics-demo/request.json` and

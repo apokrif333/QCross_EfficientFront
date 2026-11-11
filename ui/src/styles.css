@@ -656,6 +656,33 @@ details {
   color: #214c5d;
   margin-top: 5px;
 }
+.metrics.efficiency-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+}
+.metrics.efficiency-metrics.cv-efficiency-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.metrics .efficiency-summary {
+  font-size: clamp(9px, 0.8vw, 11px);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow-x: auto;
+  letter-spacing: -0.02em;
+}
+.failure-status {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+@media (max-width: 760px) {
+  .metrics.efficiency-metrics,
+  .metrics.efficiency-metrics.cv-efficiency-summary {
+    grid-template-columns: 1fr;
+  }
+  .metrics .efficiency-summary {
+    font-size: 11px;
+  }
+}
 .allocations {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));

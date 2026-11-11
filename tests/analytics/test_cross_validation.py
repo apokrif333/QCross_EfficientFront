@@ -20,6 +20,38 @@ def test_one_sided_portfolio_metadata(panel):
     assert all(len(f["training"]["segments"]) == 1 for f in output["folds"])
 
 
+def test_efficiency_robustness_is_additive_and_uses_fixed_allocation(panel):
+    baseline = analyze_cross_validation(panel, include_efficiency_robustness=False)
+    result = analyze_cross_validation(
+        panel, user_weights={asset: 1 / len(panel.assets) for asset in panel.assets}
+    )
+    assert [f["weights"] for f in baseline["folds"]] == [f["weights"] for f in result["folds"]]
+    diagnostics = result["efficiency_robustness"]
+    assert diagnostics["user_weights"] == dict.fromkeys(panel.assets, 1 / len(panel.assets))
+    assert len(diagnostics["results"]) == 4
+    assert all("return_shortfall" in f["efficiency_robustness"] for f in result["folds"])
+
+
+def test_optional_validation_frontier_failure_does_not_change_cv_fold_status(panel, monkeypatch):
+    import app.analytics.cross_validation as cv
+
+    actual, fail_once = cv.estimate_covariance, True
+
+    def fail_training(values, *args, **kwargs):
+        nonlocal fail_once
+        if len(values) == 120 and fail_once:
+            fail_once = False
+            raise AnalyticsError("training-only injected estimator failure")
+        return actual(values, *args, **kwargs)
+
+    monkeypatch.setattr(cv, "estimate_covariance", fail_training)
+    result = analyze_cross_validation(
+        panel, user_weights={asset: 1 / len(panel.assets) for asset in panel.assets}
+    )
+    assert result["folds"][1]["status"] == "failed"
+    assert result["folds"][1]["efficiency_robustness"]["status"] == "optimal"
+
+
 @pytest.mark.parametrize("objective", ["gmv", "max_sharpe", "target_return"])
 def test_averaging_constraints_and_validation_metrics(panel, objective):
     if objective == "target_return":
@@ -82,12 +114,20 @@ def test_nested_shrinkage_selection_has_no_validation_leakage(panel, monkeypatch
 
     monkeypatch.setattr(estimators, "select_shrinkage", spy)
     output = analyze_cross_validation(
-        panel, covariance_method="cv_linear", shrinkage_target="diagonal"
+        panel,
+        covariance_method="cv_linear",
+        shrinkage_target="diagonal",
+        user_weights={asset: 1 / len(panel.assets) for asset in panel.assets},
     )
     assert output["status"] == "complete" and len(observed) == 5
     np.testing.assert_array_equal(observed[0], panel.values)
     for training_values, (training, _) in zip(observed[1:], portfolio_folds(240), strict=True):
         np.testing.assert_array_equal(training_values, panel.values[training])
+    for fold in output["folds"]:
+        assert (
+            fold["efficiency_robustness"]["diagnostics"]["estimator_parameters"]
+            == fold["covariance_parameters"]
+        )
     for (count, inner), (outer_train, outer_validation) in zip(
         inner_samples[1:], portfolio_folds(240), strict=True
     ):
@@ -104,6 +144,7 @@ def test_nested_shrinkage_selection_has_no_validation_leakage(panel, monkeypatch
         ReturnPanel(changed, panel.assets, panel.groups),
         covariance_method="cv_linear",
         shrinkage_target="diagonal",
+        user_weights={asset: 1 / len(panel.assets) for asset in panel.assets},
     )
     assert second["folds"][0]["weights"] == output["folds"][0]["weights"]
     assert (
@@ -113,6 +154,10 @@ def test_nested_shrinkage_selection_has_no_validation_leakage(panel, monkeypatch
     assert perturbed["covariance_diagnostics"] == first["covariance_diagnostics"]
     assert perturbed["training_metrics"] == first["training_metrics"]
     assert perturbed["validation_metrics"] != first["validation_metrics"]
+    assert (
+        perturbed["efficiency_robustness"]["user_expected_return"]
+        != first["efficiency_robustness"]["user_expected_return"]
+    )
     assert second["annual_covariance"] != output["annual_covariance"]
 
 

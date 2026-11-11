@@ -42,6 +42,95 @@ def test_joint_resampling(panel):
         np.testing.assert_array_equal(sample[i], panel.values[index])
 
 
+def test_efficiency_bootstrap_reuses_samples_without_changing_optimizer(panel):
+    options = {"bootstrap_iterations": 4, "objectives": ["gmv"], "random_seed": 17}
+    baseline = analyze_bootstrap(panel, include_efficiency_robustness=False, **options)
+    result = analyze_bootstrap(
+        panel,
+        user_weights={asset: 1 / len(panel.assets) for asset in panel.assets},
+        include_efficiency_robustness=True,
+        **options,
+    )
+    for before, after in zip(
+        baseline["objectives"]["gmv"]["iterations"],
+        result["objectives"]["gmv"]["iterations"],
+        strict=True,
+    ):
+        assert before["weights"] == after["weights"]
+        assert before["metrics"] == after["metrics"]
+    distances = result["efficiency_robustness"]
+    assert result["sample_fingerprint"] == baseline["sample_fingerprint"]
+    assert distances["valid_count"] + distances["failed_count"] == 4
+    assert distances["user_weights"] == {asset: 1 / len(panel.assets) for asset in panel.assets}
+    assert len(distances["results"]) == 4
+
+
+def test_optional_efficiency_failure_does_not_change_bootstrap_outcomes(panel, monkeypatch):
+    import app.analytics.bootstrap as module
+
+    options = {"bootstrap_iterations": 4, "objectives": ["gmv"], "random_seed": 17}
+    baseline = analyze_bootstrap(panel, **options)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("injected optional failure")
+
+    monkeypatch.setattr(module, "efficiency_distance", fail)
+    result = analyze_bootstrap(
+        panel, user_weights=dict.fromkeys(panel.assets, 1 / len(panel.assets)), **options
+    )
+    assert result["status"] == baseline["status"] == "complete"
+    assert result["efficiency_robustness"]["failed_count"] == 4
+    assert result["sample_fingerprint"] == baseline["sample_fingerprint"]
+    assert [r["weights"] for r in result["objectives"]["gmv"]["iterations"]] == [
+        r["weights"] for r in baseline["objectives"]["gmv"]["iterations"]
+    ]
+
+
+def test_efficiency_observes_exact_joint_bootstrap_sample(panel, monkeypatch):
+    import app.analytics.bootstrap as module
+
+    actual, observed = module.efficiency_distance, []
+
+    def spy(values, covariance, weights, constraints, **kwargs):
+        observed.append(values.copy())
+        np.testing.assert_allclose(covariance, np.cov(values, rowvar=False, ddof=1))
+        return actual(values, covariance, weights, constraints, **kwargs)
+
+    monkeypatch.setattr(module, "efficiency_distance", spy)
+    analyze_bootstrap(
+        panel,
+        bootstrap_iterations=4,
+        objectives=["gmv"],
+        random_seed=17,
+        user_weights=dict.fromkeys(panel.assets, 1 / len(panel.assets)),
+    )
+    rng = np.random.default_rng(17)
+    assert len(observed) == 4
+    for values in observed:
+        indices = stationary_indices(len(panel.values), 12, rng)
+        np.testing.assert_array_equal(values, panel.values[indices])
+
+
+def test_efficiency_does_not_depend_on_differential_covariance_success(panel, monkeypatch):
+    import app.analytics.bootstrap as module
+    from app.analytics.models import AnalyticsError
+
+    def fail(*args, **kwargs):
+        raise AnalyticsError("injected differential covariance failure")
+
+    monkeypatch.setattr(module, "differential_moments", fail)
+    result = analyze_bootstrap(
+        panel,
+        bootstrap_iterations=4,
+        objectives=["gmv"],
+        user_weights=dict.fromkeys(panel.assets, 1 / len(panel.assets)),
+    )
+    assert result["status"] == "incomplete"
+    assert result["objectives"]["gmv"]["failure_reasons"]
+    assert result["efficiency_robustness"]["valid_count"] == 4
+    assert len(result["efficiency_robustness"]["results"]) == 4
+
+
 def test_bootstrap_statistics_independent_manual_calculation():
     weights = np.array([[0.2, 0.8], [0.4, 0.6], [0.6, 0.4]])
     original = np.array([0.3, 0.7])
@@ -129,6 +218,27 @@ def test_resampled_frontier_matches_independent_shared_gamma_average(panel):
     for point, vectors in zip(result["frontier"], collected, strict=True):
         np.testing.assert_allclose(list(point["weights"].values()), np.mean(vectors, axis=0))
     assert result["risk_aversions"] == aversions
+
+
+def test_resampled_frontier_user_portfolio_uses_same_samples(panel):
+    weights = {"1": 0.6, "2": 0.2, "3": 0.2}
+    options = dict(bootstrap_iterations=4, frontier_points=3, random_seed=42)
+    baseline = analyze_resampled_frontier(panel, **options)
+    result = analyze_resampled_frontier(panel, user_weights=weights, **options)
+    assert result["sample_fingerprint"] == baseline["sample_fingerprint"]
+    assert result["frontier"] == baseline["frontier"]
+    assert result["user_portfolio"]["weights"] == weights
+    w = np.array([weights[a] for a in panel.assets])
+    rng = np.random.default_rng(42)
+    moments = []
+    for _ in range(4):
+        sample = panel.values[stationary_indices(len(panel.values), 12, rng)]
+        cov = estimate_covariance(sample).matrix * 12
+        moments.append((sample.mean(0) @ w * 12, np.sqrt(w @ cov @ w)))
+    average = np.mean(moments, axis=0)
+    assert result["user_sample_average"]["successful_samples"] == 4
+    assert result["user_sample_average"]["expected_return"] == pytest.approx(average[0])
+    assert result["user_sample_average"]["volatility"] == pytest.approx(average[1])
 
 
 @pytest.mark.parametrize("failures,expected", [(1, "complete"), (2, "incomplete")])

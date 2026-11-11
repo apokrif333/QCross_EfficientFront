@@ -13,6 +13,15 @@ export function stable(value: unknown): string {
         : item;
   return JSON.stringify(normalize(value));
 }
+export function effectiveRequest(request: ApiRequest): ApiRequest {
+  return {
+    ...request,
+    include_efficiency_robustness:
+      request.include_efficiency_robustness ?? true,
+    rolling_window_months: request.rolling_window_months ?? 120,
+    rolling_step_months: request.rolling_step_months ?? 12,
+  };
+}
 export function settingsKey(request: ApiRequest): string {
   const {
     covariance_method: _method,
@@ -21,7 +30,7 @@ export function settingsKey(request: ApiRequest): string {
     risk_aversions: _aversions,
     ...rest
   } = {
-    ...request,
+    ...effectiveRequest(request),
     return_basis: request.return_basis ?? "nominal",
     risk_free_source: request.risk_free_source ?? "fixed_annual",
   };
@@ -75,6 +84,7 @@ export function parseSnapshot(text: string): Snapshot {
         "cross-validation",
         "bootstrap",
         "resampled-frontier",
+        "rolling-efficiency",
       ].includes(record.kind) ||
       !record.request ||
       !Array.isArray(record.request.instrument_ids) ||

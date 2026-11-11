@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import Settings from "../components/Settings";
 import { CV_FOLDS, cvHistoryError, minimumCVHistory } from "../lib/cv";
-import { requestSchema } from "../lib/validation";
+import { requestSchema, requestSchemaFor } from "../lib/validation";
 import { runJob } from "../lib/api";
 import { DEFAULT_REQUEST } from "../types";
 
@@ -45,6 +45,34 @@ it("validates history for the requested operation", () => {
   expect(
     cvHistoryError({ ...covariance, cv_folds: 2 }, "cross-validation", 180),
   ).toBeNull();
+});
+
+it("allows rolling robustness independently of the selected optimization objective", () => {
+  expect(
+    requestSchemaFor("rolling-efficiency").safeParse({
+      ...DEFAULT_REQUEST,
+      objective: "target_return",
+      target_return: null,
+      user_weights: Object.fromEntries(
+        DEFAULT_REQUEST.instrument_ids.map((id) => [
+          String(id),
+          1 / DEFAULT_REQUEST.instrument_ids.length,
+        ]),
+      ),
+      rolling_window_months: 120,
+      rolling_step_months: 12,
+    }).success,
+  ).toBe(true);
+  expect(
+    cvHistoryError(
+      {
+        ...DEFAULT_REQUEST,
+        user_weights: { "1": 0.4, "2": 0.3, "3": 0.3 },
+      },
+      "rolling-efficiency",
+      119,
+    ),
+  ).toContain("120");
 });
 
 it("offers only even folds and disables unavailable portfolio folds using actual history", async () => {

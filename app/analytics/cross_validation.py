@@ -4,6 +4,8 @@ import time
 
 import numpy as np
 
+from app.analytics.constraints import user_allocation
+from app.analytics.efficiency_distance import efficiency_distance, summarize_distances
 from app.analytics.estimators import estimate_covariance
 from app.analytics.frontier import data_diagnostics, describe, prepare
 from app.analytics.metrics import historical_metrics, portfolio_metrics
@@ -88,6 +90,8 @@ def analyze_cross_validation(
     objective: str = "gmv",
     target_return: float | None = None,
     risk_free_rate: float = 0.03,
+    user_weights: dict | None = None,
+    include_efficiency_robustness: bool = True,
     **options,
 ) -> dict:
     started = time.perf_counter()
@@ -98,6 +102,11 @@ def analyze_cross_validation(
         covariance_method=options.get("covariance_method", "sample"),
     )
     constraints, estimate, mean, covariance = prepare(panel, cv_folds=cv_folds, **options)
+    fixed_user_weights = (
+        user_allocation(panel.assets, user_weights)
+        if include_efficiency_robustness and user_weights
+        else None
+    )
     original = PortfolioOptimizer(mean, covariance, constraints, **panel.differential).optimize(
         objective, risk_free_rate, target_return
     )
@@ -204,6 +213,36 @@ def analyze_cross_validation(
                 )
         except (AnalyticsError, np.linalg.LinAlgError) as exc:
             fold.update(status="failed", weights=None, diagnostics={"reason": str(exc)})
+        if fixed_user_weights is not None:
+            try:
+                method = options.get("covariance_method", "sample")
+                fixed_parameters = None
+                if method == "cv_linear":
+                    fixed_parameters = fold.get("covariance_parameters")
+                    if not fixed_parameters:
+                        raise AnalyticsError(
+                            "Training fold did not produce cv_linear shrinkage parameters."
+                        )
+                validation_estimate = estimate_covariance(
+                    validation_values,
+                    method,
+                    folds=cv_folds,
+                    target=options.get("shrinkage_target", "identity"),
+                    fixed_parameters=fixed_parameters,
+                )
+                fold["efficiency_robustness"] = efficiency_distance(
+                    validation_values,
+                    validation_estimate.matrix,
+                    fixed_user_weights,
+                    constraints,
+                    estimator_parameters=validation_estimate.parameters,
+                    covariance_diagnostics=validation_estimate.diagnostics,
+                )
+            except Exception as exc:  # Optional diagnostics do not change CV fold outcomes.
+                fold["efficiency_robustness"] = {
+                    "status": "failed",
+                    "diagnostics": {"reason": str(exc)},
+                }
         fold_results.append(fold)
     ensemble, stability = None, None
     if len(fold_weights) == cv_folds and original.weights is not None:
@@ -253,6 +292,15 @@ def analyze_cross_validation(
         "source_metadata": panel.metadata,
         "original": describe(original, panel, mean, covariance, risk_free_rate),
         "folds": fold_results,
+        "efficiency_robustness": {
+            "user_weights": dict(zip(panel.assets, fixed_user_weights.tolist(), strict=True)),
+            "evaluation": "retrospective_validation_sample_frontiers",
+            **summarize_distances(
+                [f["efficiency_robustness"] for f in fold_results if f.get("efficiency_robustness")]
+            ),
+        }
+        if fixed_user_weights is not None
+        else None,
         "ensemble": ensemble,
         "stability": stability,
         "execution_seconds": time.perf_counter() - started,

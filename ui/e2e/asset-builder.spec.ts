@@ -1,10 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { resolve } from "node:path";
-import { mkdir } from "node:fs/promises";
 
 test("Live asset builder, numbered constraints and a 100% VTI reference use actual stored history", async ({
   page,
-}) => {
+}, testInfo) => {
   test.skip(
     !process.env.QCROSS_LIVE_TEST,
     "Requires the local stored-history API.",
@@ -152,9 +150,8 @@ test("Live asset builder, numbered constraints and a 100% VTI reference use actu
       12,
     );
   }
-  await mkdir(resolve("../docs/ui-verification"), { recursive: true });
   await page.screenshot({
-    path: resolve("../docs/ui-verification/asset-builder-live-desktop.png"),
+    path: testInfo.outputPath("asset-builder-live-desktop.png"),
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -166,7 +163,7 @@ test("Live asset builder, numbered constraints and a 100% VTI reference use actu
     )
     .toBe(true);
   await page.screenshot({
-    path: resolve("../docs/ui-verification/asset-builder-live-mobile.png"),
+    path: testInfo.outputPath("asset-builder-live-mobile.png"),
     fullPage: true,
   });
   expect(errors).toEqual([]);

@@ -6,6 +6,9 @@ from collections import Counter
 
 import numpy as np
 
+from app.analytics.bootstrap_metrics import fixed_portfolio_metrics, summarize_bootstrap_portfolio
+from app.analytics.constraints import user_allocation
+from app.analytics.efficiency_distance import efficiency_distance, summarize_distances
 from app.analytics.estimators import estimate_covariance
 from app.analytics.frontier import data_diagnostics, describe, prepare
 from app.analytics.metrics import portfolio_metrics
@@ -134,6 +137,8 @@ def analyze_bootstrap(
     objectives: list[str] | None = None,
     risk_free_rate: float = 0.03,
     target_return: float | None = None,
+    user_weights: dict | None = None,
+    include_efficiency_robustness: bool = True,
     **options,
 ) -> dict:
     _validate_settings(bootstrap_iterations, expected_block_length, random_seed)
@@ -150,6 +155,11 @@ def analyze_bootstrap(
         raise AnalyticsError("Target Return Bootstrap requires a finite annual target_return.")
     started = time.perf_counter()
     constraints, estimate, mean, covariance = prepare(panel, **options)
+    fixed_user_weights = (
+        user_allocation(panel.assets, user_weights)
+        if include_efficiency_robustness and user_weights
+        else None
+    )
     engine = PortfolioOptimizer(mean, covariance, constraints, **panel.differential)
     originals = {
         objective: _target_solution(engine, target_return, risk_free_rate)
@@ -160,16 +170,78 @@ def analyze_bootstrap(
     records = {objective: [] for objective in objectives}
     weight_vectors = {objective: [] for objective in objectives}
     rng, fingerprint = np.random.default_rng(random_seed), hashlib.sha256()
+    efficiency_records = []
     for iteration in range(bootstrap_iterations):
         indices = stationary_indices(len(panel.values), expected_block_length, rng)
         fingerprint.update(indices.astype("<i8").tobytes())
         values = panel.values[indices]
+        sample_rf = (
+            panel.risk_free_returns[indices] if panel.risk_free_returns is not None else None
+        )
+        fixed_metrics_record = {}
+        if fixed_user_weights is not None:
+            try:
+                metrics = fixed_portfolio_metrics(
+                    values,
+                    fixed_user_weights,
+                    sample_rf
+                    if sample_rf is not None
+                    else np.full(len(values), (1 + risk_free_rate) ** (1 / 12) - 1),
+                )
+                fixed_metrics_record = {
+                    "observations": len(values),
+                    "portfolio_metrics": metrics,
+                    "portfolio_metrics_diagnostics": {
+                        "unavailable_metrics": [
+                            key for key, value in metrics.items() if value is None
+                        ],
+                    },
+                }
+            except Exception as exc:  # Optional diagnostics cannot change optimizer outcomes.
+                fixed_metrics_record = {
+                    "observations": len(values),
+                    "portfolio_metrics": {},
+                    "portfolio_metrics_diagnostics": {"reason": str(exc)},
+                }
         try:
             sample_estimate = _sample_estimate(values, estimate, options)
             sample_mean, sample_covariance = values.mean(0) * 12, sample_estimate.matrix * 12
-            sample_rf = (
-                panel.risk_free_returns[indices] if panel.risk_free_returns is not None else None
-            )
+            if fixed_user_weights is not None:
+                try:
+                    distance = efficiency_distance(
+                        values,
+                        sample_estimate.matrix,
+                        fixed_user_weights,
+                        constraints,
+                        estimator_parameters=sample_estimate.parameters,
+                        covariance_diagnostics=sample_estimate.diagnostics,
+                    )
+                    diagnostics = {
+                        key: value
+                        for key, value in distance["diagnostics"].items()
+                        if key not in {"covariance_diagnostics", "estimator_parameters"}
+                    }
+                    efficiency_records.append(
+                        {
+                            "iteration": iteration,
+                            **fixed_metrics_record,
+                            "status": distance["status"],
+                            "user_expected_return": distance.get("user_expected_return"),
+                            "user_volatility": distance.get("user_volatility"),
+                            "return_shortfall": distance["return_shortfall"],
+                            "excess_volatility": distance["excess_volatility"],
+                            "diagnostics": diagnostics,
+                        }
+                    )
+                except Exception as exc:  # Optional diagnostics cannot change optimizer outcomes.
+                    efficiency_records.append(
+                        {
+                            "iteration": iteration,
+                            **fixed_metrics_record,
+                            "status": "failed",
+                            "diagnostics": {"reason": str(exc)},
+                        }
+                    )
             differential = differential_moments(
                 values,
                 sample_rf,
@@ -184,6 +256,15 @@ def analyze_bootstrap(
                 sample_mean, sample_covariance, constraints, **differential
             )
         except (AnalyticsError, np.linalg.LinAlgError) as exc:
+            if fixed_user_weights is not None and len(efficiency_records) == iteration:
+                efficiency_records.append(
+                    {
+                        "iteration": iteration,
+                        **fixed_metrics_record,
+                        "status": "failed",
+                        "diagnostics": {"reason": str(exc)},
+                    }
+                )
             for objective in objectives:
                 records[objective].append(
                     {
@@ -347,6 +428,14 @@ def analyze_bootstrap(
         "interpretation": "Allocation sensitivity; not guaranteed future-return intervals.",
         "portfolio_evaluation": "original_and_resampled_on_same_original_full_sample",
         "objectives": results,
+        "efficiency_robustness": {
+            "user_weights": dict(zip(panel.assets, fixed_user_weights.tolist(), strict=True)),
+            "evaluation": "stationary_bootstrap_resampled_scenarios_not_future_probability",
+            **summarize_distances(efficiency_records),
+            **summarize_bootstrap_portfolio(efficiency_records, len(panel.values)),
+        }
+        if fixed_user_weights is not None
+        else None,
         "execution_seconds": time.perf_counter() - started,
     }
 
@@ -363,6 +452,7 @@ def analyze_resampled_frontier(
     risk_free_rate: float = 0.03,
     objective: str | None = None,
     target_return: float | None = None,
+    user_weights: dict | None = None,
     **options,
 ) -> dict:
     # Global portfolio controls do not define this shared risk-aversion curve.
@@ -382,9 +472,10 @@ def analyze_resampled_frontier(
         raise AnalyticsError("Supply one finite risk aversion in (0, 1e6] per frontier point.")
     started = time.perf_counter()
     constraints, estimate, mean, covariance = prepare(panel, **options)
+    fixed_user_weights = user_allocation(panel.assets, user_weights)
     rng, fingerprint = np.random.default_rng(random_seed), hashlib.sha256()
     weights = [[] for _ in aversions]
-    records, diagnostics = [], []
+    records, diagnostics, user_sample_moments = [], [], []
     for iteration in range(bootstrap_iterations):
         indices = stationary_indices(len(panel.values), expected_block_length, rng)
         fingerprint.update(indices.astype("<i8").tobytes())
@@ -414,6 +505,17 @@ def analyze_resampled_frontier(
             # Count a bootstrap sample as successful only if every shared gamma succeeded.
             for point, result in enumerate(solutions):
                 weights[point].append(result.weights)
+            if fixed_user_weights is not None:
+                user_sample_moments.append(
+                    (
+                        float(values.mean(0) @ fixed_user_weights * 12),
+                        float(
+                            np.sqrt(
+                                max(0, fixed_user_weights @ sample.matrix @ fixed_user_weights * 12)
+                            )
+                        ),
+                    )
+                )
             records.append({"iteration": iteration, "status": "optimal"})
         except (AnalyticsError, np.linalg.LinAlgError) as exc:
             records.append(
@@ -437,6 +539,25 @@ def analyze_resampled_frontier(
             point["risk_aversion"] = float(gamma)
             points.append(point)
     data = data_diagnostics(panel, estimate, risk_free_rate)
+    user_portfolio = (
+        describe(
+            OptimizationResult("reference", fixed_user_weights, {}),
+            panel,
+            mean,
+            covariance,
+            risk_free_rate,
+        )
+        if fixed_user_weights is not None
+        else None
+    )
+    user_sample_average = None
+    if user_sample_moments:
+        average_moments = np.mean(user_sample_moments, axis=0)
+        user_sample_average = {
+            "expected_return": float(average_moments[0]),
+            "volatility": float(average_moments[1]),
+            "successful_samples": len(user_sample_moments),
+        }
     return {
         **data,
         **summary,
@@ -447,6 +568,8 @@ def analyze_resampled_frontier(
         "label": "Resampled frontier (not the exact classical efficient frontier)",
         "risk_aversions": aversions.tolist(),
         "frontier": points,
+        "user_portfolio": user_portfolio,
+        "user_sample_average": user_sample_average,
         "expected_block_length": expected_block_length,
         "random_seed": random_seed,
         "sample_fingerprint": fingerprint.hexdigest(),

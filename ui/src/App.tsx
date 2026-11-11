@@ -11,12 +11,14 @@ import type {
   Kind,
   Mode,
   ResampledResult,
+  RollingEfficiencyResult,
 } from "./types";
 import { DEFAULT_REQUEST, METHODS } from "./types";
 import { fetchCatalog, requestJson, runJob } from "./lib/api";
 import {
   compareCalculations,
   compatible,
+  effectiveRequest,
   createSnapshot,
   downloadJson,
   parseSnapshot,
@@ -35,11 +37,14 @@ import {
   BootstrapView,
   CVView,
   FrontierView,
+  RollingEfficiencyView,
   ResampledView,
 } from "./components/Results";
 import { number } from "./lib/display";
 import { cvHistoryError } from "./lib/cv";
 
+const RUN_ROLLING_LABEL =
+  "\u0420\u0430\u0441\u0441\u0447\u0438\u0442\u0430\u0442\u044c \u0443\u0441\u0442\u043e\u0439\u0447\u0438\u0432\u043e\u0441\u0442\u044c \u043d\u0430 \u0441\u043a\u043e\u043b\u044c\u0437\u044f\u0449\u0438\u0445 10-\u043b\u0435\u0442\u043d\u0438\u0445 \u043e\u043a\u043d\u0430\u0445";
 const TABS = [
   "Frontier",
   "Cross-validation",
@@ -183,11 +188,12 @@ export default function App() {
   );
   const frontier = records.find((c) => c.kind === "frontier"),
     cv = records.find((c) => c.kind === "cross-validation"),
+    rolling = records.find((c) => c.kind === "rolling-efficiency"),
     bootstrap = records.find((c) => c.kind === "bootstrap"),
     resampled = records.find((c) => c.kind === "resampled-frontier");
   const visible =
     tab === "Cross-validation"
-      ? cv
+      ? (cv ?? rolling)
       : tab === "Bootstrap"
         ? (bootstrap ?? resampled)
         : frontier;
@@ -421,7 +427,10 @@ export default function App() {
     }
   }
   const stale =
-    visible && mode === "live" && stable(visible.request) !== stable(request);
+    visible &&
+    mode === "live" &&
+    stable(effectiveRequest(visible.request)) !==
+      stable(effectiveRequest(request));
   const resultLabel = loaded
     ? "JSON Snapshot"
     : mode === "demo"
@@ -672,11 +681,30 @@ export default function App() {
                 compare
               />
             )}
-            {tab === "Cross-validation" && cv && (
-              <CVView
-                result={cv.result as CVResult}
-                instruments={instruments}
-              />
+            {tab === "Cross-validation" && (
+              <>
+                {cv && (
+                  <CVView
+                    result={cv.result as CVResult}
+                    instruments={instruments}
+                  />
+                )}
+                {mode === "live" && request.user_weights && (
+                  <button
+                    className="secondary"
+                    disabled={!!busy}
+                    onClick={() => void calculate(["rolling-efficiency"])}
+                  >
+                    {RUN_ROLLING_LABEL}
+                  </button>
+                )}
+                {rolling && (
+                  <RollingEfficiencyView
+                    result={rolling.result as RollingEfficiencyResult}
+                    instruments={instruments}
+                  />
+                )}
+              </>
             )}
             {tab === "Bootstrap" && (
               <>

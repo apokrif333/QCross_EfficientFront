@@ -54,6 +54,12 @@ def test_real_process_api_roundtrip(endpoint, panel, settings, session_factory):
             user = completed["result"]["user_portfolio"]
             assert user["weights"]["1"] == 1.0
             assert not user["feasible"]
+        if endpoint == "bootstrap":
+            robustness = completed["result"]["efficiency_robustness"]
+            assert robustness["horizon"]["months"] == len(panel.values)
+            assert robustness["distributions"]["annualized_cagr"]["valid_count"] == 3
+            assert robustness["distributions"]["terminal_wealth"]["horizon_years"] == 20
+            assert robustness["distributions"]["return_shortfall"]["valid_count"] == 0
         provenance = completed["result"]["reproducibility"]
         expected = AnalyticsRequest.model_validate(body).model_dump(mode="json")
         if endpoint == "bootstrap":
@@ -98,6 +104,39 @@ def test_api_rejects_invalid_inputs_before_starting_workers(panel, settings, ses
             },
         )
         assert response.status_code == 422 and "30,000" in response.text
+
+
+def test_rolling_efficiency_async_job_roundtrip(panel, settings, session_factory):
+    seed_database(session_factory, panel)
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/api/v1/analytics/rolling-efficiency",
+            json={
+                "risk_free_source": "fixed_annual",
+                "instrument_ids": [1, 2, 3],
+                "user_weights": {"1": 0.4, "2": 0.3, "3": 0.3},
+                "rolling_window_months": 120,
+                "rolling_step_months": 12,
+            },
+        )
+        assert response.status_code == 202, response.text
+        result = wait_result(client, response.json())
+        assert result["status"] == "completed", result
+        assert len(result["result"]["windows"]) == 11
+        assert result["result"]["windows"][0]["observations"] == 120
+
+
+def test_rolling_efficiency_requires_user_weights_before_submission(
+    panel, settings, session_factory
+):
+    seed_database(session_factory, panel)
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/api/v1/analytics/rolling-efficiency",
+            json={"risk_free_source": "fixed_annual", "instrument_ids": [1, 2]},
+        )
+        assert response.status_code == 422
+        assert "user_weights" in response.text
 
 
 def test_api_capacity_and_timeout_are_bounded(panel, settings, session_factory):

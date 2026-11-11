@@ -193,7 +193,7 @@ diagnostics: {solver_status, solver, iterations, timing, constraint_violation, .
 | Frontier | GMV, Max Sharpe, maximum return, selected objective, equal-weight feasibility/label, all target-return frontier portfolios |
 | CV | Original full-sample portfolio, training/validation periods with training segments, every fold's weights/metrics/estimator diagnostics, ensemble, stability |
 | Bootstrap | Results by objective, original/resampled portfolios, weight/displacement statistics, all iteration records, success/failure counts and reasons, conditional-bootstrap disclosure and sample fingerprint |
-| Resampled frontier | Shared gamma values, averaged portfolios on original estimates, sample counts/failures, all iteration solver/covariance diagnostics, conditional-bootstrap disclosure |
+| Resampled frontier | Shared gamma values, averaged portfolios on original estimates, optional user portfolio on the original sample and its average return/volatility across successful samples, sample counts/failures, iteration solver/covariance diagnostics, conditional-bootstrap disclosure |
 
 ## Execution bounds
 
@@ -236,3 +236,45 @@ Stationary Bootstrap. Estimated and historical Sharpe are reported separately.
 Legacy fixed-rate snapshots retain their original semantics.
 
 See [source, formula, refresh commands, API, revisions and verification](macro-analytics.md).
+
+# Portfolio efficiency robustness API
+
+Set `user_weights` (asset IDs as keys, weights totaling one) and
+`include_efficiency_robustness: true` on `/cross-validation` or `/bootstrap` to
+add fixed-allocation distance diagnostics without changing their existing
+portfolio results. The distances are annual decimal fractions:
+`return_shortfall` (max return at the user's volatility minus user return) and
+`excess_volatility` (user volatility minus minimum volatility at user's return).
+
+Submit the same analytics request to `POST /api/v1/analytics/rolling-efficiency`
+for rolling 120-month windows stepped every 12 months. The endpoint returns the
+standard asynchronous job contract. Optional `rolling_window_months` and
+`rolling_step_months` default to 120 and 12. Each result reports dates,
+covariance parameters, solver diagnostics, summary distribution and provenance.
+When `covariance_method` is `cv_linear`, each rolling window selects the largest
+eligible even fold count no greater than `cv_folds`.
+The default 120-month window uses K=2, as specified for the rolling analysis.
+
+### Fixed-portfolio Bootstrap metric distributions
+
+With explicit `user_weights` and `include_efficiency_robustness=true`, `/bootstrap`
+adds the following to `efficiency_robustness`:
+
+- `horizon`: full selected panel `months`, `years`, `initial_wealth=1`,
+  `sample_length_policy=full_selected_return_panel`, `rebalancing=monthly_fixed_weights`.
+- `results[].portfolio_metrics`: `annualized_cagr`, `annualized_arithmetic_return`,
+  `annualized_volatility`, `maximum_drawdown`, `historical_sharpe_ratio`, `terminal_wealth`.
+- `distributions`: the same six keys plus `return_shortfall` and `excess_volatility`.
+  Each includes `mean`, `median`, `p5`, `p95`, `minimum`, `maximum`, `valid_count`,
+  `unavailable_count`, `horizon_months`, `horizon_years`, `annualized`, and `units`.
+- `metric_conventions` and `distribution_interpretation` document volatility
+  ddof=0, differential Sharpe ddof=1, null handling and statistical interpretation.
+
+Returns, volatility, drawdown and efficiency distances are decimal fractions;
+Sharpe is dimensionless and terminal wealth is the value from $1 in the selected
+Nominal/Real basis. Every distribution uses the full selected duration T/12 years.
+Drawdown and terminal wealth are full-horizon metrics rather than annual rates.
+Per-metric counts disclose undefined Sharpe values and numerical overflow.
+Path statistics remain available when covariance estimation or an efficiency
+solver fails. The existing distance-summary fields remain present and now also
+include `minimum`. The sampling fingerprint and optimization objectives are unchanged.

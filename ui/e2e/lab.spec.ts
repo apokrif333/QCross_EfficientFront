@@ -1,10 +1,10 @@
 import { test, expect } from "@playwright/test";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 test("Demo works without API; charts, mobile, snapshot export and reload", async ({
   page,
-}) => {
+}, testInfo) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route("**/api/**", (route) => route.abort());
@@ -41,9 +41,8 @@ test("Demo works without API; charts, mobile, snapshot export and reload", async
       .first(),
   ).toBeVisible();
   await page.getByRole("button", { name: "Frontier", exact: true }).click();
-  await mkdir(resolve("../docs/ui-verification"), { recursive: true });
   await page.screenshot({
-    path: resolve("../docs/ui-verification/demo-desktop.png"),
+    path: testInfo.outputPath("demo-desktop.png"),
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -64,7 +63,7 @@ test("Demo works without API; charts, mobile, snapshot export and reload", async
     )
     .toBeLessThan(365);
   await page.screenshot({
-    path: resolve("../docs/ui-verification/demo-mobile.png"),
+    path: testInfo.outputPath("demo-mobile.png"),
     fullPage: true,
   });
   const download = page.waitForEvent("download");
@@ -79,7 +78,7 @@ test("Demo works without API; charts, mobile, snapshot export and reload", async
 
 test("all four Live jobs, four-method comparison and exact snapshot repeat through UI", async ({
   page,
-}) => {
+}, testInfo) => {
   test.skip(
     !process.env.QCROSS_LIVE_TEST,
     "Start real FastAPI and set QCROSS_LIVE_TEST=1 for stored-history integration.",
@@ -180,7 +179,7 @@ test("all four Live jobs, four-method comparison and exact snapshot repeat throu
     page.locator(".legendtext").filter({ hasText: /^CV Linear$/ }),
   ).toBeVisible();
   await page.screenshot({
-    path: resolve("../docs/ui-verification/live-compare.png"),
+    path: testInfo.outputPath("live-compare.png"),
     fullPage: true,
   });
   const download = page.waitForEvent("download");
@@ -206,7 +205,7 @@ test("all four Live jobs, four-method comparison and exact snapshot repeat throu
   expect(new Set(jobs.map((j) => j.hash)).size).toBe(1);
   expect(errors).toEqual([]);
   await writeFile(
-    resolve("../docs/ui-verification/live-jobs.json"),
+    testInfo.outputPath("live-jobs.json"),
     JSON.stringify(jobs, null, 2),
   );
 });

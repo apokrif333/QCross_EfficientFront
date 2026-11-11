@@ -8,6 +8,9 @@ import type {
   Instrument,
   Portfolio,
   ResampledResult,
+  EfficiencyDistance,
+  EfficiencyDistribution,
+  RollingEfficiencyResult,
 } from "../types";
 import { METHODS } from "../types";
 import { compatible } from "../lib/snapshot";
@@ -36,6 +39,406 @@ function hover(p: Portfolio, label: string, instruments: Instrument[]) {
   )
     .map(([a, w]) => `${escape(ticker(a, instruments))}: ${percent(w)}`)
     .join("<br>")}<extra></extra>`;
+}
+const EFFICIENCY_LABELS = {
+  heading:
+    "\u0423\u0441\u0442\u043e\u0439\u0447\u0438\u0432\u043e\u0441\u0442\u044c \u043f\u043e\u0440\u0442\u0444\u0435\u043b\u044f",
+  retrospective:
+    "\u0413\u0440\u0430\u043d\u0438\u0446\u0430 \u043e\u0446\u0435\u043d\u0438\u0432\u0430\u0435\u0442\u0441\u044f \u0440\u0435\u0442\u0440\u043e\u0441\u043f\u0435\u043a\u0442\u0438\u0432\u043d\u043e \u0434\u043b\u044f \u043a\u0430\u0436\u0434\u043e\u0433\u043e \u043e\u043a\u043d\u0430/\u0441\u0446\u0435\u043d\u0430\u0440\u0438\u044f.",
+  shortfall:
+    "\u0423\u043f\u0443\u0449\u0435\u043d\u043d\u0430\u044f \u0433\u043e\u0434\u043e\u0432\u0430\u044f \u0434\u043e\u0445\u043e\u0434\u043d\u043e\u0441\u0442\u044c, \u043f.\u043f.",
+  excessRisk:
+    "\u0418\u0437\u0431\u044b\u0442\u043e\u0447\u043d\u0430\u044f \u0433\u043e\u0434\u043e\u0432\u0430\u044f \u0432\u043e\u043b\u0430\u0442\u0438\u043b\u044c\u043d\u043e\u0441\u0442\u044c, \u043f.\u043f.",
+  counts:
+    "\u0423\u0441\u043f\u0435\u0448\u043d\u043e / \u043e\u0448\u0438\u0431\u043a\u0438",
+  rolling:
+    "\u0421\u043a\u043e\u043b\u044c\u0437\u044f\u0449\u0438\u0435 10-\u043b\u0435\u0442\u043d\u0438\u0435 \u043e\u043a\u043d\u0430",
+};
+function ResultStatus({
+  status,
+  diagnostics,
+}: {
+  status: string;
+  diagnostics?: Record<string, unknown>;
+}) {
+  if (status === "optimal") return <>{status}</>;
+  const details = diagnostics ?? {};
+  const detail = [
+    details.reason,
+    details.return_error,
+    details.risk_error,
+    details.solver_status,
+    details.return_solver,
+    details.risk_solver,
+  ]
+    .filter(
+      (item): item is string => typeof item === "string" && item.length > 0,
+    )
+    .join("; ");
+  const explanation = /singular or nearly singular/i.test(detail)
+    ? `Матрица ковариации вырождена или близка к вырожденной: доходности активов линейно зависимы, например когда один из активов почти не менялся. Попробуйте Sample Covariance или Ledoit-Wolf. (${detail})`
+    : detail || "Причина ошибки не была передана в диагностике этого расчёта.";
+  return (
+    <span className="failure-status" tabIndex={0} title={explanation}>
+      {status}
+    </span>
+  );
+}
+function formatEfficiencySummary(
+  v: EfficiencyDistribution["return_shortfall"],
+) {
+  return v
+    ? `mean ${(v.mean * 100).toFixed(2)} п.п.; median ${(v.median * 100).toFixed(2)}; P5-P95 ${(v.p5 * 100).toFixed(2)}-${(v.p95 * 100).toFixed(2)}; max ${(v.maximum * 100).toFixed(2)}`
+    : "-";
+}
+function EfficiencyPanel({
+  value,
+  title,
+  instruments = [],
+  showWeights = true,
+}: {
+  value?: EfficiencyDistribution | null;
+  title: string;
+  instruments?: Instrument[];
+  showWeights?: boolean;
+}) {
+  const [metric, setMetric] = useState<
+    "return_shortfall" | "excess_volatility"
+  >("return_shortfall");
+  if (!value) return null;
+  const isShortfall = metric === "return_shortfall";
+  const metricLabel = isShortfall
+    ? EFFICIENCY_LABELS.shortfall
+    : EFFICIENCY_LABELS.excessRisk;
+  const distributionTitle = isShortfall
+    ? "Распределение упущенной годовой доходности"
+    : "Распределение избыточной годовой волатильности";
+  const histogram =
+    value.results && value.results.length > 0
+      ? ({
+          type: "histogram",
+          x: value.results
+            .filter((r) => r.status === "optimal" && r[metric] != null)
+            .map((r) => r[metric]! * 100),
+          nbinsx: 30,
+          name: "Bootstrap",
+          hovertemplate: `<b>${metricLabel}</b><br>Середина интервала: %{x} п.п.<br>Число выборок: %{y}<extra></extra>`,
+        } as Data)
+      : null;
+  return (
+    <section className="subsection">
+      <h3>
+        {EFFICIENCY_LABELS.heading} - {title}
+      </h3>
+      {showWeights && (
+        <p className="hint">
+          Ваш портфель (веса одинаковы во всех выборках):{" "}
+          {visibleWeights(value.user_weights)
+            .map(([a, w]) => `${ticker(a, instruments)} ${percent(w)}`)
+            .join(" - ")}
+        </p>
+      )}
+      <p className="hint">{EFFICIENCY_LABELS.retrospective}</p>
+      <div className="metrics efficiency-metrics">
+        <span>
+          {EFFICIENCY_LABELS.shortfall}
+          <b className="efficiency-summary">
+            {formatEfficiencySummary(value.return_shortfall)}
+          </b>
+        </span>
+        <span>
+          {EFFICIENCY_LABELS.excessRisk}
+          <b className="efficiency-summary">
+            {formatEfficiencySummary(value.excess_volatility)}
+          </b>
+        </span>
+        <span>
+          {EFFICIENCY_LABELS.counts}
+          <b>
+            {value.valid_count} / {value.failed_count}
+          </b>
+        </span>
+      </div>
+      {histogram && (
+        <>
+          <div
+            className="segmented"
+            role="group"
+            aria-label="Показатель гистограммы"
+          >
+            <button
+              type="button"
+              className={isShortfall ? "active" : ""}
+              aria-pressed={isShortfall}
+              onClick={() => setMetric("return_shortfall")}
+            >
+              Распределение упущенной годовой доходности
+            </button>
+            <button
+              type="button"
+              className={!isShortfall ? "active" : ""}
+              aria-pressed={!isShortfall}
+              onClick={() => setMetric("excess_volatility")}
+            >
+              Распределение избыточной годовой волатильности
+            </button>
+          </div>
+          <h4>{distributionTitle}</h4>
+          <p className="hint">
+            {isShortfall
+              ? "Число выборок в каждом диапазоне упущенной доходности при риске не выше риска вашего портфеля."
+              : "Число выборок в каждом диапазоне избыточной волатильности при доходности не ниже доходности вашего портфеля."}
+            {value.horizon &&
+              ` Горизонт каждой выборки: ${value.horizon.months} мес. (${number(value.horizon.years, 2)} лет).`}
+          </p>
+          <Plot
+            title={`Bootstrap: ${metricLabel}${value.horizon ? ` - ${value.horizon.months} мес. (${number(value.horizon.years, 2)} лет)` : ""}`}
+            data={[histogram]}
+            layout={{
+              xaxis: { title: { text: metricLabel } },
+              yaxis: { title: { text: "Число выборок" }, rangemode: "tozero" },
+            }}
+          />
+        </>
+      )}
+      {value.results && value.results.length <= 50 && (
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>{"\u041e\u043a\u043d\u043e / \u0444\u043e\u043b\u0434"}</th>
+                <th>
+                  {
+                    "\u0414\u043e\u0445\u043e\u0434\u043d\u043e\u0441\u0442\u044c / \u0432\u043e\u043b\u0430\u0442\u0438\u043b\u044c\u043d\u043e\u0441\u0442\u044c \u043f\u043e\u0440\u0442\u0444\u0435\u043b\u044f"
+                  }
+                </th>
+                <th>{EFFICIENCY_LABELS.shortfall}</th>
+                <th>{EFFICIENCY_LABELS.excessRisk}</th>
+                <th>{"\u0421\u0442\u0430\u0442\u0443\u0441"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {value.results.map((r, i) => (
+                <tr key={i}>
+                  <td>
+                    {r.start_month
+                      ? `${r.start_month} - ${r.end_month}`
+                      : (r.fold ?? r.iteration ?? i + 1)}
+                  </td>
+                  <td>
+                    {r.user_expected_return == null
+                      ? "-"
+                      : `${percent(r.user_expected_return)} / ${percent(r.user_volatility)}`}
+                  </td>
+                  <td>
+                    {r.return_shortfall == null
+                      ? "-"
+                      : (r.return_shortfall * 100).toFixed(3)}
+                  </td>
+                  <td>
+                    {r.excess_volatility == null
+                      ? "-"
+                      : (r.excess_volatility * 100).toFixed(3)}
+                  </td>
+                  <td>
+                    <ResultStatus
+                      status={r.status}
+                      diagnostics={r.diagnostics}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BootstrapPortfolioMetrics({ result }: { result: BootstrapResult }) {
+  const robustness = result.efficiency_robustness;
+  if (!robustness?.distributions || !robustness.horizon) return null;
+  const labels: Record<string, string> = {
+    annualized_cagr: "CAGR, % годовых",
+    annualized_arithmetic_return: "Арифметическая доходность, % годовых",
+    annualized_volatility: "Годовая волатильность (историческая), %",
+    maximum_drawdown: "Максимальная просадка за горизонт, %",
+    historical_sharpe_ratio: "Исторический Sharpe",
+    terminal_wealth: "Стоимость из $1 к концу горизонта",
+    return_shortfall: EFFICIENCY_LABELS.shortfall,
+    excess_volatility: EFFICIENCY_LABELS.excessRisk,
+  };
+  const format = (key: string, value: number | null) => {
+    if (value == null) return "—";
+    if (key === "historical_sharpe_ratio") return number(value);
+    if (key === "terminal_wealth") return `$${number(value, 3)}`;
+    if (key === "return_shortfall" || key === "excess_volatility")
+      return `${(value * 100).toFixed(2)} п.п.`;
+    return percent(value);
+  };
+  return (
+    <section className="subsection">
+      <h3>Показатели фиксированного портфеля</h3>
+      <p className="hint">
+        Горизонт каждой выборки: {robustness.horizon.months} мес. (
+        {number(robustness.horizon.years, 2)} лет) ·{" "}
+        {result.return_basis === "real" ? "Real" : "Nominal"} USD. Полная длина
+        выбранной истории, ежемесячное восстановление заданных весов.
+      </p>
+      <p className="hint">
+        P5/P95 описывают исторические бутстрап-сценарии и не являются
+        калиброванными вероятностями будущей доходности. В Real стоимость $1
+        выражена в покупательной способности начала периода. Для каждого
+        показателя указано число доступных значений.
+      </p>
+      <div className="table-scroll">
+        <table aria-label="Распределения показателей фиксированного портфеля">
+          <thead>
+            <tr>
+              <th>Показатель</th>
+              <th>Горизонт</th>
+              <th>Среднее</th>
+              <th>Медиана</th>
+              <th>P5</th>
+              <th>P95</th>
+              <th>Min</th>
+              <th>Max</th>
+              <th>Доступно / всего</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(robustness.distributions).map(([key, d]) => (
+              <tr key={key}>
+                <td>{labels[key] ?? key}</td>
+                <td>
+                  {d.horizon_months} мес. ({number(d.horizon_years, 2)} лет)
+                </td>
+                {(
+                  ["mean", "median", "p5", "p95", "minimum", "maximum"] as const
+                ).map((stat) => (
+                  <td key={stat}>{format(key, d[stat])}</td>
+                ))}
+                <td>
+                  {d.valid_count} / {d.valid_count + d.unavailable_count}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+export function RollingEfficiencyView({
+  result,
+  instruments = [],
+}: {
+  result: RollingEfficiencyResult;
+  instruments?: Instrument[];
+}) {
+  const [metric, setMetric] = useState<
+    "return_shortfall" | "excess_volatility"
+  >("return_shortfall");
+  const windows = result.windows;
+  const chartTitle =
+    metric === "return_shortfall"
+      ? EFFICIENCY_LABELS.shortfall
+      : EFFICIENCY_LABELS.excessRisk;
+  const chart = (
+    key: "return_shortfall" | "excess_volatility",
+    title: string,
+  ): Data => ({
+    type: "scatter",
+    mode: "lines+markers",
+    name: title,
+    x: windows.map((w) => w.end_month),
+    y: windows.map((w) =>
+      w.status !== "optimal" || w[key] == null ? null : w[key]! * 100,
+    ),
+    customdata: windows.map((w) => [w.start_month, w.end_month]),
+    hovertemplate: `<b>${title}</b><br>Период: %{customdata[0]} — %{customdata[1]}<br>Значение: %{y:.2f} п.п.<extra></extra>`,
+    connectgaps: false,
+  });
+  return (
+    <section className="subsection">
+      <h3>
+        {EFFICIENCY_LABELS.heading} - {EFFICIENCY_LABELS.rolling}
+      </h3>
+      <p className="hint">
+        {result.return_basis === "real" ? "Real" : "Nominal"} USD -{" "}
+        {result.period.start} - {result.period.end}
+      </p>
+      <p className="hint">
+        Ваш портфель (веса одинаковы во всех окнах):{" "}
+        {visibleWeights(result.user_weights)
+          .map(([a, w]) => {
+            const symbol =
+              instruments.find((item) => String(item.id) === a)?.ticker ??
+              result.source_metadata.find(
+                (item) => String(item.instrument_id) === a,
+              )?.ticker ??
+              `Актив ${a}`;
+            return `${symbol} ${percent(w)}`;
+          })
+          .join(" - ")}
+        . {EFFICIENCY_LABELS.retrospective}
+      </p>
+      <div className="metrics efficiency-metrics">
+        <span>
+          {EFFICIENCY_LABELS.shortfall}
+          <b className="efficiency-summary">
+            {formatEfficiencySummary(result.summary.return_shortfall)}
+          </b>
+        </span>
+        <span>
+          {EFFICIENCY_LABELS.excessRisk}
+          <b className="efficiency-summary">
+            {formatEfficiencySummary(result.summary.excess_volatility)}
+          </b>
+        </span>
+        <span>
+          {EFFICIENCY_LABELS.counts}
+          <b>
+            {result.summary.valid_count} / {result.summary.failed_count}
+          </b>
+        </span>
+      </div>
+      <div className="segmented" role="group" aria-label="Показатель графика">
+        <button
+          type="button"
+          className={metric === "return_shortfall" ? "active" : ""}
+          aria-pressed={metric === "return_shortfall"}
+          onClick={() => setMetric("return_shortfall")}
+        >
+          Упущенная годовая доходность
+        </button>
+        <button
+          type="button"
+          className={metric === "excess_volatility" ? "active" : ""}
+          aria-pressed={metric === "excess_volatility"}
+          onClick={() => setMetric("excess_volatility")}
+        >
+          Избыточная годовая волатильность
+        </button>
+      </div>
+      <h4>{chartTitle}</h4>
+      <p className="hint">
+        {metric === "return_shortfall"
+          ? "На сколько выше могла быть годовая доходность при волатильности не выше волатильности вашего портфеля и заданных ограничениях."
+          : "На сколько ниже могла быть годовая волатильность при доходности не ниже доходности вашего портфеля и заданных ограничениях."}
+      </p>
+      <Plot
+        title={chartTitle}
+        data={[chart(metric, chartTitle)]}
+        layout={{
+          xaxis: { title: { text: "Конец 10-летнего окна" } },
+          yaxis: { title: { text: "п.п." } },
+        }}
+      />
+    </section>
+  );
 }
 function trace(
   points: Portfolio[],
@@ -318,6 +721,13 @@ export function CVView({
   result: CVResult;
   instruments: Instrument[];
 }) {
+  const userEfficiency =
+    r.efficiency_robustness &&
+    Object.values(r.efficiency_robustness.user_weights ?? {}).some(
+      (weight) => weight > 0,
+    )
+      ? r.efficiency_robustness
+      : null;
   const data = useMemo(
     () =>
       r.assets.map(
@@ -359,6 +769,22 @@ export function CVView({
           yaxis: { tickformat: ".0%", title: { text: "Вес" } },
         }}
       />
+      {userEfficiency && (
+        <div className="metrics efficiency-metrics cv-efficiency-summary">
+          <span>
+            Упущенная годовая доходность (указанного портфеля), п.п.
+            <b className="efficiency-summary">
+              {formatEfficiencySummary(userEfficiency.return_shortfall)}
+            </b>
+          </span>
+          <span>
+            Избыточная годовая волатильность (указанного портфеля), п.п.
+            <b className="efficiency-summary">
+              {formatEfficiencySummary(userEfficiency.excess_volatility)}
+            </b>
+          </span>
+        </div>
+      )}
       <div className="table-scroll">
         <table>
           <thead>
@@ -370,6 +796,9 @@ export function CVView({
               <th>Train arithmetic return / vol</th>
               <th>Validation arithmetic return / vol</th>
               <th>Historical Validation Sharpe</th>
+              {userEfficiency && (
+                <th>Your Port on Valid arithmetic return / vol</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -377,7 +806,12 @@ export function CVView({
               <tr key={f.fold}>
                 <td>
                   {f.fold}
-                  <small>{f.status}</small>
+                  <small>
+                    <ResultStatus
+                      status={f.status}
+                      diagnostics={f.diagnostics}
+                    />
+                  </small>
                 </td>
                 <td>
                   {f.training.observations} мес.
@@ -414,6 +848,22 @@ export function CVView({
                   / {percent(f.validation_metrics?.realized_annual_volatility)}
                 </td>
                 <td>{number(f.validation_metrics?.realized_sharpe_ratio)}</td>
+                {userEfficiency && (
+                  <td>
+                    {f.efficiency_robustness?.user_expected_return != null &&
+                    f.efficiency_robustness.user_volatility != null ? (
+                      `${percent(f.efficiency_robustness.user_expected_return)} / ${percent(f.efficiency_robustness.user_volatility)}`
+                    ) : f.efficiency_robustness?.status &&
+                      f.efficiency_robustness.status !== "optimal" ? (
+                      <ResultStatus
+                        status={f.efficiency_robustness.status}
+                        diagnostics={f.efficiency_robustness.diagnostics}
+                      />
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -565,6 +1015,12 @@ export function BootstrapView({
           </button>
         ))}
       </div>
+      <EfficiencyPanel
+        title="Stationary Bootstrap"
+        value={r.efficiency_robustness}
+        instruments={instruments}
+      />
+      <BootstrapPortfolioMetrics result={r} />
       {isTarget ? (
         <>
           <p title="Доля исторических бутстрап-выборок, в которых заданная ожидаемая доходность достижима при выбранных ограничениях. Не является вероятностью будущей доходности.">
@@ -760,6 +1216,29 @@ export function ResampledView({
     () => [
       trace(r.frontier, "Resampled Frontier", "#b98943", instruments, true),
       ...assetTrace(r.asset_portfolios, instruments),
+      ...(r.user_portfolio?.metrics && r.user_portfolio.weights
+        ? [
+            trace(
+              [r.user_portfolio],
+              "Ваш портфель — исходная выборка",
+              "#1d7880",
+              instruments,
+            ),
+          ]
+        : []),
+      ...(r.user_sample_average
+        ? [
+            {
+              type: "scatter",
+              mode: "markers",
+              name: "Ваш портфель — среднее Bootstrap",
+              x: [r.user_sample_average.volatility],
+              y: [r.user_sample_average.expected_return],
+              marker: { color: "#893e88", size: 14, symbol: "star" },
+              hovertemplate: `<b>Ваш портфель — среднее Bootstrap</b><br>Средняя годовая доходность: %{y:.2%}<br>Средняя годовая волатильность: %{x:.2%}<br>Успешных выборок: ${r.user_sample_average.successful_samples}<extra></extra>`,
+            } as Data,
+          ]
+        : []),
     ],
     [r, instruments],
   );
@@ -785,7 +1264,9 @@ export function ResampledView({
                       ),
                       instruments,
                     )
-                  : "Resampled point",
+                  : e.points[0].data.name === "Ваш портфель — исходная выборка"
+                    ? "Ваш портфель — исходная выборка"
+                    : "Resampled point",
               portfolio: e.points[0].customdata as unknown as Portfolio,
             });
         }}
@@ -794,6 +1275,8 @@ export function ResampledView({
       <p className="hint">
         Усреднены веса при одинаковой risk aversion. Это не точная классическая
         efficient frontier.
+        {r.user_sample_average &&
+          " Кривая и исходная точка оценены на полной выборке; средняя точка — среднее доходности и волатильности вашего портфеля в успешных Bootstrap-выборках."}
       </p>
       {r.failed_iterations > 0 && (
         <pre>{JSON.stringify(r.failure_reasons, null, 2)}</pre>

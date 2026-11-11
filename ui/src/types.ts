@@ -1,6 +1,10 @@
 export type Method = "sample" | "ledoit_wolf" | "nonlinear" | "cv_linear";
 export type Kind =
-  "frontier" | "cross-validation" | "bootstrap" | "resampled-frontier";
+  | "frontier"
+  | "cross-validation"
+  | "bootstrap"
+  | "resampled-frontier"
+  | "rolling-efficiency";
 export type Mode = "demo" | "live";
 export type Bounds = { min: number; max: number };
 export interface ApiRequest {
@@ -26,6 +30,9 @@ export interface ApiRequest {
   random_seed: number;
   bootstrap_objectives: ("gmv" | "max_sharpe" | "target_return")[] | null;
   risk_aversions: number[] | null;
+  include_efficiency_robustness?: boolean;
+  rolling_window_months?: number;
+  rolling_step_months?: number;
 }
 export interface Engine {
   name: string;
@@ -153,7 +160,6 @@ export interface CVResult extends BaseResult {
   validation_coverage_fraction: number;
   validation_interpretation: string;
   original: Portfolio;
-  folds: Fold[];
   ensemble: Portfolio | null;
   stability: {
     standard_deviation: Record<string, number>;
@@ -165,6 +171,70 @@ export interface CVResult extends BaseResult {
     lower_bound_frequency: Record<string, number>;
     upper_bound_frequency: Record<string, number>;
   } | null;
+  efficiency_robustness?: EfficiencyDistribution | null;
+  folds: (Fold & { efficiency_robustness?: EfficiencyDistance })[];
+}
+export interface EfficiencyDistance {
+  status: string;
+  user_weights?: Record<string, number>;
+  user_expected_return?: number | null;
+  user_volatility?: number | null;
+  return_shortfall: number | null;
+  excess_volatility: number | null;
+  diagnostics: Record<string, unknown>;
+}
+export interface EfficiencyDistribution {
+  user_weights: Record<string, number>;
+  evaluation?: string;
+  valid_count: number;
+  failed_count: number;
+  horizon?: {
+    months: number;
+    years: number;
+    initial_wealth: number;
+    sample_length_policy: string;
+    rebalancing: string;
+  };
+  distributions?: Record<string, BootstrapMetricDistribution>;
+  return_shortfall: {
+    mean: number;
+    median: number;
+    p5: number;
+    p95: number;
+    minimum?: number;
+    maximum: number;
+  } | null;
+  excess_volatility: {
+    mean: number;
+    median: number;
+    p5: number;
+    p95: number;
+    minimum?: number;
+    maximum: number;
+  } | null;
+  results?: (EfficiencyDistance & {
+    window_number?: number;
+    start_month?: string;
+    end_month?: string;
+    fold?: number;
+    iteration?: number;
+    observations?: number;
+    portfolio_metrics?: Record<string, number | null>;
+  })[];
+}
+export interface BootstrapMetricDistribution {
+  mean: number | null;
+  median: number | null;
+  p5: number | null;
+  p95: number | null;
+  minimum: number | null;
+  maximum: number | null;
+  valid_count: number;
+  unavailable_count: number;
+  horizon_months: number;
+  horizon_years: number;
+  annualized: boolean;
+  units: string;
 }
 export interface WeightStats {
   original: number | null;
@@ -228,9 +298,16 @@ export interface BootstrapResult extends BaseResult {
   conditional_bootstrap: boolean;
   sample_fingerprint: string;
   objectives: Record<string, BootstrapObjective>;
+  efficiency_robustness?: EfficiencyDistribution | null;
 }
 export interface ResampledResult extends BaseResult {
   frontier: Portfolio[];
+  user_portfolio?: Portfolio | null;
+  user_sample_average?: {
+    expected_return: number;
+    volatility: number;
+    successful_samples: number;
+  } | null;
   risk_aversions: number[];
   requested_iterations: number;
   successful_iterations: number;
@@ -239,7 +316,48 @@ export interface ResampledResult extends BaseResult {
   conditional_bootstrap: boolean;
 }
 export type Result =
-  FrontierResult | CVResult | BootstrapResult | ResampledResult;
+  | FrontierResult
+  | CVResult
+  | BootstrapResult
+  | ResampledResult
+  | RollingEfficiencyResult;
+export interface RollingEfficiencyResult {
+  status: "complete" | "incomplete";
+  methodology: string;
+  window_months: number;
+  step_months: number;
+  covariance_method: Method;
+  requested_cv_folds: number;
+  effective_cv_folds: number | null;
+  user_weights: Record<string, number>;
+  return_basis: "nominal" | "real";
+  risk_free_source: "historical_bil" | "fixed_annual";
+  period: Period;
+  assets: string[];
+  currency: "USD";
+  source_metadata: BaseResult["source_metadata"];
+  reference_metadata?: Record<string, unknown>;
+  covariance_parameters?: Record<string, unknown>;
+  covariance_diagnostics?: Record<string, unknown>;
+  differential_covariance_parameters?: Record<string, unknown>;
+  differential_covariance_diagnostics?: Record<string, unknown>;
+  warnings: string[];
+  execution_seconds: number;
+  windows: (EfficiencyDistance & {
+    window_number: number;
+    start_month: string;
+    end_month: string;
+    observations: number;
+    effective_cv_folds: number | null;
+    covariance_parameters: Record<string, unknown>;
+    covariance_diagnostics: Record<string, unknown>;
+  })[];
+  summary: Omit<
+    EfficiencyDistribution,
+    "user_weights" | "results" | "evaluation"
+  >;
+  reproducibility: Provenance;
+}
 export interface Calculation {
   id: string;
   kind: Kind;
@@ -321,4 +439,7 @@ export const DEFAULT_REQUEST: ApiRequest = {
   random_seed: 42,
   bootstrap_objectives: ["gmv", "max_sharpe"],
   risk_aversions: null,
+  include_efficiency_robustness: true,
+  rolling_window_months: 120,
+  rolling_step_months: 12,
 };

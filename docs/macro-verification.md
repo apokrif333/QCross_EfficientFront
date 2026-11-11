@@ -73,13 +73,12 @@ ordinary CV splitter and Stationary Bootstrap index generator are unchanged.
   differential objective equality, BIL as a selected asset, exact Decimal ratio,
   source rejection, revisions, idempotence, fingerprints, nested CV isolation and
   bootstrap joint-index synchronization are covered by deterministic tests.
-- Desktop and 390×844 mobile screenshots of actual Real/BIL results were inspected:
-  [desktop](ui-verification/macro-real-bil-desktop.png),
-  [mobile](ui-verification/macro-real-bil-mobile.png).
+- Desktop and 390×844 mobile views of actual Real/BIL results were visually inspected.
   Both Sharpe columns, actual asset moments, the BIL differential label and the
   compact basis control are visible. The fresh result has no stale-result warning.
-- Additional settings screenshots use an explicitly mocked catalog/preview solely
-  for UI controls: `macro-settings-desktop.png` and `macro-settings-mobile.png`.
+- Settings controls were also checked with an explicitly mocked catalog/preview.
+  Generated screenshots were removed during cleanup; future test screenshots are
+  written to the ignored Playwright test-results directory.
 
 ## Limits
 
@@ -134,19 +133,8 @@ docs/analytics-verification.md
 docs/analytics.md
 docs/macro-analytics.md
 docs/macro-import-verification.json
-docs/macro-migration-postgresql.sql
 docs/macro-verification.md
-docs/ui-verification/demo-desktop.png
 docs/ui-verification/README.md
-docs/ui-verification/demo-mobile.png
-docs/ui-verification/live-compare.png
-docs/ui-verification/live-jobs.json
-docs/ui-verification/macro-real-bil-desktop.png
-docs/ui-verification/macro-real-bil-mobile.png
-docs/ui-verification/macro-settings-desktop.png
-docs/ui-verification/macro-settings-mobile.png
-docs/ui-verification/one-sided-cv-desktop.png
-docs/ui-verification/one-sided-cv-mobile.png
 scripts/import_macro_verified.py
 tests/analytics/test_api.py
 tests/analytics/test_macro.py

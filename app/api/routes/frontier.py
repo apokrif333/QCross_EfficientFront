@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.analytics.constraints import build_constraints, numbered_groups
+from app.analytics.constraints import build_constraints, numbered_groups, user_allocation
 from app.analytics.data_loader import attach_references, instrument_groups, load_returns
 from app.analytics.jobs import JobCapacityError
 from app.analytics.models import AnalyticsError
@@ -19,7 +19,13 @@ from app.analytics.splitting import (
 )
 from app.api.dependencies import get_session
 from app.db.models import Instrument, ReturnSeries
-from app.schemas.frontier import AnalyticsRequest, JobRead, JobResultRead, ResampledFrontierRequest
+from app.schemas.frontier import (
+    AnalyticsRequest,
+    JobRead,
+    JobResultRead,
+    ResampledFrontierRequest,
+    RollingEfficiencyRequest,
+)
 
 router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
 DatabaseSession = Annotated[Session, Depends(get_session)]
@@ -47,12 +53,13 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
             panel.assets, options["asset_constraints"], options["group_constraints"], panel.groups
         )
         options["risk_free_rate"] = body.risk_free_rate
-        validate_cv_configuration(
-            len(panel.values),
-            body.cv_folds,
-            portfolio=kind == "cross-validation",
-            covariance_method=body.covariance_method,
-        )
+        if kind != "rolling-efficiency":
+            validate_cv_configuration(
+                len(panel.values),
+                body.cv_folds,
+                portfolio=kind == "cross-validation",
+                covariance_method=body.covariance_method,
+            )
         if kind == "frontier":
             options.update(
                 frontier_points=body.frontier_points,
@@ -61,7 +68,25 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
                 user_weights=body.user_weights,
             )
         elif kind == "cross-validation":
-            options.update(objective=body.objective, target_return=body.target_return)
+            options.update(
+                objective=body.objective,
+                target_return=body.target_return,
+                user_weights=body.user_weights,
+                include_efficiency_robustness=body.include_efficiency_robustness,
+            )
+        elif kind == "rolling-efficiency":
+            if user_allocation(panel.assets, body.user_weights) is None:
+                raise AnalyticsError("Rolling efficiency requires explicit user_weights.")
+            if len(panel.values) < body.rolling_window_months:
+                raise AnalyticsError(
+                    f"Rolling window requires {body.rolling_window_months} common months; "
+                    f"only {len(panel.values)} are available."
+                )
+            options.update(
+                user_weights=body.user_weights,
+                window_months=body.rolling_window_months,
+                step_months=body.rolling_step_months,
+            )
         else:
             options.update(
                 bootstrap_iterations=body.bootstrap_iterations,
@@ -70,6 +95,8 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
             )
             if kind == "bootstrap":
                 options["target_return"] = body.target_return
+                options["user_weights"] = body.user_weights
+                options["include_efficiency_robustness"] = body.include_efficiency_robustness
                 options["objectives"] = body.bootstrap_objectives or (
                     [body.objective]
                     if "objective" in body.model_fields_set
@@ -81,7 +108,9 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
                         "Resampled frontier is limited to 30,000 portfolio optimizations per job."
                     )
                 options.update(
-                    frontier_points=body.frontier_points, risk_aversions=body.risk_aversions
+                    frontier_points=body.frontier_points,
+                    risk_aversions=body.risk_aversions,
+                    user_weights=body.user_weights,
                 )
         options["_api_request"] = body.model_dump(mode="json")
         if kind == "bootstrap":
@@ -202,6 +231,13 @@ def resampled_frontier(
     body: ResampledFrontierRequest, request: Request, session: DatabaseSession
 ) -> dict:
     return _submit(body, request, session, "resampled-frontier")
+
+
+@router.post("/rolling-efficiency", response_model=JobRead, status_code=202)
+def rolling_efficiency(
+    body: RollingEfficiencyRequest, request: Request, session: DatabaseSession
+) -> dict:
+    return _submit(body, request, session, "rolling-efficiency")
 
 
 @router.get("/jobs/{job_id}", response_model=JobRead)

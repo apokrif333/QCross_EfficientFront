@@ -1,0 +1,52 @@
+{
+  "currency": "USD",
+  "cases": [
+    {
+      "ticker": "VTI",
+      "series_id": 1,
+      "requested_end": "2026-08-31",
+      "first_return_month": "1793-01",
+      "last_return_month": "2026-08",
+      "observations": 2804,
+      "arithmetic_annual_return": 0.09228035948644794,
+      "historical_cagr": 0.08450306539472936,
+      "historical_max_drawdown": 0.8460240698063705,
+      "historical_volatility_ddof_0": 0.1478254835708333,
+      "sample_volatility_ddof_1": 0.14785185037449808,
+      "stored_series_end": "2026-08-31",
+      "returns_sha256_float64_le": "9a900425de89e4881cd91deef3387e58aaa0f57dbe07768e9725d9105361fefa"
+    },
+    {
+      "ticker": "IJS",
+      "series_id": 120,
+      "requested_end": "2026-08-31",
+      "first_return_month": "1927-01",
+      "last_return_month": "2026-08",
+      "observations": 1196,
+      "arithmetic_annual_return": 0.14265509698996656,
+      "historical_cagr": 0.12840181893160943,
+      "historical_max_drawdown": 0.8857346482858318,
+      "historical_volatility_ddof_0": 0.20564916107484668,
+      "sample_volatility_ddof_1": 0.20573518875527744,
+      "stored_series_end": "2026-09-30",
+      "returns_sha256_float64_le": "fc0df9d920d35e7c1881a5be230deaf4b625acb92c7097fb62aa3a80bea9f612"
+    },
+    {
+      "ticker": "IJS",
+      "series_id": 120,
+      "requested_end": "2026-09-30",
+      "first_return_month": "1927-01",
+      "last_return_month": "2026-09",
+      "observations": 1197,
+      "arithmetic_annual_return": 0.1419503558897243,
+      "historical_cagr": 0.12760738480017464,
+      "historical_max_drawdown": 0.8857346482858318,
+      "historical_volatility_ddof_0": 0.20568360797546104,
+      "sample_volatility_ddof_1": 0.20576957813928837,
+      "stored_series_end": "2026-09-30",
+      "returns_sha256_float64_le": "1cb3b445115a58bb886b44a3c7c7a4cd8fd904ee796f0535bbb6bed99f412c15"
+    }
+  ],
+  "database_sha256": "6ee0af74a349065b8c82adf4ea9f4b6cd42136d8c8c129cbd3a17351ca4dfdfe",
+  "database_unchanged": true
+}

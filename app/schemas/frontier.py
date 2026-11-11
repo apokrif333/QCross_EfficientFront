@@ -38,6 +38,9 @@ class AnalyticsRequest(BaseModel):
         default_factory=dict, max_length=15
     )
     user_weights: dict[str, float] | None = Field(default=None, max_length=15)
+    include_efficiency_robustness: bool = True
+    rolling_window_months: int = Field(default=120, ge=120, le=10000)
+    rolling_step_months: int = Field(default=12, ge=1, le=120)
     frontier_points: int = Field(default=51, ge=2, le=201)
     cv_folds: int = Field(default=4, strict=True, ge=2, le=20, multiple_of=2)
     bootstrap_iterations: int = Field(default=1000, ge=1, le=2000)
@@ -106,6 +109,11 @@ class ResampledFrontierRequest(AnalyticsRequest):
 
     def uses_target_return(self) -> bool:
         # The global selection is retained in provenance, not used by this curve.
+        return False
+
+
+class RollingEfficiencyRequest(AnalyticsRequest):
+    def uses_target_return(self) -> bool:
         return False
 
 
@@ -223,11 +231,38 @@ class BootstrapObjectiveRead(BaseModel):
     iterations: list[dict[str, Any]]
 
 
+class BootstrapMetricDistribution(BaseModel):
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
+    mean: float | None
+    median: float | None
+    p5: float | None
+    p95: float | None
+    minimum: float | None
+    maximum: float | None
+    valid_count: int = Field(ge=0)
+    unavailable_count: int = Field(ge=0)
+    horizon_months: int = Field(gt=0)
+    horizon_years: float = Field(gt=0)
+    annualized: bool
+    units: str
+
+
+class BootstrapEfficiencyRead(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    user_weights: dict[str, float]
+    valid_count: int
+    failed_count: int
+    results: list[dict[str, Any]]
+    horizon: dict[str, Any] | None = None
+    distributions: dict[str, BootstrapMetricDistribution] | None = None
+
+
 class BootstrapResult(AnalyticsResultBase):
     conditional_bootstrap: bool
     sample_fingerprint: str
     sample_length: int
     objectives: dict[str, BootstrapObjectiveRead]
+    efficiency_robustness: BootstrapEfficiencyRead | None = None
 
 
 class ResampledFrontierResult(AnalyticsResultBase):
@@ -241,9 +276,21 @@ class ResampledFrontierResult(AnalyticsResultBase):
     conditional_bootstrap: bool
 
 
+class RollingEfficiencyResult(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    status: Literal["complete", "incomplete"]
+    methodology: str
+    windows: list[dict[str, Any]]
+    summary: dict[str, Any]
+    user_weights: dict[str, float]
+    reproducibility: dict[str, Any]
+
+
 class JobRead(BaseModel):
     job_id: str
-    kind: Literal["frontier", "cross-validation", "bootstrap", "resampled-frontier"]
+    kind: Literal[
+        "frontier", "cross-validation", "bootstrap", "resampled-frontier", "rolling-efficiency"
+    ]
     status: Literal["running", "completed", "failed", "timed_out"]
     submitted_at: str
     elapsed_seconds: float
@@ -255,5 +302,10 @@ class JobRead(BaseModel):
 
 class JobResultRead(JobRead):
     result: (
-        FrontierResult | CrossValidationResult | BootstrapResult | ResampledFrontierResult | None
+        FrontierResult
+        | CrossValidationResult
+        | BootstrapResult
+        | ResampledFrontierResult
+        | RollingEfficiencyResult
+        | None
     )

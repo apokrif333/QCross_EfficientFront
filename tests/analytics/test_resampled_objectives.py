@@ -82,6 +82,7 @@ def test_resampled_jobs_ignore_global_objective_and_preserve_provenance(
                 objective=objective,
                 target_return=target,
                 bootstrap_objectives=["target_return"],
+                user_weights={"1": 0.6, "2": 0.2, "3": 0.2},
             )
             submitted = client.post("/api/v1/analytics/resampled-frontier", json=body)
             assert submitted.status_code == 202, submitted.text
@@ -89,6 +90,8 @@ def test_resampled_jobs_ignore_global_objective_and_preserve_provenance(
             assert finished["status"] == "completed", finished
             result = finished["result"]
             assert result["status"] == "complete"
+            assert result["user_portfolio"]["weights"] == body["user_weights"]
+            assert result["user_sample_average"]["successful_samples"] == 3
             assert result["reproducibility"]["api_request"]["objective"] == objective
             assert result["reproducibility"]["api_request"]["target_return"] == target
             assert "objective" not in result["reproducibility"]["optimization_parameters"]

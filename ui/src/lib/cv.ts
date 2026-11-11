@@ -12,6 +12,16 @@ export function cvHistoryError(
   const k = request.cv_folds;
   if (!CV_FOLDS.includes(k)) return "K: выберите чётное число от 2 до 20.";
   const portfolio = kind === "cross-validation";
+  if (kind === "rolling-efficiency") {
+    if (!request.user_weights || Object.keys(request.user_weights).length === 0)
+      return "Для rolling-анализа задайте пользовательские веса портфеля.";
+    if (
+      observations !== undefined &&
+      observations < (request.rolling_window_months ?? 120)
+    )
+      return `Для rolling-окна нужно ${request.rolling_window_months ?? 120} месяцев; доступно ${observations}.`;
+    return null;
+  }
   const covariance = request.covariance_method === "cv_linear";
   if (observations === undefined || (!portfolio && !covariance)) return null;
   const required = minimumCVHistory(k, !portfolio);

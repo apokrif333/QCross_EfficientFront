@@ -672,3 +672,15 @@ an annual arithmetic expected return **at least** the target, in the selected
 Nominal/Real basis. Results separate target feasibility from numerical failures
 and show allocation stability conditional on feasible samples. See
 [Target Return Bootstrap](docs/target-return-bootstrap.md).
+
+For explicitly supplied user weights, CV and Stationary Bootstrap can also
+report exact constrained return-shortfall and excess-volatility distances to
+each sample's efficient frontier. `POST /api/v1/analytics/rolling-efficiency`
+evaluates those fixed weights over 120-month windows stepped by 12 months.
+These are sample-sensitivity diagnostics; see the [analytics methodology](docs/analytics.md)
+and [API guide](docs/analytics-api.md).
+
+Fixed-portfolio Bootstrap distributions also include CAGR, arithmetic return,
+historical volatility, drawdown, BIL differential Sharpe and wealth from $1.
+Every distribution labels the full selected-history horizon; its mean, median,
+P5/P95 and min/max describe resampled scenarios, not calibrated future probabilities.

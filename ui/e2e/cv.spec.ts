@@ -1,9 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { resolve } from "node:path";
 
 test("one-sided CV directions, periods and controls render on desktop and mobile", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.route("**/api/**", (route) => route.abort());
   await page.goto("/");
   await expect(
@@ -33,7 +32,7 @@ test("one-sided CV directions, periods and controls render on desktop and mobile
     page.getByLabel("Число CV-фолдов").locator("option"),
   ).toHaveCount(10);
   await page.screenshot({
-    path: resolve("../docs/ui-verification/one-sided-cv-desktop.png"),
+    path: testInfo.outputPath("one-sided-cv-desktop.png"),
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -48,7 +47,7 @@ test("one-sided CV directions, periods and controls render on desktop and mobile
     )
     .toBeLessThan(365);
   await page.screenshot({
-    path: resolve("../docs/ui-verification/one-sided-cv-mobile.png"),
+    path: testInfo.outputPath("one-sided-cv-mobile.png"),
     fullPage: true,
   });
   expect(

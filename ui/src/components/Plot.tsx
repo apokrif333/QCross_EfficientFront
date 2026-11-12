@@ -6,6 +6,7 @@ import type {
   PlotlyHTMLElement,
 } from "plotly.js";
 export interface PlotProps {
+  threeD?: boolean;
   data: Data[];
   title: string;
   layout?: Partial<Layout>;
@@ -13,12 +14,17 @@ export interface PlotProps {
   height?: number;
 }
 const EMPTY_LAYOUT: Partial<Layout> = {};
+const loadPlotly = (threeD: boolean) =>
+  threeD
+    ? import("plotly.js-gl3d-dist-min")
+    : import("plotly.js-cartesian-dist-min");
 export default function Plot({
   data,
   title,
   layout = EMPTY_LAYOUT,
   onSelect,
   height = 420,
+  threeD = false,
 }: PlotProps) {
   const ref = useRef<HTMLDivElement>(null),
     select = useRef(onSelect);
@@ -28,7 +34,7 @@ export default function Plot({
     let active = true,
       observer: ResizeObserver | undefined;
     const element = ref.current!;
-    void import("plotly.js-cartesian-dist-min")
+    void loadPlotly(threeD)
       .then(async ({ default: Plotly }) => {
         if (!active) return;
         await Plotly.react(
@@ -90,17 +96,15 @@ export default function Plot({
       active = false;
       observer?.disconnect();
     };
-  }, [data, layout]);
+  }, [data, layout, threeD]);
   useEffect(() => {
     const element = ref.current;
     return () => {
-      void import("plotly.js-cartesian-dist-min").then(
-        ({ default: Plotly }) => {
-          if (element && !element.isConnected) Plotly.purge(element);
-        },
-      );
+      void loadPlotly(threeD).then(({ default: Plotly }) => {
+        if (element && !element.isConnected) Plotly.purge(element);
+      });
     };
-  }, []);
+  }, [threeD]);
   return (
     <div className="plot-wrap" role="img" aria-label={title}>
       {error ? (

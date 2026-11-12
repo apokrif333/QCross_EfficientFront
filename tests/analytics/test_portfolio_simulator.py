@@ -49,6 +49,9 @@ def test_self_financing_and_initial_fees():
     assert path["total_commissions"] == pytest.approx(0.01 / 1.01)
     assert path["net"]["maximum_drawdown"] == pytest.approx(0.01 / 1.01)
     assert path["trade_count"] == 2
+    positive = simulate_portfolio(np.full((2, 2), 0.05), [0.5, 0.5], transaction_fee_rate=0.01)
+    assert positive["net"]["terminal_wealth"] > 1
+    assert positive["net"]["maximum_drawdown"] == pytest.approx(0.01 / 1.01)
 
 
 def test_insolvency_and_zero_targets():
@@ -102,6 +105,13 @@ def test_simulation_fees_do_not_change_optimizer_or_sampling(panel, method):
         base["objectives"]["gmv"]["original"]["weights"]
         == fee["objectives"]["gmv"]["original"]["weights"]
     )
-    cv = analyze_cross_validation(panel, transaction_fee_rate=0.005, **options)
+    cv = analyze_cross_validation(
+        panel, objective="max_return_at_user_risk", transaction_fee_rate=0.005, **options
+    )
     record = cv["folds"][0]["paired_comparison"]["user"]
     assert record["gross_metrics"]["terminal_wealth"] > record["terminal_wealth"]
+    for fold in cv["folds"]:
+        optimized = fold["paired_comparison"]["optimized"]
+        reported = fold["validation_metrics"]
+        assert reported["historical_cagr"] == pytest.approx(optimized["annualized_cagr"])
+        assert reported["historical_max_drawdown"] == pytest.approx(optimized["maximum_drawdown"])

@@ -99,7 +99,7 @@ def execute_target(positions, target, wealth, fee_rate):
     return final, trades, float(fee_rate * np.abs(trades).sum())
 
 
-def path_statistics(monthly, wealth, risk_free):
+def path_statistics(monthly, wealth, risk_free, *, initial_investment=1.0):
     monthly, wealth, risk_free = map(
         lambda x: np.asarray(x, dtype=float), (monthly, wealth, risk_free)
     )
@@ -123,7 +123,7 @@ def path_statistics(monthly, wealth, risk_free):
         "sortino_ratio": float(np.sqrt(12) * differential.mean() / downside)
         if downside > 1e-12
         else None,
-        "maximum_drawdown": float(drawdown.max()),
+        "maximum_drawdown": max(float(drawdown.max()), 1 - initial_investment),
         "terminal_wealth": terminal if np.isfinite(terminal) else None,
     }
 
@@ -186,13 +186,16 @@ def simulate_portfolio(
             return [float(v) if np.isfinite(v) else None for v in wealth]
 
         return {
-            "net": path_statistics(net_column, [], rf),
+            "net": path_statistics(
+                net_column, [], rf, initial_investment=1 / (1 + transaction_fee_rate)
+            ),
             "gross": path_statistics(column, [], rf),
             "net_returns": net_column.tolist(),
             "gross_returns": column.tolist(),
             "net_wealth": wealth_path(net_column),
             "gross_wealth": wealth_path(column),
             "total_commissions": transaction_fee_rate / (1 + transaction_fee_rate),
+            "initial_net_wealth": 1 / (1 + transaction_fee_rate),
             "trade_count": 1,
             "rebalancing_events": 0,
             "annualized_turnover": 0.0,
@@ -205,6 +208,7 @@ def simulate_portfolio(
             "target_history": [],
         }
     positions, initial_trades, fees = executor(np.zeros(assets), target, 1.0, transaction_fee_rate)
+    initial_investment = float(positions.sum())
     gross_positions = target.copy()
     net, gross, net_wealth, gross_wealth = [], [], [1.0], [1.0]
     history, pretrade_history, position_history, targets, events = [], [], [], [], []
@@ -218,7 +222,7 @@ def simulate_portfolio(
                 "triggering_assets": [],
                 "trades": initial_trades.tolist(),
                 "commissions": fees,
-                "turnover": 1.0,
+                "turnover": float(np.abs(initial_trades).sum()),
             }
         )
         position_history.append(positions.tolist())
@@ -277,7 +281,7 @@ def simulate_portfolio(
             position_history.append(positions.tolist())
             targets.append(target.tolist())
     return {
-        "net": path_statistics(net, net_wealth, rf),
+        "net": path_statistics(net, net_wealth, rf, initial_investment=initial_investment),
         "gross": path_statistics(gross, gross_wealth, rf),
         "net_returns": net,
         "gross_returns": gross,
@@ -289,6 +293,7 @@ def simulate_portfolio(
         "target_history": targets,
         "events": events,
         "total_commissions": fees,
+        "initial_net_wealth": initial_investment,
         "execution_target_adjustment": float(np.max(np.abs(target - requested))),
         "trade_count": trade_count,
         "rebalancing_events": event_count,

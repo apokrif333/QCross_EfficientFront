@@ -4,7 +4,8 @@ export type Kind =
   | "cross-validation"
   | "bootstrap"
   | "resampled-frontier"
-  | "rolling-efficiency";
+  | "rolling-efficiency"
+  | "rebalancing-optimization";
 export type Mode = "demo" | "live";
 export type Bounds = { min: number; max: number };
 export interface ApiRequest {
@@ -330,6 +331,7 @@ export interface ResampledResult extends BaseResult {
   conditional_bootstrap: boolean;
 }
 export type Result =
+  | RebalancingResult
   | FrontierResult
   | CVResult
   | BootstrapResult
@@ -506,4 +508,54 @@ export interface PairedComparison {
 export interface RiskReturn {
   expected_return: number;
   volatility: number;
+}
+
+export interface SimulationStats {
+  annualized_cagr: number | null;
+  annualized_arithmetic_return: number;
+  annualized_volatility: number;
+  historical_sharpe_ratio: number | null;
+  sortino_ratio: number | null;
+  maximum_drawdown: number;
+  terminal_wealth: number | null;
+}
+export interface RebalancingStrategy {
+  initial_net_wealth?: number;
+  id: string;
+  label: string;
+  calendar_months: number | null;
+  threshold_percent: number | null;
+  annual_baseline: boolean;
+  net: SimulationStats;
+  gross: SimulationStats;
+  net_wealth: (number | null)[];
+  gross_wealth: (number | null)[];
+  weight_history: number[][];
+  pretrade_weight_history: number[][];
+  positions: number[][];
+  target_history: number[][];
+  net_returns: number[];
+  gross_returns: number[];
+  total_commissions: number;
+  trade_count: number;
+  rebalancing_events: number;
+  annualized_turnover: number;
+  maximum_weight_deviation: number;
+  events: {
+    month_index: number;
+    date: string;
+    kind: string;
+    boundary: string;
+    triggering_assets: string[];
+    trades: Record<string, number>;
+    commissions: number;
+    turnover: number;
+  }[];
+}
+export interface RebalancingResult extends BaseResult {
+  methodology: "historical_in_sample_rebalancing_comparison_v1";
+  user_weights: Record<string, number>;
+  months: string[];
+  transaction_fee_rate: number;
+  strategies: RebalancingStrategy[];
 }

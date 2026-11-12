@@ -8,7 +8,7 @@ from app.analytics.constraints import user_allocation
 from app.analytics.efficiency_distance import efficiency_distance, summarize_distances
 from app.analytics.estimators import estimate_covariance
 from app.analytics.frontier import data_diagnostics, describe, prepare
-from app.analytics.metrics import historical_metrics, portfolio_metrics
+from app.analytics.metrics import portfolio_metrics
 from app.analytics.models import AnalyticsError, OptimizationResult, ReturnPanel
 from app.analytics.optimizer import PortfolioOptimizer
 from app.analytics.paired_comparison import compare_validation, summarize
@@ -204,7 +204,8 @@ def analyze_cross_validation(
                     if len(realized) >= 2 and realized_volatility > 1e-10
                     else None,
                     "realized_total_return": float(np.prod(1 + realized) - 1),
-                    **historical_metrics(realized),
+                    "historical_cagr": path["net"]["annualized_cagr"],
+                    "historical_max_drawdown": path["net"]["maximum_drawdown"],
                     "gross_metrics": path["gross"],
                     "trading_costs": {
                         k: path[k]

@@ -693,3 +693,9 @@ New calculations simulate historical holdings with annual rebalancing and option
 self-financing commissions, including initial purchases. Model-based arithmetic
 means/covariances remain unchanged. Historical reporting is net of costs with
 gross results disclosed separately. See [portfolio simulation](docs/rebalancing-engine.md) for conventions and legacy snapshot replay.
+
+The **Rebalancing Optimization** tab compares seven calendar schedules and thirteen
+relative weight thresholds using this same engine. It includes sortable gross/net
+results, a 3D threshold curve, equity curves, actual weights and executed trades.
+See [rules, API and numerical example](docs/rebalancing-optimization.md) and
+[verification results](docs/rebalancing-verification.md).

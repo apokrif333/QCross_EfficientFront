@@ -1013,3 +1013,8 @@ select {
     transition: none !important;
   }
 }
+
+.annual-baseline {
+  background: #edf7f7;
+  border-left: 3px solid #287f8e;
+}

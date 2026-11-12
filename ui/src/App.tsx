@@ -11,6 +11,7 @@ import type {
   Kind,
   Mode,
   ResampledResult,
+  RebalancingResult,
 } from "./types";
 import { DEFAULT_REQUEST, METHODS } from "./types";
 import { fetchCatalog, requestJson, runJob } from "./lib/api";
@@ -24,6 +25,7 @@ import {
   stable,
   type Comparison,
 } from "./lib/snapshot";
+import RebalancingView from "./components/RebalancingView";
 import Settings from "./components/Settings";
 import AssetBuilder from "./components/AssetBuilder";
 import {
@@ -45,6 +47,7 @@ const TABS = [
   "Frontier",
   "Cross-validation",
   "Bootstrap",
+  "Rebalancing Optimization",
   "Compare",
   "Snapshot",
 ] as const;
@@ -185,13 +188,16 @@ export default function App() {
   const frontier = records.find((c) => c.kind === "frontier"),
     cv = records.find((c) => c.kind === "cross-validation"),
     bootstrap = records.find((c) => c.kind === "bootstrap"),
+    rebalancing = records.find((c) => c.kind === "rebalancing-optimization"),
     resampled = records.find((c) => c.kind === "resampled-frontier");
   const visible =
-    tab === "Cross-validation"
-      ? cv
-      : tab === "Bootstrap"
-        ? (bootstrap ?? resampled)
-        : frontier;
+    tab === "Rebalancing Optimization"
+      ? rebalancing
+      : tab === "Cross-validation"
+        ? cv
+        : tab === "Bootstrap"
+          ? (bootstrap ?? resampled)
+          : frontier;
   async function changeMode(next: Mode) {
     setError("");
     setMessage("");
@@ -628,7 +634,9 @@ export default function App() {
                         ? "Stationary Bootstrap"
                         : tab === "Compare"
                           ? "Сравнение методов"
-                          : "Воспроизводимость"}
+                          : tab === "Rebalancing Optimization"
+                            ? "Оптимизация ребалансировки"
+                            : "Воспроизводимость"}
                 </h2>
                 <p>
                   {visible
@@ -649,7 +657,9 @@ export default function App() {
                           ? "cross-validation"
                           : tab === "Bootstrap"
                             ? "bootstrap"
-                            : "frontier",
+                            : tab === "Rebalancing Optimization"
+                              ? "rebalancing-optimization"
+                              : "frontier",
                       ],
                       tab === "Compare",
                     )
@@ -739,6 +749,12 @@ export default function App() {
                   )}
                 </div>
               </>
+            )}
+            {tab === "Rebalancing Optimization" && rebalancing && (
+              <RebalancingView
+                result={rebalancing.result as RebalancingResult}
+                instruments={instruments}
+              />
             )}
             {tab !== "Snapshot" && !visible && (
               <div className="empty">

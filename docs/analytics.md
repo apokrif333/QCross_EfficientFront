@@ -285,8 +285,8 @@ See [verification commands, regression coverage and measured performance](effici
 Each existing stationary sample also evaluates the unchanged user allocation's
 CAGR, annual arithmetic return, historical annual volatility, maximum drawdown,
 historical differential-return Sharpe and terminal wealth from $1. Annual
-volatility follows the established historical convention (monthly standard
-deviation with ddof=0, multiplied by sqrt(12)); Sharpe uses ddof=1 on the monthly
+volatility uses the simulated path's monthly sample standard
+deviation with ddof=1, multiplied by sqrt(12); Sharpe uses ddof=1 on the monthly
 portfolio-minus-aligned-risk-free series. The estimated volatility used for the
 efficiency distances remains separately available as `user_volatility`.
 
@@ -315,3 +315,7 @@ New calculations simulate historical holdings with annual rebalancing and option
 self-financing commissions, including initial purchases. Model-based arithmetic
 means/covariances remain unchanged. Historical reporting is net of costs with
 gross results disclosed separately. See [portfolio simulation](rebalancing-engine.md) for conventions and legacy snapshot replay.
+
+The standalone [Rebalancing Optimization](rebalancing-optimization.md) job compares
+all twenty calendar/relative-threshold rules with identical inputs and costs.
+It does not change optimization moments, CV splits or Bootstrap sampling.

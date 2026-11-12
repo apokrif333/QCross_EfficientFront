@@ -23,6 +23,7 @@ from app.schemas.frontier import (
     AnalyticsRequest,
     JobRead,
     JobResultRead,
+    RebalancingOptimizationRequest,
     ResampledFrontierRequest,
     RollingEfficiencyRequest,
 )
@@ -60,14 +61,20 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
                 raise AnalyticsError("My Portfolio requires explicit user_weights.")
             constraints.require_feasible(allocation)
         options["risk_free_rate"] = body.risk_free_rate
-        if kind != "rolling-efficiency":
+        if kind not in {"rolling-efficiency", "rebalancing-optimization"}:
             validate_cv_configuration(
                 len(panel.values),
                 body.cv_folds,
                 portfolio=kind == "cross-validation",
                 covariance_method=body.covariance_method,
             )
-        if kind == "frontier":
+        if kind == "rebalancing-optimization":
+            allocation = user_allocation(panel.assets, body.user_weights)
+            if allocation is None:
+                raise AnalyticsError("Rebalancing optimization requires explicit user_weights.")
+            constraints.require_feasible(allocation)
+            options["user_weights"] = body.user_weights
+        elif kind == "frontier":
             options.update(
                 frontier_points=body.frontier_points,
                 objective=body.objective,
@@ -233,6 +240,13 @@ def data_preview(body: AnalyticsRequest, session: DatabaseSession) -> dict:
 @router.post("/frontier", response_model=JobRead, status_code=202)
 def frontier(body: AnalyticsRequest, request: Request, session: DatabaseSession) -> dict:
     return _submit(body, request, session, "frontier")
+
+
+@router.post("/rebalancing-optimization", response_model=JobRead, status_code=202)
+def rebalancing_optimization(
+    body: RebalancingOptimizationRequest, request: Request, session: DatabaseSession
+) -> dict:
+    return _submit(body, request, session, "rebalancing-optimization")
 
 
 @router.post("/cross-validation", response_model=JobRead, status_code=202)

@@ -2,7 +2,7 @@ import numpy as np
 
 
 def historical_metrics(monthly: np.ndarray) -> dict:
-    """Monthly-rebalanced simple returns. Include initial wealth in drawdown peaks."""
+    """Summarize an existing monthly portfolio path, including initial wealth."""
     monthly = np.asarray(monthly, dtype=float)
     wealth = np.concatenate(([1.0], np.cumprod(1 + monthly)))
     peak = np.maximum.accumulate(wealth)

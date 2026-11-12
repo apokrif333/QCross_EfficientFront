@@ -101,6 +101,17 @@ export const rollingRequestSchema = requestFields.refine(
   },
 );
 export function requestSchemaFor(kind: Kind) {
+  if (kind === "rebalancing-optimization")
+    return requestFields.refine(
+      (r) =>
+        Math.abs(
+          Object.values(r.user_weights ?? {}).reduce((a, b) => a + b, 0) - 1,
+        ) < 1e-8,
+      {
+        message: "Explicit user weights totaling 100% are required",
+        path: ["user_weights"],
+      },
+    );
   if (kind === "resampled-frontier") return resampledRequestSchema;
   if (kind === "rolling-efficiency") return rollingRequestSchema;
   if (kind === "bootstrap")
@@ -179,7 +190,10 @@ const efficiencyDistance = z
     user_volatility: n.nonnegative().nullable().optional(),
     diagnostics: z.record(z.string(), z.unknown()),
     portfolio_metrics: z
-      .record(z.string(), z.union([n.nullable(), z.record(z.string(), n.nullable())]))
+      .record(
+        z.string(),
+        z.union([n.nullable(), z.record(z.string(), n.nullable())]),
+      )
       .optional(),
   })
   .passthrough()
@@ -345,7 +359,54 @@ const iteration = z
     weights: weights.nullable(),
   })
   .passthrough();
+const simulationStats = z.object({
+  annualized_cagr: n.nullable(),
+  annualized_arithmetic_return: n,
+  annualized_volatility: n.nonnegative(),
+  historical_sharpe_ratio: n.nullable(),
+  sortino_ratio: n.nullable(),
+  maximum_drawdown: n.min(0).max(1),
+  terminal_wealth: n.nonnegative().nullable(),
+});
 const results = {
+  "rebalancing-optimization": base
+    .extend({
+      methodology: z.literal("historical_in_sample_rebalancing_comparison_v1"),
+      user_weights: weights,
+      months: z.array(z.string()),
+      transaction_fee_rate: n.min(0).lt(1),
+      strategies: z
+        .array(
+          z
+            .object({
+              id: z.string(),
+              label: z.string(),
+              calendar_months: n.int().positive().nullable(),
+              threshold_percent: n.positive().nullable(),
+              annual_baseline: z.boolean(),
+              net: simulationStats,
+              gross: simulationStats,
+              net_wealth: z.array(n.nonnegative().nullable()),
+              gross_wealth: z.array(n.nonnegative().nullable()),
+              weight_history: z.array(z.array(n)),
+              events: z.array(
+                z
+                  .object({
+                    date: z.string(),
+                    kind: z.string(),
+                    triggering_assets: z.array(z.string()),
+                    trades: weights,
+                    commissions: n.nonnegative(),
+                    turnover: n.nonnegative(),
+                  })
+                  .passthrough(),
+              ),
+            })
+            .passthrough(),
+        )
+        .length(20),
+    })
+    .passthrough(),
   frontier: base
     .extend({
       frontier: z.array(portfolio),
@@ -520,6 +581,7 @@ export function validateRecord(value: unknown): void {
         "bootstrap",
         "resampled-frontier",
         "rolling-efficiency",
+        "rebalancing-optimization",
       ]),
       request: requestFields,
       origin: z.enum(["demo", "live"]),

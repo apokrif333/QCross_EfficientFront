@@ -122,6 +122,17 @@ class ResampledFrontierRequest(AnalyticsRequest):
         return False
 
 
+class RebalancingOptimizationRequest(AnalyticsRequest):
+    def uses_target_return(self) -> bool:
+        return False
+
+    @model_validator(mode="after")
+    def explicit_portfolio(self):
+        if user_allocation(list(map(str, self.instrument_ids)), self.user_weights) is None:
+            raise ValueError("Rebalancing optimization requires explicit user_weights.")
+        return self
+
+
 class RollingEfficiencyRequest(AnalyticsRequest):
     def uses_target_return(self) -> bool:
         return False
@@ -299,10 +310,27 @@ class RollingEfficiencyResult(BaseModel):
     reproducibility: dict[str, Any]
 
 
+class RebalancingOptimizationResult(BaseModel):
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
+    status: Literal["complete"]
+    methodology: Literal["historical_in_sample_rebalancing_comparison_v1"]
+    assets: list[str]
+    user_weights: dict[str, float]
+    transaction_fee_rate: float
+    strategies: list[dict[str, Any]] = Field(min_length=20, max_length=20)
+    period: dict[str, Any]
+    reproducibility: dict[str, Any]
+
+
 class JobRead(BaseModel):
     job_id: str
     kind: Literal[
-        "frontier", "cross-validation", "bootstrap", "resampled-frontier", "rolling-efficiency"
+        "frontier",
+        "cross-validation",
+        "bootstrap",
+        "resampled-frontier",
+        "rolling-efficiency",
+        "rebalancing-optimization",
     ]
     status: Literal["running", "completed", "failed", "timed_out"]
     submitted_at: str
@@ -320,5 +348,6 @@ class JobResultRead(JobRead):
         | BootstrapResult
         | ResampledFrontierResult
         | RollingEfficiencyResult
+        | RebalancingOptimizationResult
         | None
     )

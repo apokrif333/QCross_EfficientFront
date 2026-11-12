@@ -9,6 +9,7 @@ export function cvHistoryError(
   kind: Kind,
   observations?: number,
 ): string | null {
+  if (kind === "rebalancing-optimization") return null;
   const k = request.cv_folds;
   if (!CV_FOLDS.includes(k)) return "K: выберите чётное число от 2 до 20.";
   const portfolio = kind === "cross-validation";

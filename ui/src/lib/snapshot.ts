@@ -91,6 +91,7 @@ export function parseSnapshot(text: string): Snapshot {
         "bootstrap",
         "resampled-frontier",
         "rolling-efficiency",
+        "rebalancing-optimization",
       ].includes(record.kind) ||
       !record.request ||
       !Array.isArray(record.request.instrument_ids) ||

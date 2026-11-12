@@ -162,7 +162,7 @@ def analyze_bootstrap(
     constraints, estimate, mean, covariance = prepare(panel, **options)
     fixed_user_weights = user_allocation(panel.assets, user_weights) if user_weights else None
     paired = (
-        PairedBootstrap(panel.assets, fixed_user_weights, constraints)
+        PairedBootstrap(panel.assets, fixed_user_weights, constraints, **panel.simulation_options)
         if fixed_user_weights is not None and include_paired_comparison
         else None
     )
@@ -193,6 +193,7 @@ def analyze_bootstrap(
                     sample_rf
                     if sample_rf is not None
                     else np.full(len(values), (1 + risk_free_rate) ** (1 / 12) - 1),
+                    **panel.simulation_options,
                 )
                 fixed_metrics_record = {
                     "observations": len(values),
@@ -343,6 +344,7 @@ def analyze_bootstrap(
                     risk_free_rate,
                     risk_free_returns=sample_rf,
                     differential=differential,
+                    simulation_options=panel.simulation_options,
                 )
             records[objective].append(record)
     results = {}

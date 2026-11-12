@@ -83,6 +83,8 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
                 include_paired_comparison=body.include_paired_comparison,
             )
         elif kind == "rolling-efficiency":
+            options.pop("transaction_fee_rate", None)
+            options.pop("rebalancing_interval_months", None)
             if user_allocation(panel.assets, body.user_weights) is None:
                 raise AnalyticsError("Rolling efficiency requires explicit user_weights.")
             if len(panel.values) < body.rolling_window_months:

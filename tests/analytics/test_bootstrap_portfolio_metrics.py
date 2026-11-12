@@ -7,6 +7,7 @@ import pytest
 from app.analytics.bootstrap import analyze_bootstrap, stationary_indices
 from app.analytics.bootstrap_metrics import PORTFOLIO_METRICS, fixed_portfolio_metrics
 from app.analytics.models import AnalyticsError, ReturnPanel
+from tests.analytics.test_portfolio_simulator import annual_returns
 
 
 def manual_metrics(monthly, rf):
@@ -15,7 +16,7 @@ def manual_metrics(monthly, rf):
     return {
         "annualized_cagr": wealth[-1] ** (12 / len(monthly)) - 1,
         "annualized_arithmetic_return": monthly.mean() * 12,
-        "annualized_volatility": monthly.std(ddof=0) * np.sqrt(12),
+        "annualized_volatility": monthly.std(ddof=1) * np.sqrt(12),
         "maximum_drawdown": -(wealth / np.maximum.accumulate(wealth) - 1).min(),
         "historical_sharpe_ratio": np.sqrt(12) * differential.mean() / differential.std(ddof=1),
         "terminal_wealth": wealth[-1],
@@ -26,7 +27,7 @@ def test_known_fixed_weight_path_and_time_varying_risk_free():
     values = np.array([[0.1, 0.02], [-0.2, -0.03], [0.05, 0.01]])
     weights = np.array([0.6, 0.4])
     rf = np.array([0.012, -0.003, 0.004])
-    expected = manual_metrics(values @ weights, rf)
+    expected = manual_metrics(annual_returns(values, weights), rf)
     result = fixed_portfolio_metrics(values, weights, rf)
     for metric, value in expected.items():
         assert result[metric] == pytest.approx(value, abs=1e-12)
@@ -80,7 +81,7 @@ def test_full_sample_metrics_use_exact_existing_indices_and_aligned_bil(
     expected_records = []
     for record in robustness["results"]:
         indices = stationary_indices(len(panel.values), 12, rng)
-        expected = manual_metrics(panel.values[indices] @ weights, rf[indices])
+        expected = manual_metrics(annual_returns(panel.values[indices], weights), rf[indices])
         assert record["observations"] == len(panel.values)
         for key, value in expected.items():
             assert record["portfolio_metrics"][key] == pytest.approx(value)
@@ -159,6 +160,7 @@ def test_zero_differential_volatility_and_complete_loss_are_explicit(panel):
         bootstrap_iterations=3,
         include_paired_comparison=False,
         objectives=["gmv"],
+        rebalancing_interval_months=1,
         user_weights=dict(zip(panel.assets, weights, strict=True)),
     )
     sharpe = result["efficiency_robustness"]["distributions"]["historical_sharpe_ratio"]

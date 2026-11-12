@@ -192,6 +192,19 @@ export default function Settings({
             <option value="fixed_annual">Фиксированная ставка</option>
           </select>
         </label>
+        <HelpField
+          label="Комиссия от суммы сделки, %"
+          help="Комиссия за каждую покупку и продажу, включая первоначальные покупки. Исторические портфели по умолчанию восстанавливают веса каждые 12 месяцев от начала выборки."
+        >
+          <input
+            type="number"
+            min="0"
+            max="99.99"
+            step="any"
+            value={(value.transaction_fee_rate ?? 0) * 100}
+            onChange={(e) => set("transaction_fee_rate", +e.target.value / 100)}
+          />
+        </HelpField>
         <div className="two">
           {(value.risk_free_source ?? "fixed_annual") === "fixed_annual" && (
             <HelpField

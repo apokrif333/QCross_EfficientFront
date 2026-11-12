@@ -15,17 +15,16 @@ METRICS = {
 }
 
 
-def validation_metrics(values, weights, risk_free):
-    metrics = fixed_portfolio_metrics(values, weights, risk_free)
-    metrics["annualized_volatility"] = float((values @ weights).std(ddof=1) * np.sqrt(12))
+def validation_metrics(values, weights, risk_free, **simulation_options):
+    metrics = fixed_portfolio_metrics(values, weights, risk_free, **simulation_options)
     return metrics
 
 
-def compare_validation(values, risk_free, user, trained, assets):
+def compare_validation(values, risk_free, user, trained, assets, **simulation_options):
     record = {
         "status": trained.status,
         "diagnostics": trained.diagnostics,
-        "user": validation_metrics(values, user, risk_free),
+        "user": validation_metrics(values, user, risk_free, **simulation_options),
         "optimized": None,
         "weights": None,
         "differences": {},
@@ -33,7 +32,9 @@ def compare_validation(values, risk_free, user, trained, assets):
     if trained.weights is None:
         return record
     record["weights"] = dict(zip(assets, trained.weights.tolist(), strict=True))
-    record["optimized"] = validation_metrics(values, trained.weights, risk_free)
+    record["optimized"] = validation_metrics(
+        values, trained.weights, risk_free, **simulation_options
+    )
     record["differences"] = {
         f"delta_{name}": record["optimized"][key] - record["user"][key]
         if record["optimized"][key] is not None and record["user"][key] is not None
@@ -96,7 +97,8 @@ def summarize(records):
 
 
 class PairedBootstrap:
-    def __init__(self, assets, user, constraints):
+    def __init__(self, assets, user, constraints, **simulation_options):
+        self.simulation_options = simulation_options
         self.assets, self.user, self.constraints = assets, user, constraints
         self.records, self.clouds, self.means, self.covariances = [], [], [], []
         self.trained = OptimizationResult("train_failed", None, {})
@@ -135,7 +137,9 @@ class PairedBootstrap:
         mean, covariance = values.mean(0) * 12, np.cov(values, rowvar=False, ddof=1) * 12
         self.means.append(mean)
         self.covariances.append(covariance)
-        record = compare_validation(values, risk_free, self.user, self.trained, self.assets)
+        record = compare_validation(
+            values, risk_free, self.user, self.trained, self.assets, **self.simulation_options
+        )
         record.update(
             pair=iteration // 2 + 1, train_generation=iteration, validation_generation=iteration + 1
         )

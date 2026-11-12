@@ -25,6 +25,8 @@ const requestFields = z.object({
   return_basis: z.enum(["nominal", "real"]).optional(),
   risk_free_source: z.enum(["historical_bil", "fixed_annual"]).optional(),
   risk_free_rate: n.gt(-1).max(1),
+  transaction_fee_rate: n.min(0).lt(1).optional(),
+  rebalancing_interval_months: n.int().min(1).max(1200).nullable().optional(),
   objective: z.enum([
     "gmv",
     "max_sharpe",
@@ -176,7 +178,9 @@ const efficiencyDistance = z
     user_expected_return: n.nullable().optional(),
     user_volatility: n.nonnegative().nullable().optional(),
     diagnostics: z.record(z.string(), z.unknown()),
-    portfolio_metrics: z.record(z.string(), n.nullable()).optional(),
+    portfolio_metrics: z
+      .record(z.string(), z.union([n.nullable(), z.record(z.string(), n.nullable())]))
+      .optional(),
   })
   .passthrough()
   .refine(

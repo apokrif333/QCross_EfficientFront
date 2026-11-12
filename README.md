@@ -686,3 +686,10 @@ Fixed-portfolio Bootstrap distributions also include CAGR, arithmetic return,
 historical volatility, drawdown, BIL differential Sharpe and wealth from $1.
 Every distribution labels the full selected-history horizon; its mean, median,
 P5/P95 and min/max describe resampled scenarios, not calibrated future probabilities.
+
+## Rebalancing simulation (engine 3.0)
+
+New calculations simulate historical holdings with annual rebalancing and optional
+self-financing commissions, including initial purchases. Model-based arithmetic
+means/covariances remain unchanged. Historical reporting is net of costs with
+gross results disclosed separately. See [portfolio simulation](docs/rebalancing-engine.md) for conventions and legacy snapshot replay.

@@ -24,6 +24,7 @@ from app.analytics.models import AnalyticsError
 from app.analytics.optimizer import PortfolioOptimizer
 from app.analytics.splitting import one_sided_folds
 from app.db.models import Instrument, MonthlyReturn, ReturnSeries
+from tests.analytics.test_portfolio_simulator import annual_returns
 
 
 def test_alignment_intersection_and_requested_range(panel):
@@ -82,7 +83,7 @@ def test_annualization_compounding_and_drawdown(panel):
     assert stats["expected_return"] == pytest.approx(np.mean(panel.values @ w) * 12)
     assert stats["volatility"] == pytest.approx(np.std(panel.values @ w, ddof=1) * np.sqrt(12))
     assert stats["historical_cagr"] == pytest.approx(
-        np.prod(1 + panel.values @ w) ** (12 / 240) - 1
+        np.prod(1 + annual_returns(panel.values, w)) ** (12 / 240) - 1
     )
     assert historical_metrics(np.array([-0.2, 0.1]))["historical_max_drawdown"] == pytest.approx(
         0.2

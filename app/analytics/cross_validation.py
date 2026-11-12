@@ -176,8 +176,24 @@ def analyze_cross_validation(
                     risk_free_rate,
                     risk_free_returns=training_rf,
                     differential=differential,
+                    simulation_options=panel.simulation_options,
                 )
-                realized = validation_values @ weights
+                from app.analytics.portfolio_simulator import simulate_portfolio
+
+                validation_rf_path = (
+                    panel.risk_free_returns[validation]
+                    if panel.risk_free_returns is not None
+                    else np.full(len(validation), (1 + risk_free_rate) ** (1 / 12) - 1)
+                )
+                path = simulate_portfolio(
+                    validation_values,
+                    weights,
+                    validation_rf_path,
+                    record_history=False,
+                    allow_solver_residuals=True,
+                    **panel.simulation_options,
+                )
+                realized = np.asarray(path["net_returns"])
                 realized_return = float(realized.mean() * 12)
                 realized_volatility = float(realized.std(ddof=1) * np.sqrt(12))
                 fold["validation_metrics"] = {
@@ -189,6 +205,16 @@ def analyze_cross_validation(
                     else None,
                     "realized_total_return": float(np.prod(1 + realized) - 1),
                     **historical_metrics(realized),
+                    "gross_metrics": path["gross"],
+                    "trading_costs": {
+                        k: path[k]
+                        for k in (
+                            "total_commissions",
+                            "trade_count",
+                            "rebalancing_events",
+                            "annualized_turnover",
+                        )
+                    },
                     "historical_sharpe_ratio": None,
                 }
                 validation_rf = (
@@ -259,7 +285,12 @@ def analyze_cross_validation(
                     else np.full(len(validation), (1 + risk_free_rate) ** (1 / 12) - 1)
                 )
                 fold["paired_comparison"] = compare_validation(
-                    validation_values, rf, fixed_user_weights, trained, panel.assets
+                    validation_values,
+                    rf,
+                    fixed_user_weights,
+                    trained,
+                    panel.assets,
+                    **panel.simulation_options,
                 )
                 fold["paired_comparison"].update(
                     fold=number,

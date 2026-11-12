@@ -308,3 +308,10 @@ Each distribution discloses its available/unavailable counts; zero differential
 volatility gives a null Sharpe, and unrepresentable wealth/CAGR values are null.
 Percentiles describe historical resampled scenarios and are not calibrated
 probabilities of future returns.
+
+## Rebalancing simulation (engine 3.0)
+
+New calculations simulate historical holdings with annual rebalancing and optional
+self-financing commissions, including initial purchases. Model-based arithmetic
+means/covariances remain unchanged. Historical reporting is net of costs with
+gross results disclosed separately. See [portfolio simulation](rebalancing-engine.md) for conventions and legacy snapshot replay.

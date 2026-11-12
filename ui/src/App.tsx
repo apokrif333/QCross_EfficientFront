@@ -218,6 +218,8 @@ export default function App() {
             asset_groups: {},
             user_weights: null,
             include_paired_comparison: true,
+            rebalancing_interval_months: 12,
+            transaction_fee_rate: 0,
             start_date: null,
             end_date: null,
             bootstrap_objectives: [
@@ -402,6 +404,11 @@ export default function App() {
             ...original.request,
             include_paired_comparison:
               original.request.include_paired_comparison ?? false,
+            transaction_fee_rate: original.request.transaction_fee_rate ?? 0,
+            rebalancing_interval_months:
+              original.request.rebalancing_interval_months === undefined
+                ? 1
+                : original.request.rebalancing_interval_months,
           },
           abort.signal,
         );
@@ -908,7 +915,7 @@ export default function App() {
           )}
           <footer>
             QCross Portfolio Lab · monthly total returns · USD · long-only ·
-            monthly rebalancing
+            path-dependent rebalancing
           </footer>
         </main>
       </div>

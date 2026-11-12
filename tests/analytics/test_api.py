@@ -55,6 +55,8 @@ def test_real_process_api_roundtrip(endpoint, panel, settings, session_factory):
             user = completed["result"]["user_portfolio"]
             assert user["weights"]["1"] == 1.0
             assert not user["feasible"]
+            assert user["metrics"]["gross_historical_metrics"]["annualized_cagr"] is not None
+            assert user["metrics"]["trading_costs"]["total_commissions"] == 0
         if endpoint == "bootstrap":
             robustness = completed["result"]["efficiency_robustness"]
             assert robustness["horizon"]["months"] == len(panel.values)

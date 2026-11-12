@@ -25,6 +25,7 @@ class ReturnPanel:
     return_basis: str = "nominal"
     risk_free_source: str = "fixed_annual"
     differential: dict = field(default_factory=dict)
+    simulation_options: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not 2 <= len(self.assets) <= 15:

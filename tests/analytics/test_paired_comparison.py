@@ -64,11 +64,11 @@ def test_paired_sampling_alignment_and_moments(panel, method, basis):
         assert not np.array_equal(train, valid)
         record = pairs["results"][i]
         expected = validation_metrics(values[valid], np.array(list(USER.values())), rf[valid])
-        assert record["user"] == pytest.approx(expected)
+        assert record["user"] == expected
         opt = validation_metrics(
             values[valid], np.array(list(record["weights"].values())), rf[valid]
         )
-        assert record["optimized"] == pytest.approx(opt)
+        assert record["optimized"] == opt
         assert record["differences"]["delta_cagr"] == pytest.approx(
             opt["annualized_cagr"] - expected["annualized_cagr"]
         )
@@ -122,6 +122,7 @@ def test_zero_sharpe_denominator_and_delta_drawdown(panel):
         user,
         OptimizationResult("optimal", user, {}),
         panel.assets,
+        rebalancing_interval_months=1,
     )
     summary = summarize([record])
     assert record["differences"]["delta_max_drawdown"] == 0

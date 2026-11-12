@@ -8,7 +8,7 @@ from app.analytics.models import AnalyticsError
 from app.schemas.frontier import AnalyticsRequest
 
 
-def test_user_portfolio_uses_compounding_and_population_historical_volatility(panel):
+def test_user_portfolio_uses_compounding_and_sample_historical_volatility(panel):
     result = analyze_frontier(panel, user_weights={"1": 1}, frontier_points=3)
     user = result["user_portfolio"]
     values = panel.values[:, 0]
@@ -19,7 +19,7 @@ def test_user_portfolio_uses_compounding_and_population_historical_volatility(pa
         np.prod(1 + values) ** (12 / len(values)) - 1
     )
     assert user["metrics"]["historical_volatility"] == pytest.approx(
-        values.std(ddof=0) * np.sqrt(12)
+        values.std(ddof=1) * np.sqrt(12)
     )
     assert user["metrics"]["volatility"] == pytest.approx(values.std(ddof=1) * np.sqrt(12))
     assert result["asset_portfolios"]["1"]["metrics"] == user["metrics"]
@@ -32,7 +32,7 @@ def test_user_portfolio_uses_compounding_and_population_historical_volatility(pa
             np.prod(1 + observations) ** (12 / len(observations)) - 1
         )
         assert reference["metrics"]["historical_volatility"] == pytest.approx(
-            observations.std(ddof=0) * np.sqrt(12)
+            observations.std(ddof=1) * np.sqrt(12)
         )
 
 

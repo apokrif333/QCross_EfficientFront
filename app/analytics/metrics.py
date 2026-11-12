@@ -20,7 +20,24 @@ def portfolio_metrics(
     *,
     risk_free_returns=None,
     differential=None,
+    simulation_options=None,
 ) -> dict:
+    from app.analytics.portfolio_simulator import simulate_portfolio
+
+    rf = (
+        risk_free_returns
+        if risk_free_returns is not None
+        else np.full(len(values), (1 + risk_free_rate) ** (1 / 12) - 1)
+    )
+    simulation = simulate_portfolio(
+        values,
+        weights,
+        rf,
+        record_history=False,
+        allow_solver_residuals=True,
+        **(simulation_options or {}),
+    )
+    net, gross = simulation["net"], simulation["gross"]
     expected = float(weights @ mean)
     volatility = float(np.sqrt(max(0, weights @ covariance @ weights)))
     if risk_free_returns is None:
@@ -50,8 +67,23 @@ def portfolio_metrics(
         **sharpe,
         "expected_return": expected,
         "volatility": volatility,
-        "historical_volatility": float(np.std(values @ weights, ddof=0) * np.sqrt(12)),
-        **historical_metrics(values @ weights),
+        "historical_volatility": net["annualized_volatility"],
+        "historical_cagr": net["annualized_cagr"],
+        "historical_max_drawdown": net["maximum_drawdown"],
+        "historical_sharpe_ratio": net["historical_sharpe_ratio"],
+        "historical_arithmetic_return": net["annualized_arithmetic_return"],
+        "terminal_wealth": net["terminal_wealth"],
+        "gross_historical_metrics": gross,
+        "trading_costs": {
+            k: simulation[k]
+            for k in (
+                "total_commissions",
+                "trade_count",
+                "rebalancing_events",
+                "annualized_turnover",
+                "execution_target_adjustment",
+            )
+        },
     }
 
 

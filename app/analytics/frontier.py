@@ -19,9 +19,15 @@ def prepare(
     shrinkage_target: str = "identity",
     asset_constraints: dict | None = None,
     group_constraints: dict | None = None,
+    transaction_fee_rate: float = 0.0,
+    rebalancing_interval_months: int | None = 12,
 ) -> tuple:
     if panel.risk_free_source == "historical_bil" and panel.risk_free_returns is None:
         raise AnalyticsError("Historical BIL mode requires aligned monthly BIL observations.")
+    panel.simulation_options = {
+        "transaction_fee_rate": transaction_fee_rate,
+        "rebalancing_interval_months": rebalancing_interval_months,
+    }
     constraints = build_constraints(
         panel.assets, asset_constraints, group_constraints, panel.groups
     )
@@ -63,6 +69,7 @@ def describe(
             risk_free_rate,
             risk_free_returns=panel.risk_free_returns,
             differential=panel.differential,
+            simulation_options=panel.simulation_options,
         )
     return output
 
@@ -73,6 +80,7 @@ def data_diagnostics(panel: ReturnPanel, estimate, risk_free_rate: float = 0.03)
     if estimate.diagnostics["nearly_singular"]:
         warnings.append("Nearly singular covariance: a disclosed eigenvalue floor was applied.")
     return {
+        "simulation_settings": panel.simulation_options,
         "return_basis": panel.return_basis,
         "risk_free_source": panel.risk_free_source,
         "reference_metadata": panel.reference_metadata,

@@ -94,6 +94,7 @@ function formatEfficiencySummary(
     : "-";
 }
 function BootstrapPortfolioMetrics({ result }: { result: BootstrapResult }) {
+  const [gross, setGross] = useState(false);
   const robustness = result.efficiency_robustness;
   if (!robustness?.distributions || !robustness.horizon) return null;
   const labels: Record<string, string> = {
@@ -115,11 +116,25 @@ function BootstrapPortfolioMetrics({ result }: { result: BootstrapResult }) {
   return (
     <section className="subsection">
       <h3>Показатели фиксированного портфеля</h3>
+      {robustness.gross_distributions && (
+        <div className="segmented">
+          <button aria-pressed={!gross} onClick={() => setGross(false)}>
+            После комиссий
+          </button>
+          <button aria-pressed={gross} onClick={() => setGross(true)}>
+            До комиссий
+          </button>
+        </div>
+      )}
       <p className="hint">
         Горизонт каждой выборки: {robustness.horizon.months} мес. (
         {number(robustness.horizon.years, 2)} лет) ·{" "}
         {result.return_basis === "real" ? "Real" : "Nominal"} USD. Полная длина
-        выбранной истории, ежемесячное восстановление заданных весов.
+        выбранной истории. Ребалансировка:{" "}
+        {result.simulation_settings?.rebalancing_interval_months === null
+          ? "Buy & Hold"
+          : `каждые ${result.simulation_settings?.rebalancing_interval_months ?? 1} мес.`}
+        . Показатели {gross ? "до" : "после"} комиссий.
       </p>
       <p className="hint">
         P5/P95 описывают исторические бутстрап-сценарии и не являются
@@ -143,7 +158,11 @@ function BootstrapPortfolioMetrics({ result }: { result: BootstrapResult }) {
             </tr>
           </thead>
           <tbody>
-            {Object.entries(robustness.distributions)
+            {Object.entries(
+              (gross
+                ? robustness.gross_distributions
+                : robustness.distributions) ?? {},
+            )
               .filter(
                 ([key]) =>
                   key !== "return_shortfall" && key !== "excess_volatility",
@@ -719,10 +738,12 @@ export function CVView({
                       f.training_metrics?.historical_volatility != null &&
                         f.training.observations > 1
                         ? f.training_metrics.historical_volatility *
-                            Math.sqrt(
-                              f.training.observations /
-                                (f.training.observations - 1),
-                            )
+                            (r.simulation_settings
+                              ? 1
+                              : Math.sqrt(
+                                  f.training.observations /
+                                    (f.training.observations - 1),
+                                ))
                         : null,
                     )}
                   </td>

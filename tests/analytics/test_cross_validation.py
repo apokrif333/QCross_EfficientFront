@@ -3,6 +3,7 @@ import pytest
 
 from app.analytics.cross_validation import analyze_cross_validation, portfolio_folds
 from app.analytics.models import AnalyticsError
+from tests.analytics.test_portfolio_simulator import annual_returns
 
 
 def test_one_sided_portfolio_metadata(panel):
@@ -83,7 +84,7 @@ def test_averaging_constraints_and_validation_metrics(panel, objective):
     )
     for fold, (_, validation) in zip(output["folds"], portfolio_folds(240), strict=True):
         w = np.array([fold["weights"][a] for a in panel.assets])
-        realized = panel.values[validation] @ w
+        realized = annual_returns(panel.values[validation], w)
         assert fold["validation_metrics"]["realized_annual_arithmetic_return"] == pytest.approx(
             realized.mean() * 12
         )

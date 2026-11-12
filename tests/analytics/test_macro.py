@@ -16,6 +16,7 @@ from app.analytics.references import real_returns
 from app.ingestion.lazyportfolio.inflation import extract_inflation
 from app.ingestion.lazyportfolio.returns_models import ReturnExtractionError
 from app.ingestion.lazyportfolio.returns_parser import embedded_state
+from tests.analytics.test_portfolio_simulator import annual_returns
 
 SOURCE = Path("tests/fixtures/lazyportfolio_bil_inflation.html")
 
@@ -144,7 +145,7 @@ def test_complete_moments_and_sharpe_objective(panel, basis, method):
     assert output["status"] == "complete"
     w = np.array(list(output["max_sharpe"]["weights"].values()))
     metrics = output["max_sharpe"]["metrics"]
-    differential = values @ w - rf
+    differential = annual_returns(values, w) - rf
     assert metrics["historical_sharpe_ratio"] == pytest.approx(
         np.sqrt(12) * differential.mean() / differential.std(ddof=1)
     )

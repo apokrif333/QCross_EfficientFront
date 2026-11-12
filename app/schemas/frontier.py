@@ -30,6 +30,8 @@ class AnalyticsRequest(BaseModel):
     return_basis: Literal["nominal", "real"] = "nominal"
     risk_free_source: Literal["historical_bil", "fixed_annual"] = "historical_bil"
     risk_free_rate: float = Field(default=0.03, gt=-1, le=1)
+    transaction_fee_rate: float = Field(default=0.0, ge=0, lt=1)
+    rebalancing_interval_months: int | None = Field(default=12, ge=1, le=1200)
     objective: Objective = "gmv"
     target_return: float | None = Field(default=None, ge=-12, le=12)
     asset_constraints: dict[str, WeightBounds] = Field(default_factory=dict, max_length=15)
@@ -102,6 +104,8 @@ class AnalyticsRequest(BaseModel):
 
     def estimator_options(self) -> dict:
         return {
+            "transaction_fee_rate": self.transaction_fee_rate,
+            "rebalancing_interval_months": self.rebalancing_interval_months,
             "covariance_method": self.covariance_method,
             "shrinkage_target": self.shrinkage_target,
             "cv_folds": self.cv_folds,
@@ -124,6 +128,9 @@ class RollingEfficiencyRequest(AnalyticsRequest):
 
 
 class PortfolioMetrics(BaseModel):
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
+    gross_historical_metrics: dict[str, float | None] | None = None
+    trading_costs: dict[str, float | int] | None = None
     expected_return: float
     volatility: float
     historical_volatility: float

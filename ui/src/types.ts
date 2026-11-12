@@ -16,6 +16,8 @@ export interface ApiRequest {
   shrinkage_target: "identity" | "diagonal";
   return_basis?: "nominal" | "real";
   risk_free_source?: "historical_bil" | "fixed_annual";
+  transaction_fee_rate?: number;
+  rebalancing_interval_months?: number | null;
   risk_free_rate: number;
   objective: "gmv" | "max_sharpe" | "target_return" | "max_return_at_user_risk";
   target_return: number | null;
@@ -104,6 +106,10 @@ export interface Period {
   observations: number;
 }
 export interface BaseResult {
+  simulation_settings?: {
+    transaction_fee_rate: number;
+    rebalancing_interval_months: number | null;
+  };
   paired_comparison?: PairedComparison | null;
   return_basis?: "nominal" | "real";
   risk_free_source?: "historical_bil" | "fixed_annual";
@@ -203,6 +209,7 @@ export interface EfficiencyDistribution {
     rebalancing: string;
   };
   distributions?: Record<string, BootstrapMetricDistribution>;
+  gross_distributions?: Record<string, BootstrapMetricDistribution>;
   return_shortfall: {
     mean: number;
     median: number;
@@ -426,6 +433,8 @@ export const METHODS: {
   },
 ];
 export const DEFAULT_REQUEST: ApiRequest = {
+  rebalancing_interval_months: 12,
+  transaction_fee_rate: 0,
   return_basis: "nominal",
   risk_free_source: "historical_bil",
   instrument_ids: [1, 175, 243],

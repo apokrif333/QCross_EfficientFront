@@ -2,8 +2,6 @@
 
 import numpy as np
 
-from app.analytics.models import AnalyticsError
-
 PORTFOLIO_METRICS = (
     "annualized_cagr",
     "annualized_arithmetic_return",
@@ -14,51 +12,34 @@ PORTFOLIO_METRICS = (
 )
 
 
-def fixed_portfolio_metrics(values, weights, risk_free_returns) -> dict:
-    """Monthly rebalancing, historical volatility ddof=0, differential Sharpe ddof=1.
+def fixed_portfolio_metrics(values, weights, risk_free_returns, **simulation_options) -> dict:
+    from app.analytics.portfolio_simulator import simulate_portfolio
 
-    Log wealth prevents overflow while calculating drawdown and CAGR. An
-    unrepresentable terminal wealth/CAGR or undefined Sharpe is returned as null.
-    """
-    monthly = np.asarray(values, dtype=float) @ np.asarray(weights, dtype=float)
-    risk_free = np.asarray(risk_free_returns, dtype=float)
-    if (
-        monthly.ndim != 1
-        or len(monthly) < 2
-        or risk_free.shape != monthly.shape
-        or not np.isfinite(monthly).all()
-        or not np.isfinite(risk_free).all()
-        or np.any(monthly < -1)
-    ):
-        raise AnalyticsError(
-            "Fixed portfolio metrics require aligned finite monthly returns >= -1."
-        )
-    with np.errstate(divide="ignore"):
-        log_wealth = np.r_[0.0, np.cumsum(np.log1p(monthly))]
-    peak = np.maximum.accumulate(log_wealth)
-    drawdown = -np.expm1(log_wealth - peak)
-    with np.errstate(over="ignore"):
-        terminal = float(np.exp(log_wealth[-1]))
-        cagr = float(np.expm1(log_wealth[-1] * 12 / len(monthly)))
-    differential = monthly - risk_free
-    deviation = differential.std(ddof=1)
-    metrics = {
-        "annualized_cagr": cagr if np.isfinite(cagr) else None,
-        "annualized_arithmetic_return": float(monthly.mean() * 12),
-        "annualized_volatility": float(monthly.std(ddof=0) * np.sqrt(12)),
-        "maximum_drawdown": float(drawdown.max()),
-        "historical_sharpe_ratio": float(np.sqrt(12) * differential.mean() / deviation)
-        if deviation > 1e-12
-        else None,
-        "terminal_wealth": terminal if np.isfinite(terminal) else None,
-    }
+    simulation = simulate_portfolio(
+        values,
+        weights,
+        risk_free_returns,
+        record_history=False,
+        allow_solver_residuals=True,
+        **simulation_options,
+    )
     return {
-        key: value if value is None or np.isfinite(value) else None
-        for key, value in metrics.items()
+        **simulation["net"],
+        "gross_metrics": simulation["gross"],
+        "trading_costs": {
+            k: simulation[k]
+            for k in (
+                "total_commissions",
+                "trade_count",
+                "rebalancing_events",
+                "annualized_turnover",
+                "execution_target_adjustment",
+            )
+        },
     }
 
 
-def summarize_bootstrap_portfolio(records: list[dict], months: int) -> dict:
+def summarize_bootstrap_portfolio(records: list[dict], months: int, *, include_gross=True) -> dict:
     """Summarize each metric independently, including samples whose frontier failed."""
     distributions = {}
     for key in (*PORTFOLIO_METRICS, "return_shortfall", "excess_volatility"):
@@ -96,16 +77,16 @@ def summarize_bootstrap_portfolio(records: list[dict], months: int) -> dict:
             if key == "historical_sharpe_ratio"
             else "decimal_fraction",
         }
-    return {
+    output = {
         "horizon": {
             "months": months,
             "years": months / 12,
             "initial_wealth": 1.0,
             "sample_length_policy": "full_selected_return_panel",
-            "rebalancing": "monthly_fixed_weights",
+            "rebalancing": "request_simulation_settings_default_annual",
         },
         "metric_conventions": {
-            "annualized_volatility": "realized_monthly_population_std_ddof_0_times_sqrt_12",
+            "annualized_volatility": "realized_monthly_sample_std_ddof_1_times_sqrt_12",
             "historical_sharpe_ratio": "sample_std_ddof_1_of_aligned_monthly_differential_returns",
             "terminal_wealth": "selected_return_basis_units_from_one_initial_usd",
             "unavailable_values": "null_when_sharpe_undefined_or_numeric_overflow",
@@ -117,3 +98,16 @@ def summarize_bootstrap_portfolio(records: list[dict], months: int) -> dict:
         ),
         "distributions": distributions,
     }
+    if include_gross:
+        gross = [
+            {"portfolio_metrics": r.get("portfolio_metrics", {}).get("gross_metrics", {})}
+            for r in records
+        ]
+        output["gross_distributions"] = {
+            k: v
+            for k, v in summarize_bootstrap_portfolio(gross, months, include_gross=False)[
+                "distributions"
+            ].items()
+            if k in PORTFOLIO_METRICS
+        }
+    return output

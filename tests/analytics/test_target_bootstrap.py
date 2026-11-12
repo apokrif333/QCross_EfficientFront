@@ -12,6 +12,7 @@ from app.analytics.frontier import analyze_frontier
 from app.analytics.models import AnalyticsError, OptimizationResult
 from app.analytics.optimizer import PortfolioOptimizer
 from app.analytics.references import real_returns
+from tests.analytics.test_portfolio_simulator import annual_returns
 
 
 def test_target_is_minimum_and_gmv_is_valid():
@@ -217,7 +218,7 @@ def test_target_constraints_moments_and_shared_indices(panel, basis, method):
         w = np.array(list(record["weights"].values()))
         assert sample.mean(0) * 12 @ w >= 0.03 - 1e-7
         assert w[0] <= 0.5 + 1e-7 and w[0] + w[2] <= 0.8 + 1e-7
-        diff = sample @ w - p.risk_free_returns[indices]
+        diff = annual_returns(sample, w) - p.risk_free_returns[indices]
         assert record["metrics"]["historical_sharpe_ratio"] == pytest.approx(
             np.sqrt(12) * diff.mean() / diff.std(ddof=1)
         )

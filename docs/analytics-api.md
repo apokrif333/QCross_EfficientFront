@@ -282,3 +282,10 @@ Per-metric counts disclose undefined Sharpe values and numerical overflow.
 Path statistics remain available when covariance estimation or an efficiency
 solver fails. The existing distance-summary fields remain present and now also
 include `minimum`. The sampling fingerprint and optimization objectives are unchanged.
+
+## Rebalancing simulation (engine 3.0)
+
+New calculations simulate historical holdings with annual rebalancing and optional
+self-financing commissions, including initial purchases. Model-based arithmetic
+means/covariances remain unchanged. Historical reporting is net of costs with
+gross results disclosed separately. See [portfolio simulation](rebalancing-engine.md) for conventions and legacy snapshot replay.

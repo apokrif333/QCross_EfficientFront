@@ -16,6 +16,11 @@ export function stable(value: unknown): string {
 export function effectiveRequest(request: ApiRequest): ApiRequest {
   return {
     ...request,
+    transaction_fee_rate: request.transaction_fee_rate ?? 0,
+    rebalancing_interval_months:
+      request.rebalancing_interval_months === undefined
+        ? 1
+        : request.rebalancing_interval_months,
     include_paired_comparison: request.include_paired_comparison ?? false,
     include_efficiency_robustness:
       request.include_efficiency_robustness ?? true,

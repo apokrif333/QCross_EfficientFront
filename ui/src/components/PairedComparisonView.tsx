@@ -175,57 +175,6 @@ export default function PairedComparisonView({
           />
         </>
       )}
-      <details>
-        <summary>Результаты сравнений и веса на Train</summary>
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Fold / Пара</th>
-                <th>Проверка / Направление</th>
-                <th>Ваш CAGR / vol</th>
-                <th>Optimizer CAGR / vol</th>
-                <th>Δ CAGR / Sharpe</th>
-                <th>Веса</th>
-                <th>Статус</th>
-              </tr>
-            </thead>
-            <tbody>
-              {value.results.map((r, i) => (
-                <tr key={i}>
-                  <td>{r.fold ?? r.pair ?? i + 1}</td>
-                  <td>
-                    {r.validation
-                      ? `${r.validation.start} — ${r.validation.end}`
-                      : ""}{" "}
-                    {r.training_direction}
-                  </td>
-                  <td>
-                    {percent(r.user?.annualized_cagr)} /{" "}
-                    {percent(r.user?.annualized_volatility)}
-                  </td>
-                  <td>
-                    {percent(r.optimized?.annualized_cagr)} /{" "}
-                    {percent(r.optimized?.annualized_volatility)}
-                  </td>
-                  <td>
-                    {percent(r.differences?.delta_cagr)} /{" "}
-                    {number(r.differences?.delta_sharpe)}
-                  </td>
-                  <td>
-                    {Object.entries(r.weights ?? {}).map(([a, w]) => (
-                      <small key={a}>
-                        {ticker(a, instruments)} {percent(w)}
-                      </small>
-                    ))}
-                  </td>
-                  <td title={JSON.stringify(r.diagnostics)}>{r.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
     </section>
   );
 }

@@ -1,6 +1,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import PairedComparisonView from "../components/PairedComparisonView";
+import PairedDifferenceHistogram from "../components/PairedDifferenceHistogram";
+import { fireEvent } from "@testing-library/react";
 import { requestSchemaFor } from "../lib/validation";
 import type { PairedComparison } from "../types";
 import { instruments, saved } from "./fixtures";
@@ -14,6 +16,49 @@ vi.mock("../components/Plot", () => ({
 afterEach(() => {
   cleanup();
   plots.mockClear();
+});
+it("plots paired Validation differences including negative and zero outcomes", () => {
+  const value: PairedComparison = {
+    valid_count: 2,
+    failed_count: 1,
+    requested_comparisons: 3,
+    generated_datasets: 6,
+    horizon_months: 240,
+    differences: {},
+    win_frequencies: {},
+    results: [
+      {
+        status: "optimal",
+        optimized: { annualized_cagr: 0.1 },
+        differences: { delta_cagr: -0.02, delta_volatility: 0.03 },
+      },
+      {
+        status: "optimal",
+        optimized: { annualized_cagr: 0.1 },
+        differences: { delta_cagr: 0, delta_volatility: -0.01 },
+      },
+      {
+        status: "failed",
+        optimized: null,
+        differences: { delta_cagr: 0.99, delta_volatility: 0.99 },
+      },
+    ],
+  };
+  render(<PairedDifferenceHistogram value={value} />);
+  expect(plots.mock.lastCall![0].data[0].x).toEqual([-2, 0]);
+  expect(screen.getByText(/Успешных значений: 2 из 3/)).toBeVisible();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Разница волатильности" }),
+  );
+  expect(plots.mock.lastCall![0].data[0].x).toEqual([3, -1]);
+  expect(plots.mock.lastCall![0].data[0].hovertemplate).toContain(
+    "Число пар: %{y}",
+  );
+});
+it("requests a new calculation for a legacy snapshot without paired values", () => {
+  render(<PairedDifferenceHistogram />);
+  expect(screen.getByText(/повторите Bootstrap/)).toBeVisible();
+  expect(plots).not.toHaveBeenCalled();
 });
 it("requires explicit weights and even paired bootstrap generations", () => {
   const request = {

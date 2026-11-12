@@ -183,6 +183,13 @@ it("exposes the actual failure reason for a validation fold", () => {
         "Analytical nonlinear shrinkage input is singular or nearly singular.",
     },
   };
+  r.folds[0].paired_comparison = {
+    status: "failed",
+    diagnostics: {
+      reason:
+        "Analytical nonlinear shrinkage input is singular or nearly singular.",
+    },
+  };
   r.efficiency_robustness = {
     user_weights: { [r.assets[0]]: 1 },
     valid_count: 3,
@@ -202,6 +209,25 @@ it("shows CV summaries above the existing table and adds one user-portfolio colu
   r.folds = r.folds.map((fold) => ({
     ...fold,
     efficiency_robustness: distance,
+    training_metrics: fold.training_metrics && {
+      ...fold.training_metrics,
+      historical_cagr: 0.11,
+      historical_volatility:
+        0.1 *
+        Math.sqrt(
+          (fold.training.observations - 1) / fold.training.observations,
+        ),
+    },
+    validation_metrics: fold.validation_metrics && {
+      ...fold.validation_metrics,
+      historical_cagr: 0.1084,
+      realized_annual_arithmetic_return: 0.1144,
+      realized_annual_volatility: 0.1509,
+    },
+    paired_comparison: {
+      status: "optimal",
+      user: { annualized_cagr: 0.1774, annualized_volatility: 0.1493 },
+    },
   }));
   r.efficiency_robustness = {
     user_weights: { [r.assets[0]]: 1 },
@@ -217,7 +243,7 @@ it("shows CV summaries above the existing table and adds one user-portfolio colu
     ),
   );
   const column = screen.getByRole("columnheader", {
-    name: "Your Port on Valid arithmetic return / vol",
+    name: "Your Port on Valid CAGR / historical vol",
   });
   expect(column).toBeVisible();
   const summary = screen.getByText(
@@ -244,7 +270,12 @@ it("shows CV summaries above the existing table and adds one user-portfolio colu
   expect(
     screen.queryByRole("columnheader", { name: "Статус" }),
   ).not.toBeInTheDocument();
-  expect(screen.getAllByText("8.00% / 10.00%")).toHaveLength(4);
+  expect(screen.getAllByText("17.74% / 14.93%")).toHaveLength(4);
+  expect(screen.getAllByText("10.84% / 15.09%")).toHaveLength(4);
+  expect(screen.getAllByText("11.00% / 10.00%")).toHaveLength(4);
+  expect(
+    screen.queryByText("Результаты сравнений и веса на Train"),
+  ).not.toBeInTheDocument();
   const headings = screen
     .getAllByRole("heading")
     .map((heading) => heading.textContent);
@@ -272,7 +303,7 @@ it("hides user-portfolio CV information when no allocation is specified", () => 
   ).not.toBeInTheDocument();
   expect(
     screen.queryByRole("columnheader", {
-      name: "Your Port on Valid arithmetic return / vol",
+      name: "Your Port on Valid CAGR / historical vol",
     }),
   ).not.toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "Fold" })).toBeVisible();
@@ -311,83 +342,6 @@ it("shows the user portfolio on the original sample and as a bootstrap average",
   expect(
     screen.getByText(/средняя точка — среднее доходности и волатильности/),
   ).toBeVisible();
-});
-
-it("plots Bootstrap scenarios and reports failed robustness samples separately", () => {
-  const r = saved("bootstrap", "bootstrap.json").result as BootstrapResult;
-  const robustness: EfficiencyDistribution = {
-    user_weights: { [r.assets[0]]: 1 },
-    valid_count: 11,
-    failed_count: 1,
-    return_shortfall: stats,
-    excess_volatility: stats,
-    horizon: {
-      months: 240,
-      years: 20,
-      initial_wealth: 1,
-      sample_length_policy: "full_selected_return_panel",
-      rebalancing: "monthly_fixed_weights",
-    },
-    results: [
-      ...Array.from({ length: 11 }, () => ({ ...distance })),
-      {
-        ...distance,
-        status: "failed",
-        return_shortfall: 0.05,
-        excess_volatility: 0.09,
-      },
-    ],
-  };
-  r.efficiency_robustness = robustness;
-  render(<BootstrapView result={r} instruments={instruments} />);
-  fireEvent.click(
-    screen.getByText(
-      "Ретроспективные расстояния до границы (дополнительная диагностика)",
-    ),
-  );
-  const histogram = plots.mock.calls
-    .map(([p]) => p)
-    .find((p) => p.title.startsWith("Bootstrap:"));
-  expect(histogram.data[0].x).toEqual(Array(11).fill(2));
-  expect(histogram.data[0].hovertemplate).toContain(
-    "Середина интервала: %{x} п.п.",
-  );
-  expect(histogram.data[0].hovertemplate).toContain("Число выборок: %{y}");
-  expect(histogram.layout.xaxis.title.text).toBe(
-    "Упущенная годовая доходность, п.п.",
-  );
-  expect(histogram.layout.yaxis.title.text).toBe("Число выборок");
-  expect(
-    screen.getByRole("heading", {
-      name: "Распределение упущенной годовой доходности",
-    }),
-  ).toBeVisible();
-  expect(screen.getByText(/Горизонт каждой выборки: 240 мес./)).toBeVisible();
-  expect(screen.getByText("11 / 1")).toBeVisible();
-  const riskButton = screen.getByRole("button", {
-    name: "Распределение избыточной годовой волатильности",
-  });
-  fireEvent.click(riskButton);
-  expect(riskButton).toHaveAttribute("aria-pressed", "true");
-  const riskHistogram = plots.mock.lastCall![0];
-  expect(riskHistogram.data[0].x).toEqual(Array(11).fill(1));
-  expect(riskHistogram.data[0].hovertemplate).toContain(
-    "Избыточная годовая волатильность",
-  );
-  expect(riskHistogram.layout.xaxis.title.text).toBe(
-    "Избыточная годовая волатильность, п.п.",
-  );
-  expect(
-    screen.getByRole("heading", {
-      name: "Распределение избыточной годовой волатильности",
-    }),
-  ).toBeVisible();
-  fireEvent.click(
-    screen.getByRole("button", {
-      name: "Распределение упущенной годовой доходности",
-    }),
-  );
-  expect(plots.mock.lastCall![0].data[0].x).toEqual(Array(11).fill(2));
 });
 
 it("shows all fixed-portfolio distributions with their full horizon and preserves snapshots", () => {
@@ -447,8 +401,14 @@ it("shows all fixed-portfolio distributions with their full horizon and preserve
   const table = screen.getByRole("table", {
     name: "Распределения показателей фиксированного портфеля",
   });
-  expect(within(table).getAllByRole("row")).toHaveLength(9);
-  expect(within(table).getAllByText("240 мес. (20.00 лет)")).toHaveLength(8);
+  expect(within(table).getAllByRole("row")).toHaveLength(7);
+  expect(within(table).getAllByText("240 мес. (20.00 лет)")).toHaveLength(6);
+  expect(
+    within(table).queryByText("Упущенная годовая доходность, п.п."),
+  ).not.toBeInTheDocument();
+  expect(
+    within(table).queryByText("Избыточная годовая волатильность, п.п."),
+  ).not.toBeInTheDocument();
   expect(within(table).getByText("$1.500")).toBeVisible();
   expect(within(table).getByText("-2.00%")).toBeVisible();
   expect(

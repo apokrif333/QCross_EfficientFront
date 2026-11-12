@@ -49,12 +49,15 @@ class AllocationConstraints:
             weights <= self.upper * scale,
         ]
         if len(self.group_names):
-            rules.extend(
-                [
-                    self.group_matrix @ weights >= self.group_lower * scale,
-                    self.group_matrix @ weights <= self.group_upper * scale,
-                ]
-            )
+            # Long-only weights summing to scale already put every group's
+            # allocation in [0, scale]. Omit only those vacuous bounds; keep
+            # the original groups for diagnostics and feasibility checks.
+            lower = np.flatnonzero(self.group_lower > 0)
+            upper = np.flatnonzero(self.group_upper < 1)
+            if lower.size:
+                rules.append(self.group_matrix[lower] @ weights >= self.group_lower[lower] * scale)
+            if upper.size:
+                rules.append(self.group_matrix[upper] @ weights <= self.group_upper[upper] * scale)
         return rules
 
     def violation(self, weights: np.ndarray) -> float:

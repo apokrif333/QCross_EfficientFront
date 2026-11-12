@@ -18,30 +18,22 @@ test("Bootstrap histogram explains the interval midpoint and sample count on hov
     ),
   };
   result.reproducibility.api_request = request;
-  const stat = {
-    mean: 0.015,
-    median: 0.015,
-    p5: 0.006,
-    p95: 0.024,
-    maximum: 0.025,
-  };
-  result.efficiency_robustness = {
+  result.paired_comparison = {
     user_weights: request.user_weights,
     valid_count: 20,
     failed_count: 0,
-    return_shortfall: stat,
-    excess_volatility: stat,
-    horizon: {
-      months: 240,
-      years: 20,
-      initial_wealth: 1,
-      sample_length_policy: "full_selected_return_panel",
-      rebalancing: "monthly_fixed_weights",
-    },
+    requested_comparisons: 20,
+    generated_datasets: 40,
+    horizon_months: 240,
+    differences: {},
+    win_frequencies: {},
     results: Array.from({ length: 20 }, (_, i) => ({
       status: "optimal",
-      return_shortfall: 0.005 + i * 0.001,
-      excess_volatility: 0.005 + i * 0.0005,
+      optimized: {},
+      differences: {
+        delta_cagr: -0.01 + i * 0.001,
+        delta_volatility: -0.005 + i * 0.0005,
+      },
       diagnostics: {},
     })),
   };
@@ -71,18 +63,13 @@ test("Bootstrap histogram explains the interval midpoint and sample count on hov
   });
   await expect(page.getByText(/Снимок загружен локально/)).toBeVisible();
   await page.getByRole("button", { name: "Bootstrap", exact: true }).click();
-  await page
-    .getByText(
-      "Ретроспективные расстояния до границы (дополнительная диагностика)",
-    )
-    .click();
   await expect(
     page.getByRole("heading", {
-      name: "Распределение упущенной годовой доходности",
+      name: "Разница CAGR, п.п.",
     }),
   ).toBeVisible();
   const plot = page.getByRole("img", {
-    name: /Bootstrap: Упущенная годовая доходность/,
+    name: /Bootstrap: Разница CAGR/,
   });
   const bar = plot.locator(".barlayer .point path").first();
   await expect(bar).toBeVisible();
@@ -91,18 +78,18 @@ test("Bootstrap histogram explains the interval midpoint and sample count on hov
   expect(box).not.toBeNull();
   await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
   const label = plot.locator(".hoverlayer .hovertext");
-  await expect(label).toContainText("Упущенная годовая доходность");
+  await expect(label).toContainText("Разница CAGR");
   await expect(label).toContainText("Середина интервала:");
   await expect(label).toContainText("п.п.");
-  await expect(label).toContainText("Число выборок:");
-  await expect(label).toContainText(/Середина интервала:\s*[\d.,]+/);
+  await expect(label).toContainText("Число пар:");
+  await expect(label).toContainText(/Середина интервала:\s*[-−]?[\d.,]+/);
   await page
     .getByRole("button", {
-      name: "Распределение избыточной годовой волатильности",
+      name: "Разница волатильности",
     })
     .click();
   const riskPlot = page.getByRole("img", {
-    name: /Bootstrap: Избыточная годовая волатильность/,
+    name: /Bootstrap: Разница волатильности/,
   });
   const riskBar = riskPlot.locator(".barlayer .point path").first();
   await expect(riskBar).toBeVisible();
@@ -113,10 +100,10 @@ test("Bootstrap histogram explains the interval midpoint and sample count on hov
     riskBox!.y + riskBox!.height / 2,
   );
   await expect(riskPlot.locator(".hoverlayer .hovertext")).toContainText(
-    "Избыточная годовая волатильность",
+    "Разница волатильности",
   );
   await expect(riskPlot.locator(".hoverlayer .hovertext")).toContainText(
-    "Число выборок:",
+    "Число пар:",
   );
 });
 

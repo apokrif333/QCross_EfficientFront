@@ -149,14 +149,17 @@ export interface Fold {
   validation: Period;
   training_metrics?: Metrics | null;
   validation_metrics?: {
+    historical_cagr?: number | null;
     realized_annual_arithmetic_return: number;
     realized_annual_volatility: number;
     realized_sharpe_ratio: number | null;
     realized_total_return: number;
   } | null;
   diagnostics: Record<string, unknown>;
+  paired_comparison?: PairedComparison["results"][number] | null;
 }
 export interface CVResult extends BaseResult {
+  objective?: ApiRequest["objective"];
   cv_folds: number;
   methodology: "bidirectional_one_sided_block_kfold";
   total_observations: number;

@@ -7,6 +7,12 @@ They are never normalized or changed. CVXPY/Clarabel solves the convex quadratic
 risk constraint; allocations and risk are checked with tolerance 1e-7. The
 constraint does not guarantee equal realized Validation risk.
 
+Group bounds of 0% and 100% are implied by long-only weights summing to 100%.
+These redundant bounds are omitted from solver problems to avoid numerical
+instability, while all specified groups remain in feasibility diagnostics.
+Positive lower bounds and upper bounds below 100% remain enforced, including
+in the homogeneous Max Sharpe formulation.
+
 ## Request
 
 ```json
@@ -105,7 +111,7 @@ risk-aversion Resampled Frontier. No averaged-weight reference marker is added.
 
 ## Reproducibility and verification
 
-Engine 2.3.0 includes the paired module in the source digest. User allocation,
+Engine 2.3.1 includes the paired module in the source digest. User allocation,
 pairing option, return basis, data/reference fingerprints, covariance settings,
 seed and unchanged sampling fingerprint identify the calculation.
 

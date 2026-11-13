@@ -84,7 +84,9 @@ class PortfolioOptimizer:
     def gmv(self) -> OptimizationResult:
         return self._solve(self.gmv_problem, self.weights)
 
-    def max_return_at_user_risk(self, user_weights) -> OptimizationResult:
+    def max_return_at_user_risk(
+        self, user_weights, *, training_volatility=None
+    ) -> OptimizationResult:
         if user_weights is None:
             raise AnalyticsError("My Portfolio requires explicit user_weights.")
         user_weights = np.asarray(user_weights, dtype=float)
@@ -92,12 +94,41 @@ class PortfolioOptimizer:
             raise AnalyticsError("My Portfolio requires aligned finite user_weights.")
         self.constraints.require_feasible(user_weights)
         limit = float(user_weights @ self.covariance @ user_weights)
+        if training_volatility is not None:
+            if not np.isfinite(training_volatility) or training_volatility < 0:
+                raise AnalyticsError("Training volatility must be finite and nonnegative.")
+            limit = float(training_volatility) ** 2
+            minimum = self.gmv()
+            if minimum.weights is None:
+                return minimum
+            minimum_risk = float(
+                np.sqrt(max(0, minimum.weights @ self.covariance @ minimum.weights))
+            )
+            if training_volatility + 1e-7 < minimum_risk:
+                return OptimizationResult(
+                    "risk_infeasible",
+                    None,
+                    {
+                        "reason": (
+                            "Controlled Train volatility is below the minimum risk achievable "
+                            "by the optimizer under the selected constraints."
+                        ),
+                        "training_user_volatility": training_volatility,
+                        "minimum_achievable_volatility": minimum_risk,
+                        "risk_budget_source": "controlled_training_path",
+                    },
+                )
         problem = cp.Problem(
             cp.Maximize(self.mean @ self.weights),
             self.rules + [cp.quad_form(self.weights, cp.psd_wrap(self.covariance)) <= limit],
         )
         result = self._solve(problem, self.weights)
         result.diagnostics["training_user_volatility"] = float(np.sqrt(max(0, limit)))
+        result.diagnostics["risk_budget_source"] = (
+            "controlled_training_path"
+            if training_volatility is not None
+            else "fixed_weight_covariance"
+        )
         result.diagnostics["risk_tolerance"] = 1e-7
         if result.weights is not None:
             risk = float(np.sqrt(max(0, result.weights @ self.covariance @ result.weights)))
@@ -211,10 +242,16 @@ class PortfolioOptimizer:
         risk_free_rate: float = 0.03,
         target_return: float | None = None,
         user_weights=None,
+        *,
+        user_risk_limit=None,
     ) -> OptimizationResult:
         if objective == "gmv":
             return self.gmv()
         if objective == "max_return_at_user_risk":
+            if user_risk_limit is not None:
+                return self.max_return_at_user_risk(
+                    user_weights, training_volatility=user_risk_limit
+                )
             return self.max_return_at_user_risk(user_weights)
         if objective == "max_sharpe":
             return self.max_sharpe(risk_free_rate)

@@ -33,7 +33,9 @@ test("Frontier and Compare use model volatility in Plotly, hover, table and deta
         expect(trace.hovertemplate[i]).toContain(
           `Волатильность ${(p.metrics.volatility * 100).toFixed(2)}%`,
         );
-        if (p.metrics.sharpe_ratio !== null) {
+        if (trace.name === "Активы") {
+          expect(trace.hovertemplate[i]).not.toContain("Estimated Sharpe");
+        } else if (p.metrics.sharpe_ratio !== null) {
           expect(trace.hovertemplate[i]).toContain(
             `Sharpe ${p.metrics.sharpe_ratio.toFixed(3)}`,
           );

@@ -29,7 +29,7 @@ const requestFields = z.object({
       downside_vol: z
         .object({
           target_annual: n.positive().max(10),
-          lookback_months: n.int().min(3).max(24),
+          lookback_months: n.int().min(1).max(24),
         })
         .nullish(),
     })

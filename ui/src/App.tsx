@@ -96,6 +96,7 @@ export default function App() {
     [relTol, setRelTol] = useState(1e-6),
     [loaded, setLoaded] = useState(false);
   const [periodInfo, setPeriodInfo] = useState("");
+  const [controlGross, setControlGross] = useState(false);
   const [commonObservations, setCommonObservations] = useState<
     number | undefined
   >();
@@ -695,6 +696,7 @@ export default function App() {
                 calculation={frontier}
                 related={calculations}
                 instruments={instruments}
+                controlGross={controlGross}
               />
             )}
             {tab === "Compare" && frontier && (
@@ -912,6 +914,8 @@ export default function App() {
               <ControlResults
                 result={visible.result}
                 instruments={instruments}
+                gross={controlGross}
+                onGrossChange={setControlGross}
               />
               {visible.result.warnings.map((w, i) => (
                 <p className="warning" key={i}>

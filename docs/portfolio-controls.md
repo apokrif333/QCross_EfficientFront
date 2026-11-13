@@ -6,7 +6,7 @@ universe remains limited to 15 instruments. Hedge instruments are aligned once,
 before Nominal/Real conversion, and history shortening is reported. The special
 hedge ID `BIL_REFERENCE` uses the validated historical monthly USD BIL series.
 
-Downside mode uses `downside_vol.target_annual` and `lookback_months` (3–24).
+Downside mode uses `downside_vol.target_annual` and `lookback_months` (1–24).
 The unconditional downside RMS includes zero for positive base returns and is
 annualized by sqrt(12). It uses the original fixed targets exclusively. Warm-up
 keeps original exposure; zero downside gives alpha=1. Scaling is an exposure
@@ -19,8 +19,13 @@ Results retain original metrics. `portfolio_controls` contains baseline and
 controlled paths, costs, weights and signals. CV adds separate per-validation
 comparisons, with signals restarted within each fold. Bootstrap uses the exact
 existing sampled indices and returns all comparisons as
-`portfolio_control_samples`. These do not alter trained allocations, risk
-budgets or paired-comparison definitions. Reference fingerprints include the
+`portfolio_control_samples`. Bootstrap retains its original training and paired
+comparison definitions. CV with controls enabled uses the controlled Validation
+path as the user comparator. Its My Portfolio objective and paired optimizer
+use the controlled Train path's realized annual volatility after fees as their
+risk budget, with warm-up restarted within that Train interval. Validation
+observations never enter that budget. An unattainably low budget is reported
+as `risk_infeasible`, not replaced by another objective. Reference fingerprints include the
 joint original/hedge matrix and configuration. Legacy requests remain mode none.
 
 ## SMA / Momentum

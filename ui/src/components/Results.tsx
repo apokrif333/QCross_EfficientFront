@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Data, PlotMouseEvent } from "plotly.js";
 import type {
   BootstrapResult,
@@ -34,9 +34,15 @@ const AXES = {
     tickformat: ".1%",
   },
 };
-function hover(p: Portfolio, label: string, instruments: Instrument[]) {
+function hover(
+  p: Portfolio,
+  label: string,
+  instruments: Instrument[],
+  showEstimated = true,
+) {
   const m = p.metrics;
-  return `<b>${escape(label)}</b><br>Ожидаемая (арифм.) ${percent(m?.expected_return)}<br>Историческая CAGR ${percent(m?.historical_cagr)}<br>Волатильность ${percent(displayedVolatility(m))}<br>Estimated Sharpe ${number(m?.sharpe_ratio)}<br>Historical Sharpe ${number(m?.historical_sharpe_ratio)}<br>${visibleWeights(
+  const digits = p.status === "historical_path" ? 3 : 2;
+  return `<b>${escape(label)}</b><br>${p.status === "historical_path" ? "Историческая" : "Ожидаемая"} (арифм.) ${percent(m?.expected_return, digits)}<br>Историческая CAGR ${percent(m?.historical_cagr, digits)}<br>Волатильность ${percent(displayedVolatility(m), digits)}${p.status === "historical_path" || !showEstimated ? "" : `<br>Estimated Sharpe ${number(m?.sharpe_ratio)}`}<br>Historical Sharpe ${number(m?.historical_sharpe_ratio, p.status === "historical_path" ? 4 : 3)}<br>${visibleWeights(
     p.weights ?? {},
   )
     .map(([a, w]) => `${escape(ticker(a, instruments))}: ${percent(w)}`)
@@ -313,7 +319,9 @@ function trace(
   instruments: Instrument[],
   line = false,
 ): Data {
-  const good = points.filter((p) => p.metrics && p.weights);
+  const good = points.filter(
+    (p) => p.metrics && (p.weights || p.status === "historical_path"),
+  );
   return {
     type: "scatter",
     mode: line ? "lines+markers" : "markers",
@@ -352,7 +360,7 @@ function assetTrace(
       },
       customdata: entries.map(([, p]) => p) as never,
       hovertemplate: entries.map(([id, p]) =>
-        hover(p, ticker(id, instruments), instruments),
+        hover(p, ticker(id, instruments), instruments, false),
       ),
     },
   ];
@@ -377,19 +385,48 @@ export function PointDetail({
       <h3>{label}</h3>
       <div className="metrics">
         <span>
-          Ожидаемая (арифм.)<b>{percent(p.metrics?.expected_return)}</b>
+          {p.status === "historical_path"
+            ? "Историческая (арифм.)"
+            : "Ожидаемая (арифм.)"}
+          <b>
+            {percent(
+              p.metrics?.expected_return,
+              p.status === "historical_path" ? 3 : 2,
+            )}
+          </b>
         </span>
         <span>
-          Волатильность<b>{percent(displayedVolatility(p.metrics))}</b>
+          Волатильность
+          <b>
+            {percent(
+              displayedVolatility(p.metrics),
+              p.status === "historical_path" ? 3 : 2,
+            )}
+          </b>
         </span>
         <span>
-          Estimated Sharpe<b>{number(p.metrics?.sharpe_ratio)}</b>
-          <small>
-            Historical Sharpe {number(p.metrics?.historical_sharpe_ratio)}
-          </small>
+          {p.status === "historical_path" || p.diagnostics.asset_id != null ? (
+            <>
+              Historical Sharpe
+              <b>{number(p.metrics?.historical_sharpe_ratio, 4)}</b>
+            </>
+          ) : (
+            <>
+              Estimated Sharpe<b>{number(p.metrics?.sharpe_ratio)}</b>
+              <small>
+                Historical Sharpe {number(p.metrics?.historical_sharpe_ratio)}
+              </small>
+            </>
+          )}
         </span>
         <span>
-          Историческая CAGR<b>{percent(p.metrics?.historical_cagr)}</b>
+          Историческая CAGR
+          <b>
+            {percent(
+              p.metrics?.historical_cagr,
+              p.status === "historical_path" ? 3 : 2,
+            )}
+          </b>
         </span>
       </div>
       <div className="allocations">
@@ -417,17 +454,42 @@ export function FrontierView({
   related,
   instruments,
   compare = false,
+  controlGross = false,
 }: {
   calculation: Calculation;
   related: Calculation[];
   instruments: Instrument[];
   compare?: boolean;
+  controlGross?: boolean;
 }) {
   const [selected, setSelected] = useState<{
     label: string;
     portfolio: Portfolio;
   } | null>(null);
+  useEffect(() => setSelected(null), [controlGross]);
   const result = calculation.result as FrontierResult;
+  const control = (
+    result as FrontierResult & {
+      portfolio_controls?: {
+        baseline: { net: any; gross: any };
+        controlled: { net: any; gross: any };
+      };
+    }
+  ).portfolio_controls;
+  const historicalPortfolio = (stats: any): Portfolio => ({
+    status: "historical_path",
+    weights: null,
+    diagnostics: {},
+    metrics: {
+      expected_return: stats.annualized_arithmetic_return,
+      volatility: stats.annualized_volatility,
+      historical_volatility: stats.annualized_volatility,
+      sharpe_ratio: null,
+      historical_sharpe_ratio: stats.historical_sharpe_ratio,
+      historical_cagr: stats.annualized_cagr,
+      historical_max_drawdown: stats.maximum_drawdown,
+    },
+  });
   const rows = useMemo(() => {
     if (compare)
       return related
@@ -457,8 +519,27 @@ export function FrontierView({
         portfolio: result.max_sharpe,
       },
       { label: "Equal Weight", portfolio: result.equal_weight },
-      ...(result.user_portfolio
+      ...(result.user_portfolio && !control
         ? [{ label: "Ваш портфель", portfolio: result.user_portfolio }]
+        : []),
+      ...(control
+        ? [
+            {
+              label: "Портфель (пассивный)",
+              portfolio: {
+                ...historicalPortfolio(
+                  control.baseline[controlGross ? "gross" : "net"],
+                ),
+                weights: result.user_portfolio?.weights ?? null,
+              },
+            },
+            {
+              label: "Портфель (под управлением)",
+              portfolio: historicalPortfolio(
+                control.controlled[controlGross ? "gross" : "net"],
+              ),
+            },
+          ]
         : []),
     ];
     for (const c of related.filter(
@@ -479,7 +560,7 @@ export function FrontierView({
             rows.push({ label: `Resampled ${o}`, portfolio: r.resampled });
     }
     return rows;
-  }, [calculation, related, result, compare]);
+  }, [calculation, related, result, compare, controlGross]);
   const data = useMemo(() => {
     const curves = compare
       ? related.filter(
@@ -555,10 +636,28 @@ export function FrontierView({
       <Plot
         title={compare ? "Сравнение методов ковариации" : "Efficient Frontier"}
         data={data}
-        layout={AXES}
+        layout={
+          control && !compare
+            ? {
+                ...AXES,
+                yaxis: {
+                  ...AXES.yaxis,
+                  title: { text: "Годовая доходность (арифм.)" },
+                },
+              }
+            : AXES
+        }
         onSelect={click}
         height={490}
       />
+      {control && !compare && (
+        <p className="hint">
+          Точки пассивного и управляемого портфелей показывают историческую
+          арифметическую доходность и фактическую волатильность{" "}
+          {controlGross ? "до" : "после"} комиссий. Кривая и остальные точки
+          основаны на модельных оценках.
+        </p>
+      )}
       <PointDetail selected={selected} instruments={instruments} />
       <PortfolioTable
         rows={rows}
@@ -635,6 +734,71 @@ export function CVView({
           yaxis: { tickformat: ".0%", title: { text: "Вес" } },
         }}
       />
+      {r.stability && (
+        <>
+          <h3>Устойчивость весов</h3>
+          <div className="metrics">
+            <span>
+              Среднее отклонение
+              <b>{percent(r.stability.mean_absolute_weight_deviation)}</b>
+            </span>
+            <span>
+              Макс. отклонение
+              <b>{percent(r.stability.maximum_weight_deviation)}</b>
+            </span>
+            <span>
+              Средний turnover
+              <b>
+                {percent(r.stability.mean_allocation_turnover_from_original)}
+              </b>
+            </span>
+          </div>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Актив</th>
+                  <th>SD</th>
+                  <th>Min</th>
+                  <th>Max</th>
+                  <th>На нижней границе</th>
+                  <th>На верхней</th>
+                </tr>
+              </thead>
+              <tbody>
+                {r.assets.map((a) => (
+                  <tr key={a}>
+                    <td>{ticker(a, instruments)}</td>
+                    {[
+                      r.stability!.standard_deviation,
+                      r.stability!.minimum,
+                      r.stability!.maximum,
+                      r.stability!.lower_bound_frequency,
+                      r.stability!.upper_bound_frequency,
+                    ].map((v, i) => (
+                      <td key={i}>{percent(v[a])}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      <h3>Сравнение на полной выборке</h3>
+      <PortfolioTable
+        rows={[
+          { label: "Original", portfolio: r.original },
+          ...(r.ensemble
+            ? [{ label: "CV Ensemble", portfolio: r.ensemble }]
+            : []),
+        ]}
+        instruments={instruments}
+      />
+      <p className="hint">
+        Статистики Ensemble рассчитаны по исходной полной выборке; независимая
+        проверка показана отдельно в строках фолдов.
+      </p>
       <PairedComparisonView
         value={r.paired_comparison}
         instruments={instruments}
@@ -688,7 +852,11 @@ export function CVView({
               <th>Validation CAGR / historical vol</th>
               <th>Historical Validation Sharpe</th>
               {(userEfficiency || r.paired_comparison) && (
-                <th>Your Port on Valid CAGR / historical vol</th>
+                <th>
+                  {r.paired_comparison?.user_portfolio_mode === "controlled"
+                    ? "Your Controlled Port on Valid CAGR / historical vol"
+                    : "Your Port on Valid CAGR / historical vol"}
+                </th>
               )}
             </tr>
           </thead>
@@ -772,71 +940,6 @@ export function CVView({
           </tbody>
         </table>
       </div>
-      {r.stability && (
-        <>
-          <h3>Устойчивость весов</h3>
-          <div className="metrics">
-            <span>
-              Среднее отклонение
-              <b>{percent(r.stability.mean_absolute_weight_deviation)}</b>
-            </span>
-            <span>
-              Макс. отклонение
-              <b>{percent(r.stability.maximum_weight_deviation)}</b>
-            </span>
-            <span>
-              Средний turnover
-              <b>
-                {percent(r.stability.mean_allocation_turnover_from_original)}
-              </b>
-            </span>
-          </div>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Актив</th>
-                  <th>SD</th>
-                  <th>Min</th>
-                  <th>Max</th>
-                  <th>На нижней границе</th>
-                  <th>На верхней</th>
-                </tr>
-              </thead>
-              <tbody>
-                {r.assets.map((a) => (
-                  <tr key={a}>
-                    <td>{ticker(a, instruments)}</td>
-                    {[
-                      r.stability!.standard_deviation,
-                      r.stability!.minimum,
-                      r.stability!.maximum,
-                      r.stability!.lower_bound_frequency,
-                      r.stability!.upper_bound_frequency,
-                    ].map((v, i) => (
-                      <td key={i}>{percent(v[a])}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-      <h3>Сравнение на полной выборке</h3>
-      <PortfolioTable
-        rows={[
-          { label: "Original", portfolio: r.original },
-          ...(r.ensemble
-            ? [{ label: "CV Ensemble", portfolio: r.ensemble }]
-            : []),
-        ]}
-        instruments={instruments}
-      />
-      <p className="hint">
-        Статистики Ensemble рассчитаны по исходной полной выборке; независимая
-        проверка показана отдельно в строках фолдов.
-      </p>
     </>
   );
 }

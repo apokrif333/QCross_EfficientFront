@@ -17,6 +17,27 @@ afterEach(() => {
   cleanup();
   plots.mockClear();
 });
+it("labels controlled CV comparisons and their training risk budget", () => {
+  const value: PairedComparison = {
+    user_portfolio_mode: "controlled",
+    user_weights: { "1": 1 },
+    valid_count: 0,
+    failed_count: 0,
+    requested_comparisons: 0,
+    differences: {},
+    win_frequencies: {},
+    results: [],
+  };
+  render(<PairedComparisonView value={value} instruments={instruments} />);
+  expect(
+    screen.getByText(/Исходные целевые веса управляемого портфеля/),
+  ).toBeVisible();
+  expect(
+    screen.getByText(
+      /фактическая годовая волатильность управляемой траектории на Train/,
+    ),
+  ).toBeVisible();
+});
 it("plots paired Validation differences including negative and zero outcomes", () => {
   const value: PairedComparison = {
     valid_count: 2,

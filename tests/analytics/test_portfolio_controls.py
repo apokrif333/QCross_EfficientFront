@@ -24,6 +24,22 @@ def test_downside_exact_warmup_and_hedge_independence():
     assert first["weight_history"][2] == pytest.approx([expected, 1 - expected])
 
 
+def test_single_month_downside_annualization_and_validation():
+    config = PortfolioControls(
+        mode="downside_vol",
+        hedge_weights={"2": 1},
+        downside_vol={"target_annual": 0.09, "lookback_months": 1},
+    )
+    assert config.downside_vol.lookback_months == 1
+    values = np.array([[-0.1, 0], [0.2, 0]])
+    provider = DownsideTarget(np.array([1.0, 0]), np.array([0.0, 1]), 0.09, 1)
+    result = simulate_portfolio(values, [1, 0], target_provider=provider)
+    assert result["signal_history"][0]["downside_volatility"] == pytest.approx(np.sqrt(12) * 0.1)
+    assert result["signal_history"][0]["alpha"] == pytest.approx(0.09 / (np.sqrt(12) * 0.1))
+    expected = np.sqrt(12 * np.mean(np.minimum(result["net_returns"], 0) ** 2))
+    assert result["net"]["annualized_downside_volatility"] == pytest.approx(expected)
+
+
 def test_no_monthly_rebalance_for_unchanged_signal_and_no_lookahead():
     values = np.full((25, 2), 0.01)
     values[:, 1] = 0.02
@@ -201,6 +217,7 @@ def test_control_api_alignment_and_original_universe(
             if kind == "bootstrap":
                 assert len(result["portfolio_control_samples"]) == 4
             if kind == "cross-validation":
+                assert result["paired_comparison"]["user_portfolio_mode"] == "controlled"
                 assert (
                     len(result["folds"][0]["portfolio_controls"]["controlled"]["net_returns"])
                     == result["folds"][0]["validation"]["observations"]

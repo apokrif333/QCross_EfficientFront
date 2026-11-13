@@ -1,17 +1,18 @@
 import { useState } from "react";
 import Plot from "./Plot";
-import { number, percent, ticker } from "../lib/display";
+import { number, percent, ticker, escapeHtml } from "../lib/display";
 import type { Instrument } from "../types";
 
 const labels: Record<string, string> = {
   annualized_cagr: "CAGR",
   annualized_arithmetic_return: "Годовая арифметическая доходность",
   annualized_volatility: "Историческая годовая волатильность",
+  annualized_downside_volatility: "Нисходящая годовая волатильность",
   historical_sharpe_ratio: "Historical Sharpe",
   sortino_ratio: "Sortino",
   maximum_drawdown: "Максимальная просадка",
   terminal_wealth: "Капитал из $1",
-  total_commissions: "Накопленные комиссии, % начального капитала",
+  average_annual_commission: "Среднегодовые комиссии, % капитала",
   trade_count: "Количество сделок",
   rebalancing_events: "Ребалансировки",
   annualized_turnover: "Оборот в год",
@@ -31,16 +32,53 @@ const metric = (key: string, v: number | null) =>
 export default function ControlResults({
   result,
   instruments,
+  gross: selectedGross,
+  onGrossChange,
 }: {
   result: any;
   instruments: Instrument[];
+  gross?: boolean;
+  onGrossChange?: (value: boolean) => void;
 }) {
-  const [gross, setGross] = useState(false);
+  const [localGross, setLocalGross] = useState(false);
+  const gross = selectedGross ?? localGross;
+  const setGross = onGrossChange ?? setLocalGross;
   const c = result.portfolio_controls;
   if (!c) return null;
   const side = gross ? "gross" : "net";
   const name = (a: string) =>
     a === "BIL_REFERENCE" ? "BIL" : ticker(a, instruments);
+  const annualCommission = (path: any): number | null => {
+    if (
+      !Array.isArray(path.events) ||
+      !Array.isArray(path.positions) ||
+      !c.months?.length
+    )
+      return null;
+    const years = new Map<string, number>(
+      c.months.map((month: string) => [month.slice(0, 4), 0]),
+    );
+    for (const event of path.events) {
+      const month = c.months[Math.max(0, event.month_index)];
+      if (!month) continue;
+      const positions = path.positions[event.month_index + 1];
+      const before =
+        event.month_index < 0
+          ? 1
+          : Array.isArray(positions)
+            ? positions.reduce((sum: number, value: number) => sum + value, 0) +
+              event.commissions
+            : 0;
+      if (before > 0)
+        years.set(
+          month.slice(0, 4),
+          (years.get(month.slice(0, 4)) ?? 0) + event.commissions / before,
+        );
+    }
+    return years.size
+      ? [...years.values()].reduce((a, b) => a + b, 0) / years.size
+      : null;
+  };
   return (
     <section className="subsection">
       <h3>Управление портфелем: исходный / управляемый</h3>
@@ -65,20 +103,33 @@ export default function ControlResults({
               </tr>
             ))}
             {[
-              "total_commissions",
+              "average_annual_commission",
               "trade_count",
               "rebalancing_events",
               "annualized_turnover",
             ].map((k) => (
               <tr key={k}>
                 <td>{labels[k] ?? k}</td>
-                <td>{metric(k, c.baseline[k])}</td>
-                <td>{metric(k, c.controlled[k])}</td>
+                <td>
+                  {k === "average_annual_commission"
+                    ? percent(annualCommission(c.baseline), 4)
+                    : metric(k, c.baseline[k])}
+                </td>
+                <td>
+                  {k === "average_annual_commission"
+                    ? percent(annualCommission(c.controlled), 4)
+                    : metric(k, c.controlled[k])}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <p className="hint">
+        Среднегодовые комиссии: сумма долей капитала перед каждой сделкой за
+        календарный год, затем среднее по годам выбранного периода, включая
+        неполные годы и первоначальную покупку.
+      </p>
       <Plot
         title="Капитал: исходный и управляемый"
         data={["baseline", "controlled"].map((k) => ({
@@ -106,25 +157,33 @@ export default function ControlResults({
             x: c.months,
             y: c.controlled.weight_history.map((w: number[]) => w[i]),
             customdata: c.controlled.weight_history.map((w: number[]) => w[i]),
-            hovertemplate: "%{x}: %{customdata:.2%}<extra></extra>",
+            hovertemplate: `${escapeHtml(name(a))}<br>%{x}: %{customdata:.2%}<extra></extra>`,
           }))}
         layout={{ yaxis: { tickformat: ".0%" } }}
       />
       {c.config.mode === "downside_vol" && (
-        <Plot
-          title="Downside volatility и экспозиция"
-          data={[
-            "alpha",
-            "downside_volatility",
-            "target_downside_volatility",
-          ].map((k) => ({
-            type: "scatter",
-            mode: "lines",
-            name: k,
-            x: c.months,
-            y: c.controlled.signal_history.map((s: any) => s[k]),
-          }))}
-        />
+        <>
+          <p className="hint">
+            Нисходящая волатильность годовая: рассчитана по последним{" "}
+            {c.config.downside_vol.lookback_months} месяцам исходного портфеля с
+            фиксированными весами. Alpha — доля исходного портфеля на следующий
+            месяц.
+          </p>
+          <Plot
+            title="Downside volatility и экспозиция"
+            data={[
+              "alpha",
+              "downside_volatility",
+              "target_downside_volatility",
+            ].map((k) => ({
+              type: "scatter",
+              mode: "lines",
+              name: k,
+              x: c.months,
+              y: c.controlled.signal_history.map((s: any) => s[k]),
+            }))}
+          />
+        </>
       )}
       <Plot
         title="Целевая доля: исходный портфель и хедж"

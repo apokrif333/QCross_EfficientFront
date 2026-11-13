@@ -92,7 +92,9 @@ export default function PairedComparisonView({
       <h3>Ваш портфель и оптимизатор — проверка на Validation</h3>
       {value.user_weights && (
         <p className="hint">
-          Ваш фиксированный портфель:{" "}
+          {value.user_portfolio_mode === "controlled"
+            ? "Исходные целевые веса управляемого портфеля:"
+            : "Ваш фиксированный портфель:"}{" "}
           {Object.entries(value.user_weights)
             .filter(([, w]) => w > 0)
             .map(([a, w]) => `${ticker(a, instruments)} ${percent(w)}`)
@@ -100,6 +102,14 @@ export default function PairedComparisonView({
         </p>
       )}
       <p className="hint">
+        {value.user_portfolio_mode === "controlled" && (
+          <>
+            Сравнение с портфелем под управлением. Лимит риска оптимизатора —
+            фактическая годовая волатильность управляемой траектории на Train
+            после комиссий. Сигналы на Validation рассчитываются последовательно
+            заново.{" "}
+          </>
+        )}
         Веса оптимизатора выбраны только на Train при риске вашего портфеля на
         Train. Δ = оптимизатор − ваш портфель. Для волатильности и просадки
         уменьшение — улучшение. Реализованный риск на Validation может

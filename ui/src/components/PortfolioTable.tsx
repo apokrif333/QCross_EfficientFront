@@ -21,7 +21,13 @@ export default function PortfolioTable({
         <thead>
           <tr>
             <th>Портфель</th>
-            <th>Ожидаемая (арифм.)</th>
+            <th>
+              {rows.some(
+                ({ portfolio }) => portfolio.status === "historical_path",
+              )
+                ? "Годовая доходность (арифм.)"
+                : "Ожидаемая (арифм.)"}
+            </th>
             <th>Волатильность</th>
             <th>Estimated Sharpe</th>
             <th>Historical Sharpe</th>
@@ -44,12 +50,37 @@ export default function PortfolioTable({
                   <small>Вне ограничений · reference</small>
                 )}
               </td>
-              <td>{percent(p.metrics?.expected_return)}</td>
-              <td>{percent(displayedVolatility(p.metrics))}</td>
+              <td>
+                {percent(
+                  p.metrics?.expected_return,
+                  p.status === "historical_path" ? 3 : 2,
+                )}
+              </td>
+              <td>
+                {percent(
+                  displayedVolatility(p.metrics),
+                  p.status === "historical_path" ? 3 : 2,
+                )}
+              </td>
               <td>{number(p.metrics?.sharpe_ratio)}</td>
-              <td>{number(p.metrics?.historical_sharpe_ratio)}</td>
-              <td>{percent(p.metrics?.historical_cagr)}</td>
-              <td>{percent(p.metrics?.historical_max_drawdown)}</td>
+              <td>
+                {number(
+                  p.metrics?.historical_sharpe_ratio,
+                  p.status === "historical_path" ? 4 : 3,
+                )}
+              </td>
+              <td>
+                {percent(
+                  p.metrics?.historical_cagr,
+                  p.status === "historical_path" ? 3 : 2,
+                )}
+              </td>
+              <td>
+                {percent(
+                  p.metrics?.historical_max_drawdown,
+                  p.status === "historical_path" ? 3 : 2,
+                )}
+              </td>
               <td className="weight-cell">
                 {p.weights ? (
                   visibleWeights(p.weights, 1).map(([a, w]) => (
@@ -58,7 +89,11 @@ export default function PortfolioTable({
                     </span>
                   ))
                 ) : (
-                  <span>{p.status}</span>
+                  <span>
+                    {p.status === "historical_path"
+                      ? "Динамические веса"
+                      : p.status}
+                  </span>
                 )}
               </td>
             </tr>

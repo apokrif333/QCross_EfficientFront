@@ -117,6 +117,7 @@ def path_statistics(monthly, wealth, risk_free, *, initial_investment=1.0):
         "annualized_cagr": cagr if np.isfinite(cagr) else None,
         "annualized_arithmetic_return": float(monthly.mean() * 12),
         "annualized_volatility": float(monthly.std(ddof=1) * np.sqrt(12)) if n > 1 else 0.0,
+        "annualized_downside_volatility": float(np.sqrt(12 * np.mean(np.minimum(monthly, 0) ** 2))),
         "historical_sharpe_ratio": float(np.sqrt(12) * differential.mean() / sd)
         if sd > 1e-12
         else None,

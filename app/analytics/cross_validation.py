@@ -12,6 +12,7 @@ from app.analytics.metrics import portfolio_metrics
 from app.analytics.models import AnalyticsError, OptimizationResult, ReturnPanel
 from app.analytics.optimizer import PortfolioOptimizer
 from app.analytics.paired_comparison import compare_validation, summarize
+from app.analytics.portfolio_controls import compare_controls
 from app.analytics.provenance import reproducible
 from app.analytics.references import differential_moments
 from app.analytics.splitting import (
@@ -105,12 +106,20 @@ def analyze_cross_validation(
     )
     constraints, estimate, mean, covariance = prepare(panel, cv_folds=cv_folds, **options)
     fixed_user_weights = user_allocation(panel.assets, user_weights) if user_weights else None
+    controls_enabled = panel.control_config.get("mode", "none") != "none"
+    original_risk = None
+    if controls_enabled and objective == "max_return_at_user_risk":
+        original_risk = compare_controls(panel, user_weights, record_history=False)["controlled"][
+            "net"
+        ]["annualized_volatility"]
     original = PortfolioOptimizer(mean, covariance, constraints, **panel.differential).optimize(
-        objective, risk_free_rate, target_return, fixed_user_weights
+        objective, risk_free_rate, target_return, fixed_user_weights, user_risk_limit=original_risk
     )
     fold_results, fold_weights = [], []
     for number, (training, validation) in enumerate(splits, 1):
         training_mean, training_covariance = None, None
+        control_train = None
+        training_risk = None
         train_values, validation_values = panel.values[training], panel.values[validation]
         fold = {
             "fold": number,
@@ -123,6 +132,12 @@ def analyze_cross_validation(
             "covariance_diagnostics": None,
         }
         try:
+            if controls_enabled:
+                control_train = compare_controls(
+                    panel, user_weights, training, record_history=False
+                )
+                training_risk = control_train["controlled"]["net"]["annualized_volatility"]
+                fold["user_training_metrics"] = control_train["controlled"]["net"]
             # Inner covariance selection sees ONLY the outer training array.
             training_estimate = estimate_covariance(
                 train_values,
@@ -146,7 +161,13 @@ def analyze_cross_validation(
             )
             result = PortfolioOptimizer(
                 training_mean, training_covariance, constraints, **differential
-            ).optimize(objective, risk_free_rate, target_return, fixed_user_weights)
+            ).optimize(
+                objective,
+                risk_free_rate,
+                target_return,
+                fixed_user_weights,
+                user_risk_limit=training_risk,
+            )
             fold.update(
                 status=result.status,
                 diagnostics=result.diagnostics,
@@ -273,9 +294,18 @@ def analyze_cross_validation(
             try:
                 if training_mean is None or training_covariance is None:
                     raise AnalyticsError("Training covariance unavailable for paired comparison.")
-                trained = PortfolioOptimizer(
-                    training_mean, training_covariance, constraints
-                ).max_return_at_user_risk(fixed_user_weights)
+                if controls_enabled and control_train is None:
+                    raise AnalyticsError(
+                        "Controlled training risk unavailable for paired comparison."
+                    )
+                paired_engine = PortfolioOptimizer(training_mean, training_covariance, constraints)
+                trained = (
+                    paired_engine.max_return_at_user_risk(
+                        fixed_user_weights, training_volatility=training_risk
+                    )
+                    if controls_enabled
+                    else paired_engine.max_return_at_user_risk(fixed_user_weights)
+                )
                 trained.diagnostics.update(
                     covariance_parameters=training_estimate.parameters,
                     covariance_diagnostics=training_estimate.diagnostics,
@@ -285,18 +315,38 @@ def analyze_cross_validation(
                     if panel.risk_free_returns is not None
                     else np.full(len(validation), (1 + risk_free_rate) ** (1 / 12) - 1)
                 )
+                validation_user_metrics = None
+                if controls_enabled:
+                    comparison = compare_controls(panel, user_weights, validation)
+                    fold["portfolio_controls"] = comparison
+                    path = comparison["controlled"]
+                    validation_user_metrics = {
+                        **path["net"],
+                        "gross_metrics": path["gross"],
+                        "trading_costs": {
+                            key: path[key]
+                            for key in (
+                                "total_commissions",
+                                "trade_count",
+                                "rebalancing_events",
+                                "annualized_turnover",
+                            )
+                        },
+                    }
                 fold["paired_comparison"] = compare_validation(
                     validation_values,
                     rf,
                     fixed_user_weights,
                     trained,
                     panel.assets,
+                    user_metrics=validation_user_metrics,
                     **panel.simulation_options,
                 )
                 fold["paired_comparison"].update(
                     fold=number,
                     training_direction=fold["training_direction"],
                     validation=fold["validation"],
+                    user_portfolio_mode="controlled" if controls_enabled else "passive",
                 )
             except Exception as exc:
                 fold["paired_comparison"] = {
@@ -319,12 +369,22 @@ def analyze_cross_validation(
             risk_free_rate,
         )
         stability = weight_stability(weights, original.weights, constraints)
+    paired_summary = None
+    if fixed_user_weights is not None and include_paired_comparison:
+        paired_summary = summarize(
+            [f["paired_comparison"] for f in fold_results if "paired_comparison" in f]
+        )
+        paired_summary.update(
+            user_portfolio_mode="controlled" if controls_enabled else "passive",
+            user_weights=user_weights,
+        )
     return {
         **data_diagnostics(panel, estimate, risk_free_rate),
         "status": "complete" if ensemble else "incomplete",
         "assets": panel.assets,
         "currency": "USD",
         "objective": objective,
+        "user_portfolio_mode": "controlled" if controls_enabled else "passive",
         "target_return": target_return,
         "risk_free_rate": risk_free_rate,
         "cv_folds": cv_folds,
@@ -352,11 +412,7 @@ def analyze_cross_validation(
         "source_metadata": panel.metadata,
         "original": describe(original, panel, mean, covariance, risk_free_rate),
         "folds": fold_results,
-        "paired_comparison": summarize(
-            [f["paired_comparison"] for f in fold_results if "paired_comparison" in f]
-        )
-        if fixed_user_weights is not None and include_paired_comparison
-        else None,
+        "paired_comparison": paired_summary,
         "efficiency_robustness": {
             "user_weights": dict(zip(panel.assets, fixed_user_weights.tolist(), strict=True)),
             "evaluation": "retrospective_validation_sample_frontiers",

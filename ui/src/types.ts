@@ -477,6 +477,7 @@ export const DEFAULT_REQUEST: ApiRequest = {
 };
 
 export interface PairedComparison {
+  user_portfolio_mode?: "passive" | "controlled";
   user_weights?: Record<string, number>;
   valid_count: number;
   failed_count: number;

@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class DownsideSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     target_annual: float = Field(gt=0, le=10)
-    lookback_months: int = Field(strict=True, ge=3, le=24)
+    lookback_months: int = Field(strict=True, ge=1, le=24)
 
 
 class TrendRule(BaseModel):

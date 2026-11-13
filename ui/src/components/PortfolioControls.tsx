@@ -32,8 +32,11 @@ export default function PortfolioControls({
   const set = (next: Config) =>
     onChange({ ...request, portfolio_controls: next });
   return (
-    <section className="subsection">
-      <h3>Управление портфелем</h3>
+    <section
+      className="asset-builder portfolio-controls"
+      aria-label="Управление портфелем"
+    >
+      <h2>Управление портфелем</h2>
       <fieldset disabled={locked}>
         <label>
           Режим
@@ -81,7 +84,7 @@ export default function PortfolioControls({
                   Период, месяцев
                   <input
                     type="number"
-                    min="3"
+                    min="1"
                     max="24"
                     value={c.downside_vol?.lookback_months ?? 12}
                     onChange={(e) =>

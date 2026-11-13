@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  cleanup,
+  within,
+} from "@testing-library/react";
 import { afterEach, it, expect, vi } from "vitest";
 import PortfolioControls from "../components/PortfolioControls";
 import ControlResults from "../components/ControlResults";
@@ -51,6 +57,16 @@ it("validates hedge totals, lookbacks, modes and legacy absence", () => {
   const schema = requestSchemaFor("frontier");
   const base = { ...DEFAULT_REQUEST, user_weights: { "1": 1 } };
   expect(schema.safeParse(base).success).toBe(true);
+  expect(
+    schema.safeParse({
+      ...base,
+      portfolio_controls: {
+        mode: "downside_vol",
+        hedge_weights: { BIL_REFERENCE: 1 },
+        downside_vol: { target_annual: 0.09, lookback_months: 1 },
+      },
+    }).success,
+  ).toBe(true);
   const controls = {
     mode: "trend",
     hedge_weights: { BIL_REFERENCE: 1 },
@@ -82,6 +98,7 @@ it("uses actual sensitivity points for the 3D plot", () => {
   const stats = {
     annualized_cagr: 0.1,
     annualized_volatility: 0.2,
+    annualized_downside_volatility: 0.12,
     historical_sharpe_ratio: 0.3,
     maximum_drawdown: 0.1,
   };
@@ -118,6 +135,69 @@ it("uses actual sensitivity points for the 3D plot", () => {
     />,
   );
   const p = plots.mock.calls.find(([p]) => p.threeD)![0];
+  expect(
+    screen.getByText("Нисходящая годовая волатильность"),
+  ).toBeInTheDocument();
+  const weights = plots.mock.calls.find(
+    ([p]) => p.title === "Управляемый портфель: фактические веса",
+  )![0];
+  expect(weights.data[0].hovertemplate).toContain(
+    instruments.find((i) => i.id === 1)!.ticker,
+  );
   expect(p.data[0].z).toEqual(points.map((p) => p.lookback_months));
   expect(p.data[0].x).toEqual(points.map((p) => p.net.annualized_cagr));
+});
+
+it("averages annual commission ratios including zero and partial years", () => {
+  const stats = { annualized_cagr: 0.1 };
+  const path = {
+    net: stats,
+    gross: stats,
+    positions: [[0.99], [0.99], [1.98], [1.98], [1.98]],
+    events: [
+      {
+        month_index: -1,
+        commissions: 0.01,
+        trades: [0.99],
+        turnover: 0.99,
+        kind: "initial_purchase",
+      },
+      {
+        month_index: 0,
+        commissions: 0.01,
+        trades: [0.01],
+        turnover: 0.01,
+        kind: "rebalance",
+      },
+      {
+        month_index: 1,
+        commissions: 0.02,
+        trades: [0.02],
+        turnover: 0.01,
+        kind: "rebalance",
+      },
+    ],
+    net_wealth: [1, 1, 1, 1, 1],
+    gross_wealth: [1, 1, 1, 1, 1],
+    weight_history: [[1], [1], [1], [1]],
+    signal_history: [],
+  };
+  render(
+    <ControlResults
+      instruments={instruments}
+      result={{
+        portfolio_controls: {
+          config: { mode: "trend", trend: { asset_rules: {} } },
+          months: ["2020-12", "2021-01", "2021-02", "2022-01"],
+          assets: ["1"],
+          baseline: path,
+          controlled: path,
+        },
+      }}
+    />,
+  );
+  const row = screen
+    .getByText("Среднегодовые комиссии, % капитала")
+    .closest("tr")!;
+  expect(within(row).getAllByText("1.0000%")).toHaveLength(2);
 });

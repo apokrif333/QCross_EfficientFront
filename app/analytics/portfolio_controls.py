@@ -169,4 +169,5 @@ def attach_control_results(panel, result, user_weights):
             indices = np.flatnonzero(
                 (panel.returns.index >= period["start"]) & (panel.returns.index <= period["end"])
             )
-            fold["portfolio_controls"] = compare_controls(panel, user_weights, indices)
+            if "portfolio_controls" not in fold:
+                fold["portfolio_controls"] = compare_controls(panel, user_weights, indices)

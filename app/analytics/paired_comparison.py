@@ -20,11 +20,15 @@ def validation_metrics(values, weights, risk_free, **simulation_options):
     return metrics
 
 
-def compare_validation(values, risk_free, user, trained, assets, **simulation_options):
+def compare_validation(
+    values, risk_free, user, trained, assets, *, user_metrics=None, **simulation_options
+):
     record = {
         "status": trained.status,
         "diagnostics": trained.diagnostics,
-        "user": validation_metrics(values, user, risk_free, **simulation_options),
+        "user": user_metrics
+        if user_metrics is not None
+        else validation_metrics(values, user, risk_free, **simulation_options),
         "optimized": None,
         "weights": None,
         "differences": {},

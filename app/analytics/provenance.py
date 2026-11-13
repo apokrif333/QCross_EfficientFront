@@ -9,7 +9,7 @@ from pathlib import Path
 
 from app.analytics.models import ReturnPanel
 
-ENGINE_VERSION = "4.0.0"
+ENGINE_VERSION = "4.1.0"
 
 
 def reproducible(function):
@@ -99,6 +99,19 @@ def panel_provenance(panel: ReturnPanel) -> dict:
     )
     if panel.risk_free_returns is not None:
         reference_digest.update(panel.risk_free_returns.astype("<f8").tobytes())
+    if panel.control_config.get("mode", "none") != "none":
+        reference_digest.update(json.dumps(panel.control_config, sort_keys=True).encode())
+        if panel.control_returns is not None:
+            reference_digest.update(
+                json.dumps(
+                    {
+                        "assets": list(panel.control_returns.columns),
+                        "months": [str(m) for m in panel.control_returns.index],
+                    },
+                    sort_keys=True,
+                ).encode()
+            )
+            reference_digest.update(panel.control_returns.to_numpy(dtype="<f8").tobytes())
     return {
         "reference_panel_sha256": reference_digest.hexdigest(),
         "engine": engine_identity(),

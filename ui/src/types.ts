@@ -42,9 +42,17 @@ export interface ApiRequest {
   rolling_step_months?: number;
 }
 export interface PortfolioControls {
-  mode: "none" | "downside_vol";
+  mode: "none" | "downside_vol" | "trend";
   hedge_weights: Record<string, number>;
   downside_vol?: { target_annual: number; lookback_months: number };
+  trend?: {
+    destination: "remaining" | "hedge";
+    asset_rules: Record<
+      string,
+      { indicator: "disabled" | "sma" | "momentum"; lookback_months: number }
+    >;
+    sensitivity_asset?: string | null;
+  };
 }
 export interface Engine {
   name: string;

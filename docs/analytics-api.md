@@ -292,3 +292,6 @@ gross results disclosed separately. See [portfolio simulation](rebalancing-engin
 
 `POST /api/v1/analytics/rebalancing-optimization` adds the dedicated 21-rule
 comparison job. See [request, response, charts and example](rebalancing-optimization.md).
+
+Requests optionally accept typed `portfolio_controls` (`none`, `downside_vol`,
+`trend`). See [configuration, alignment and separate response fields](portfolio-controls.md).

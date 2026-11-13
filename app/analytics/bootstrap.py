@@ -185,9 +185,12 @@ def analyze_bootstrap(
         if panel.control_config.get("mode", "none") != "none":
             from app.analytics.portfolio_controls import compare_controls
 
-            control_samples.append(
-                compare_controls(panel, user_weights, indices, record_history=False)
-            )
+            try:
+                control_samples.append(
+                    compare_controls(panel, user_weights, indices, record_history=False)
+                )
+            except Exception as exc:
+                control_samples.append({"status": "failed", "reason": str(exc)})
         sample_rf = (
             panel.risk_free_returns[indices] if panel.risk_free_returns is not None else None
         )

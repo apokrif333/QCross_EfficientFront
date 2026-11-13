@@ -319,3 +319,7 @@ gross results disclosed separately. See [portfolio simulation](rebalancing-engin
 The standalone [Rebalancing Optimization](rebalancing-optimization.md) job compares
 all 21 calendar/relative-threshold rules with identical inputs and costs.
 It does not change optimization moments, CV splits or Bootstrap sampling.
+
+Optional [portfolio controls](portfolio-controls.md) operate sequentially on the
+explicit user allocation. They produce separate controlled paths; trained model
+moments, CV directions and paired Bootstrap definitions retain their meanings.

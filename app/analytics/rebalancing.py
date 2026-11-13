@@ -34,6 +34,10 @@ def analyze_rebalancing(
     **options,
 ):
     started = time.perf_counter()
+    panel.simulation_options = {
+        "transaction_fee_rate": transaction_fee_rate,
+        "rebalancing_interval_months": options.get("rebalancing_interval_months", 12),
+    }
     if panel.risk_free_source == "historical_bil" and panel.risk_free_returns is None:
         raise AnalyticsError("Historical BIL mode requires aligned monthly BIL observations.")
     weights = user_allocation(panel.assets, user_weights)
@@ -68,6 +72,10 @@ def analyze_rebalancing(
         result = simulate_portfolio(
             panel.values, weights, rf, policy=policy, transaction_fee_rate=transaction_fee_rate
         )
+        if panel.control_config.get("mode", "none") != "none":
+            from app.analytics.portfolio_controls import compare_controls
+
+            result["portfolio_controls"] = compare_controls(panel, user_weights, policy=policy)
         for event in result["events"]:
             event["date"] = months[max(0, event["month_index"])]
             event["boundary"] = (

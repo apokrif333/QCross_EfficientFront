@@ -909,7 +909,10 @@ export default function App() {
                 {number(visible.result.execution_seconds)} с ·{" "}
                 {visible.origin.toUpperCase()} · {visible.result.status}
               </p>
-              <ControlResults result={visible.result} />
+              <ControlResults
+                result={visible.result}
+                instruments={instruments}
+              />
               {visible.result.warnings.map((w, i) => (
                 <p className="warning" key={i}>
                   {w}

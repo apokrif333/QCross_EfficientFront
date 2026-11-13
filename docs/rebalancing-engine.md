@@ -42,4 +42,6 @@ as supplied; materially invalid targets are rejected. Insolvency produces a
 
 Policies consume a current-month state, with separate target-provider,
 capital-destination and trade-executor interfaces. No SMA, Momentum, downside
-volatility strategy or external hedge data is calculated by this release.
+volatility strategy or external hedge data was calculated by engine 3.0.
+Engine 4.x adds [optional portfolio controls](portfolio-controls.md) through these
+same interfaces, preserving legacy mode-none behavior.

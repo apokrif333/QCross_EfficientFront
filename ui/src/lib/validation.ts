@@ -9,10 +9,23 @@ const bounds = z
 const requestFields = z.object({
   portfolio_controls: z
     .object({
-      mode: z.enum(["none", "downside_vol"]),
+      mode: z.enum(["none", "downside_vol", "trend"]),
       hedge_weights: weights.refine((w) =>
         Object.values(w).every((v) => v >= 0 && v <= 1),
       ),
+      trend: z
+        .object({
+          destination: z.enum(["remaining", "hedge"]),
+          asset_rules: z.record(
+            z.string(),
+            z.object({
+              indicator: z.enum(["disabled", "sma", "momentum"]),
+              lookback_months: n.int().min(2).max(36),
+            }),
+          ),
+          sensitivity_asset: z.string().nullish(),
+        })
+        .nullish(),
       downside_vol: z
         .object({
           target_annual: n.positive().max(10),
@@ -26,7 +39,7 @@ const requestFields = z.object({
         (Math.abs(
           Object.values(c.hedge_weights).reduce((a, b) => a + b, 0) - 1,
         ) < 1e-8 &&
-          !!c.downside_vol),
+          (c.mode === "downside_vol" ? !!c.downside_vol : !!c.trend)),
       "Укажите хедж 100% и параметры управления",
     )
     .optional(),

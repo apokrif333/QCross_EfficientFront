@@ -98,6 +98,6 @@ drawdown relative to monthly rebalancing; model means, covariances and optimizer
 weights are unchanged. Here the annual gross CAGR is about 0.073 percentage
 points above the monthly gross CAGR, and fewer trades reduce commissions.
 
-No Target Downside Volatility, SMA/Momentum or hedge strategy is implemented.
-The simulator's policy, signal, target, destination and execution interfaces
-provide extension points for a later task.
+Optional [portfolio controls](portfolio-controls.md) now use the shared signal,
+target and execution interfaces. Each rule's original metrics remain available
+and its API record separately includes controlled-portfolio results when enabled.

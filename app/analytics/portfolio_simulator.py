@@ -274,6 +274,7 @@ def simulate_portfolio(
                             "turnover": ratio,
                             "commissions": cost,
                             "reason": "control_change" if dynamic_change else "rebalancing_policy",
+                            "control_state": dict(getattr(target_provider, "diagnostics", {})),
                         }
                     )
             target = new_target

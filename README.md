@@ -699,3 +699,8 @@ relative weight thresholds using this same engine. It includes sortable gross/ne
 results, a risk-return chart, equity curves, actual weights and executed trades.
 See [rules, API and numerical example](docs/rebalancing-optimization.md) and
 [verification results](docs/rebalancing-verification.md).
+
+Optional [portfolio controls](docs/portfolio-controls.md) add downside-volatility
+exposure scaling or individual SMA/Momentum signals to the explicit user
+portfolio, with a common hedge, separate baseline comparisons and sensitivity
+plots. Original optimization objectives and CV/Bootstrap sampling are preserved.

@@ -77,6 +77,14 @@ class AnalyticsRequest(BaseModel):
         allocation = user_allocation(assets, self.user_weights)
         if self.portfolio_controls.mode != "none" and allocation is None:
             raise ValueError("Portfolio controls require explicit user_weights totaling 100%.")
+        trend = self.portfolio_controls.trend
+        if trend and (
+            set(trend.asset_rules) - set(assets)
+            or (trend.sensitivity_asset and trend.sensitivity_asset not in assets)
+        ):
+            raise ValueError(
+                "Trend rules and sensitivity asset must belong to the original universe."
+            )
         if (
             self.objective == "max_return_at_user_risk"
             or "max_return_at_user_risk" in (self.bootstrap_objectives or [])

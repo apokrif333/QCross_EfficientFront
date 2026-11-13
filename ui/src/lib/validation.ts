@@ -7,6 +7,29 @@ const bounds = z
   .object({ min: n.min(0).max(1), max: n.min(0).max(1) })
   .refine((b) => b.min <= b.max);
 const requestFields = z.object({
+  portfolio_controls: z
+    .object({
+      mode: z.enum(["none", "downside_vol"]),
+      hedge_weights: weights.refine((w) =>
+        Object.values(w).every((v) => v >= 0 && v <= 1),
+      ),
+      downside_vol: z
+        .object({
+          target_annual: n.positive().max(10),
+          lookback_months: n.int().min(3).max(24),
+        })
+        .nullish(),
+    })
+    .refine(
+      (c) =>
+        c.mode === "none" ||
+        (Math.abs(
+          Object.values(c.hedge_weights).reduce((a, b) => a + b, 0) - 1,
+        ) < 1e-8 &&
+          !!c.downside_vol),
+      "Укажите хедж 100% и параметры управления",
+    )
+    .optional(),
   instrument_ids: z
     .array(z.number().int().positive())
     .min(2)

@@ -9,6 +9,7 @@ export type Kind =
 export type Mode = "demo" | "live";
 export type Bounds = { min: number; max: number };
 export interface ApiRequest {
+  portfolio_controls?: PortfolioControls;
   instrument_ids: number[];
   currency: "USD";
   start_date: string | null;
@@ -39,6 +40,11 @@ export interface ApiRequest {
   include_paired_comparison?: boolean;
   rolling_window_months?: number;
   rolling_step_months?: number;
+}
+export interface PortfolioControls {
+  mode: "none" | "downside_vol";
+  hedge_weights: Record<string, number>;
+  downside_vol?: { target_annual: number; lookback_months: number };
 }
 export interface Engine {
   name: string;

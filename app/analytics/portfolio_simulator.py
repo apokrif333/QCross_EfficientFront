@@ -212,6 +212,7 @@ def simulate_portfolio(
     gross_positions = target.copy()
     net, gross, net_wealth, gross_wealth = [], [], [1.0], [1.0]
     history, pretrade_history, position_history, targets, events = [], [], [], [], []
+    signal_history = []
     trade_count = int(np.count_nonzero(initial_trades))
     turnover, maximum_deviation, event_count = 0.0, 0.0, 0
     if record_history:
@@ -238,11 +239,17 @@ def simulate_portfolio(
             month + 1, positions.copy(), actual.copy(), target.copy(), returns.copy()
         )
         signal = policy.triggers(state) if wealth > 0 else None
+        desired = allocation(target_provider(state), assets) if target_provider else target
+        dynamic_change = np.max(np.abs(desired - target)) > 1e-10
+        if dynamic_change and wealth > 0:
+            signal = [] if signal is None else signal
+        if target_provider and hasattr(target_provider, "diagnostics"):
+            signal_history.append(dict(target_provider.diagnostics))
         if signal_generator and signal_generator(state) and wealth > 0:
             signal = [] if signal is None else signal
         # No terminal rebalance: there is no following observation to invest in.
         if signal is not None and month + 1 < n:
-            new_target = target_provider(state) if target_provider else target
+            new_target = desired
             if capital_destination:
                 new_target = capital_destination(new_target, state)
             new_target = allocation(new_target, assets)
@@ -266,6 +273,7 @@ def simulate_portfolio(
                             "trades": trades.tolist(),
                             "turnover": ratio,
                             "commissions": cost,
+                            "reason": "control_change" if dynamic_change else "rebalancing_policy",
                         }
                     )
             target = new_target
@@ -292,6 +300,7 @@ def simulate_portfolio(
         "positions": position_history,
         "target_history": targets,
         "events": events,
+        "signal_history": signal_history,
         "total_commissions": fees,
         "initial_net_wealth": initial_investment,
         "execution_target_adjustment": float(np.max(np.abs(target - requested))),

@@ -41,6 +41,9 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
             start_date=body.start_date,
             end_date=body.end_date,
         )
+        from app.analytics.control_loader import load_control_panel, transform_control_panel
+
+        panel = load_control_panel(session, panel, body.portfolio_controls.model_dump())
         panel = attach_references(
             session,
             panel,
@@ -48,6 +51,7 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
             risk_free_source=body.risk_free_source,
             risk_free_rate=body.risk_free_rate,
         )
+        transform_control_panel(panel)
         options = body.estimator_options()
         panel = numbered_groups(panel, body.asset_groups)
         constraints = build_constraints(
@@ -198,6 +202,9 @@ def data_preview(body: AnalyticsRequest, session: DatabaseSession) -> dict:
             start_date=body.start_date,
             end_date=body.end_date,
         )
+        from app.analytics.control_loader import load_control_panel, transform_control_panel
+
+        panel = load_control_panel(session, panel, body.portfolio_controls.model_dump())
         panel = attach_references(
             session,
             panel,
@@ -205,6 +212,7 @@ def data_preview(body: AnalyticsRequest, session: DatabaseSession) -> dict:
             risk_free_source=body.risk_free_source,
             risk_free_rate=body.risk_free_rate,
         )
+        transform_control_panel(panel)
         return {
             "return_basis": panel.return_basis,
             "risk_free_source": panel.risk_free_source,

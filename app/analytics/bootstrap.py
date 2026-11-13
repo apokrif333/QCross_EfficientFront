@@ -177,10 +177,17 @@ def analyze_bootstrap(
     weight_vectors = {objective: [] for objective in objectives}
     rng, fingerprint = np.random.default_rng(random_seed), hashlib.sha256()
     efficiency_records = []
+    control_samples = []
     for iteration in range(bootstrap_iterations):
         indices = stationary_indices(len(panel.values), expected_block_length, rng)
         fingerprint.update(indices.astype("<i8").tobytes())
         values = panel.values[indices]
+        if panel.control_config.get("mode", "none") != "none":
+            from app.analytics.portfolio_controls import compare_controls
+
+            control_samples.append(
+                compare_controls(panel, user_weights, indices, record_history=False)
+            )
         sample_rf = (
             panel.risk_free_returns[indices] if panel.risk_free_returns is not None else None
         )
@@ -458,6 +465,7 @@ def analyze_bootstrap(
         "interpretation": "Allocation sensitivity; not guaranteed future-return intervals.",
         "portfolio_evaluation": "original_and_resampled_on_same_original_full_sample",
         "objectives": results,
+        "portfolio_control_samples": control_samples,
         "paired_comparison": paired.result(len(panel.values)) if paired is not None else None,
         "efficiency_robustness": {
             "user_weights": dict(zip(panel.assets, fixed_user_weights.tolist(), strict=True)),

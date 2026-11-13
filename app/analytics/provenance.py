@@ -9,7 +9,7 @@ from pathlib import Path
 
 from app.analytics.models import ReturnPanel
 
-ENGINE_VERSION = "3.1.1"
+ENGINE_VERSION = "4.0.0"
 
 
 def reproducible(function):
@@ -18,6 +18,11 @@ def reproducible(function):
     @wraps(function)
     def calculate(*args, **kwargs):
         result = function(*args, **kwargs)
+        from app.analytics.portfolio_controls import attach_control_results
+
+        attach_control_results(
+            args[0] if args else kwargs["panel"], result, kwargs.get("user_weights")
+        )
         bound = signature(function).bind(*args, **kwargs)
         bound.apply_defaults()
         settings = {k: v for k, v in bound.arguments.items() if k != "panel"}
@@ -56,6 +61,8 @@ def engine_identity() -> dict:
         "bootstrap_metrics.py",
         "paired_comparison.py",
         "portfolio_simulator.py",
+        "portfolio_controls.py",
+        "control_loader.py",
         "rebalancing.py",
         "efficiency_distance.py",
         "rolling_efficiency.py",

@@ -26,6 +26,9 @@ class ReturnPanel:
     risk_free_source: str = "fixed_annual"
     differential: dict = field(default_factory=dict)
     simulation_options: dict = field(default_factory=dict)
+    control_config: dict = field(default_factory=dict)
+    control_returns: pd.DataFrame | None = None
+    control_metadata: list = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not 2 <= len(self.assets) <= 15:

@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.analytics.constraints import user_allocation
 from app.analytics.models import CovarianceMethod, Objective, ShrinkageTarget
+from app.schemas.portfolio_controls import PortfolioControls
 
 
 class WeightBounds(BaseModel):
@@ -22,6 +23,7 @@ class WeightBounds(BaseModel):
 class AnalyticsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     instrument_ids: list[int] = Field(min_length=2, max_length=15)
+    portfolio_controls: PortfolioControls = Field(default_factory=PortfolioControls)
     currency: Literal["USD"] = "USD"
     start_date: date | None = None
     end_date: date | None = None
@@ -73,6 +75,8 @@ class AnalyticsRequest(BaseModel):
         ):
             raise ValueError("Groups require selected instrument IDs and numbers from 1 to 5.")
         allocation = user_allocation(assets, self.user_weights)
+        if self.portfolio_controls.mode != "none" and allocation is None:
+            raise ValueError("Portfolio controls require explicit user_weights totaling 100%.")
         if (
             self.objective == "max_return_at_user_risk"
             or "max_return_at_user_risk" in (self.bootstrap_objectives or [])

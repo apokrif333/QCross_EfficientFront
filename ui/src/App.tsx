@@ -28,6 +28,8 @@ import {
 import RebalancingView from "./components/RebalancingView";
 import Settings from "./components/Settings";
 import AssetBuilder from "./components/AssetBuilder";
+import PortfolioControls from "./components/PortfolioControls";
+import ControlResults from "./components/ControlResults";
 import {
   allocationError,
   requestFromRows,
@@ -558,6 +560,12 @@ export default function App() {
         locked={!!busy || mode === "demo"}
         onChange={updateRows}
       />
+      <PortfolioControls
+        request={request}
+        instruments={instruments}
+        onChange={changeRequest}
+        locked={!!busy || mode === "demo"}
+      />
       <div className="workspace">
         <aside>
           <details className="settings-shell" open>
@@ -901,6 +909,7 @@ export default function App() {
                 {number(visible.result.execution_seconds)} с ·{" "}
                 {visible.origin.toUpperCase()} · {visible.result.status}
               </p>
+              <ControlResults result={visible.result} />
               {visible.result.warnings.map((w, i) => (
                 <p className="warning" key={i}>
                   {w}

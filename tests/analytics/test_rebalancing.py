@@ -34,7 +34,7 @@ def test_twenty_strategies_and_cost_conservation(panel):
     result = analyze_rebalancing(
         panel, user_weights={"1": 0.6, "2": 0.3, "3": 0.1}, transaction_fee_rate=0.002
     )
-    assert len(result["strategies"]) == 20
+    assert len(result["strategies"]) == 21
     assert sum(s["annual_baseline"] for s in result["strategies"]) == 1
     assert (
         sorted(
@@ -140,7 +140,7 @@ def test_async_rebalancing_job_ignores_global_objective_and_cv_history(
         done = wait_result(client, submitted.json())
         assert done["status"] == "completed", done
         result = done["result"]
-        assert len(result["strategies"]) == 20
+        assert len(result["strategies"]) == 21
         assert result["return_basis"] == basis
         assert result["reproducibility"]["api_request"]["transaction_fee_rate"] == 0.002
         invalid = {**body, "user_weights": None}

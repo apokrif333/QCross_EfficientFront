@@ -16,13 +16,31 @@ const columns = [
   ["sortino_ratio", "Sortino"],
   ["maximum_drawdown", "Макс. просадка"],
   ["terminal_wealth", "Капитал из $1"],
-  ["total_commissions", "Комиссии, $"],
+  ["total_commissions", "Накопленные комиссии, % от начального капитала"],
   ["trade_count", "Сделки"],
   ["rebalancing_events", "Ребалансировки"],
   ["annualized_turnover", "Оборот в год"],
   ["maximum_weight_deviation", "Макс. отклонение, п.п."],
 ] as const;
 type SortKey = (typeof columns)[number][0];
+
+function shortStrategy(s: RebalancingStrategy): string {
+  if (s.threshold_percent != null) return `${s.threshold_percent}%`;
+  const labels: Record<string, string> = {
+    calendar_1: "месяц",
+    calendar_3: "квартал",
+    calendar_12: "год",
+    calendar_24: "2 года",
+    calendar_36: "3 года",
+    calendar_48: "4 года",
+    calendar_60: "5 лет",
+    calendar_None: "B&H",
+  };
+  return labels[s.id] ?? s.label;
+}
+
+const byName = (a: RebalancingStrategy, b: RebalancingStrategy) =>
+  a.label.localeCompare(b.label, "ru", { numeric: true });
 
 export default function RebalancingView({
   result: r,
@@ -42,8 +60,8 @@ export default function RebalancingView({
       : (s[key as keyof RebalancingStrategy] as number);
   const format = (s: RebalancingStrategy, key: SortKey) => {
     const v = value(s, key);
-    if (key === "terminal_wealth" || key === "total_commissions")
-      return v == null ? "—" : `$${number(v, 4)}`;
+    if (key === "terminal_wealth") return v == null ? "—" : `$${number(v, 4)}`;
+    if (key === "total_commissions") return percent(v, 4);
     if (
       [
         "historical_sharpe_ratio",
@@ -75,51 +93,38 @@ export default function RebalancingView({
   const plotData = useMemo(() => {
     const hover = (s: RebalancingStrategy) =>
       `<b>${escapeHtml(s.label)}</b><br>CAGR: ${percent(s[side].annualized_cagr)}<br>Волатильность: ${percent(s[side].annualized_volatility)}<br>Sharpe: ${number(s[side].historical_sharpe_ratio)}<br>Просадка: ${percent(s[side].maximum_drawdown)}<extra></extra>`;
-    const thresholds = r.strategies
-      .filter((s) => s.threshold_percent !== null)
-      .sort((a, b) => a.threshold_percent! - b.threshold_percent!);
-    const calendar = r.strategies.filter((s) => s.threshold_percent === null);
+    const calendar = [...r.strategies].sort(byName);
+    const points = calendar.map((s) => ({
+      x: s[side].annualized_volatility,
+      y: s[side].annualized_cagr,
+    }));
     const axes = {
-      xaxis: { title: { text: "CAGR, % годовых" }, tickformat: ".1%" },
-      yaxis: {
+      yaxis: { title: { text: "CAGR, % годовых" }, tickformat: ".1%" },
+      xaxis: {
         title: { text: "Историческая волатильность" },
         tickformat: ".1%",
       },
     };
     return {
-      thresholds: [
-        {
-          type: "scatter3d",
-          mode: "lines+markers",
-          name: "Пороговые правила",
-          x: thresholds.map((s) => s[side].annualized_cagr),
-          y: thresholds.map((s) => s[side].annualized_volatility),
-          z: thresholds.map((s) => s.threshold_percent),
-          hovertemplate: thresholds.map(
-            (s) => `Порог: ${s.threshold_percent}%<br>${hover(s)}`,
-          ),
-          line: { color: "#287f8e", width: 3 },
-          marker: { size: 5 },
-        } as Data,
-      ],
-      calendar: [
-        {
-          type: "scatter",
-          mode: "text+markers",
-          name: "Календарные правила",
-          x: calendar.map((s) => s[side].annualized_cagr),
-          y: calendar.map((s) => s[side].annualized_volatility),
-          text: calendar.map((s) => s.label),
-          textposition: "top center",
-          hovertemplate: calendar.map(hover),
-          marker: {
-            size: 12,
-            color: calendar.map((s) =>
-              s.annual_baseline ? "#b98943" : "#287f8e",
-            ),
-          },
-        } as Data,
-      ],
+      calendar: calendar.map(
+        (s, i) =>
+          ({
+            type: "scatter",
+            mode: "text+markers",
+            name: s.label,
+            legendgroup: s.id,
+            x: [points[i].x],
+            y: [points[i].y],
+            text: [shortStrategy(s)],
+            textposition: "top center",
+            hovertemplate: hover(s),
+            showlegend: true,
+            marker: {
+              size: 12,
+              color: s.annual_baseline ? "#b98943" : "#287f8e",
+            },
+          }) as Data,
+      ),
       axes,
     };
   }, [r, side]);
@@ -158,8 +163,8 @@ export default function RebalancingView({
           До комиссий
         </button>
       </div>
-      <div className="table-scroll">
-        <table aria-label="Сравнение 20 правил ребалансировки">
+      <div className="table-scroll rebalancing-table">
+        <table aria-label="Сравнение правил ребалансировки">
           <thead>
             <tr>
               <th>Стратегия</th>
@@ -215,33 +220,16 @@ export default function RebalancingView({
         затрат. Оборот — сумма покупок и продаж / капитал до сделки, в год, без
         первоначального входа.
       </p>
-      <h3>3D Rebalancing Robustness — пороговые правила</h3>
+      <h4>Правила ребалансировки: фактические доходность и риск</h4>
       <Plot
-        title="3D Rebalancing Robustness"
-        threeD
-        data={plotData.thresholds}
-        layout={{
-          scene: {
-            xaxis: { title: { text: "CAGR" }, tickformat: ".1%" },
-            yaxis: { title: { text: "Волатильность" }, tickformat: ".1%" },
-            zaxis: {
-              title: { text: "Порог от целевого веса" },
-              ticksuffix: "%",
-            },
-          },
-        }}
-        height={500}
-      />
-      <h4>Календарные правила: фактические доходность и риск</h4>
-      <Plot
-        title="Календарные правила ребалансировки"
+        title="Правила ребалансировки: фактические доходность и риск"
         data={plotData.calendar}
         layout={plotData.axes}
       />
       <h3>Кривые капитала {gross ? "до" : "после"} комиссий</h3>
       <Plot
         title="Капитал по правилам ребалансировки"
-        data={r.strategies.map(
+        data={[...r.strategies].sort(byName).map(
           (s) =>
             ({
               type: "scatter",
@@ -274,7 +262,7 @@ export default function RebalancingView({
       <label>
         Стратегия для весов и сделок
         <select value={active.id} onChange={(e) => setSelected(e.target.value)}>
-          {r.strategies.map((s) => (
+          {[...r.strategies].sort(byName).map((s) => (
             <option key={s.id} value={s.id}>
               {s.label}
             </option>
@@ -284,19 +272,45 @@ export default function RebalancingView({
       <h3>Фактические веса после исполнения на конец месяца</h3>
       <Plot
         title="Фактические веса портфеля"
-        data={r.assets.map(
-          (a, i) =>
-            ({
-              type: "scatter",
-              mode: "lines",
-              name: ticker(a, instruments),
-              x: r.months,
-              y: active.weight_history.map((w) => w[i]),
-              stackgroup: "weights",
-              hovertemplate: `${escapeHtml(ticker(a, instruments))}<br>%{x}: %{y:.2%}<extra></extra>`,
-            }) as Data,
-        )}
-        layout={{ yaxis: { tickformat: ".0%", range: [0, 1] } }}
+        data={r.assets
+          .map((a, i) => ({ a, i }))
+          .filter(({ i }) =>
+            active.weight_history.some((w) => Math.abs(w[i]) > 1e-12),
+          )
+          .map(
+            ({ a, i }) =>
+              ({
+                type: "scatter",
+                mode: "lines",
+                name: ticker(a, instruments),
+                x: r.months,
+                y: active.weight_history.map((w) => w[i]),
+                customdata: active.weight_history.map((w) => w[i]),
+                stackgroup: "weights",
+                hovertemplate: `${escapeHtml(ticker(a, instruments))}<br>%{x}: %{customdata:.2%}<extra></extra>`,
+              }) as Data,
+          )}
+        layout={{
+          yaxis: { tickformat: ".0%", range: [0, 1] },
+          shapes: [
+            ...active.events
+              .filter((e) => e.kind === "rebalance")
+              .map((e) => ({
+                type: "line" as const,
+                xref: "x" as const,
+                yref: "paper" as const,
+                x0: e.date,
+                x1: e.date,
+                y0: 0,
+                y1: 1,
+                line: {
+                  color: "rgba(50,50,50,0.4)",
+                  width: 1,
+                  dash: "dot" as const,
+                },
+              })),
+          ],
+        }}
       />
       <details>
         <summary>Сделки и события: {active.label}</summary>
@@ -306,9 +320,12 @@ export default function RebalancingView({
               <tr>
                 <th>Месяц / момент</th>
                 <th>Триггеры</th>
+                <th>Веса перед ребалансировкой</th>
                 <th>Сделки, $</th>
                 <th>Оборот</th>
-                <th>Комиссии</th>
+                <th title="Доля капитала непосредственно перед сделкой">
+                  Комиссии, % капитала
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -326,6 +343,24 @@ export default function RebalancingView({
                       .join(", ") || "календарь / вход"}
                   </td>
                   <td>
+                    {e.kind === "initial_purchase"
+                      ? "—"
+                      : r.assets
+                          .map((a, index) => ({
+                            a,
+                            weight:
+                              active.pretrade_weight_history[e.month_index]?.[
+                                index
+                              ] ?? 0,
+                          }))
+                          .filter(({ weight }) => weight > 1e-12)
+                          .map(({ a, weight }) => (
+                            <small key={a}>
+                              {ticker(a, instruments)} {percent(weight)}
+                            </small>
+                          ))}
+                  </td>
+                  <td>
                     {Object.entries(e.trades)
                       .filter(([, v]) => Math.abs(v) > 1e-12)
                       .map(([a, v]) => (
@@ -337,7 +372,7 @@ export default function RebalancingView({
                       ))}
                   </td>
                   <td>{percent(e.turnover)}</td>
-                  <td>${number(e.commissions, 6)}</td>
+                  <td>{percent(e.turnover * r.transaction_fee_rate, 4)}</td>
                 </tr>
               ))}
             </tbody>

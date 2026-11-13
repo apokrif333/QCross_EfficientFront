@@ -2,8 +2,8 @@
 
 The dedicated `rebalancing-optimization` job compares one fixed user allocation
 on exactly the same aligned selected-basis monthly history and fee assumption.
-It does not select portfolio weights or refit covariance. The seven calendar
-intervals are 1, 3, 12, 24, 36, 60 months and never. The thirteen relative
+It does not select portfolio weights or refit covariance. The eight calendar
+intervals are 1, 3, 12, 24, 36, 48, 60 months and never. The thirteen relative
 thresholds are 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 150 and 200 percent.
 
 For positive original target w, an asset triggers at |actual/w - 1| >= threshold.
@@ -40,7 +40,7 @@ objective, target return, covariance method and cv_folds do not define these
 simulations. Covariance-CV sample-size checks do not reject this operation.
 The normal common-history minimum of 120 months and 15-asset limit apply.
 
-The result contains 20 `strategies`, ranked by net CAGR descending, plus months,
+The result contains 21 `strategies`, ranked by net CAGR descending, plus months,
 original user weights, reference metadata, source series and reproducibility.
 Each strategy has `net` and `gross` statistics, monthly returns and wealth paths,
 position values, pre-trade/post-trade and target weight histories, commissions,
@@ -64,12 +64,11 @@ universally optimal. Sharpe uses the aligned BIL series; Sortino uses the monthl
 BIL differential's unconditional downside RMS, as defined in the engine guide.
 Undefined risk ratios return null. Net metrics come from the actual net path.
 
-The 3D chart contains exactly thirteen points connected in increasing threshold
-order: X=CAGR, Y=realized annual volatility, Z=relative threshold percent.
-It does not fit a surface. The seven calendar strategies appear in a separate
-2D risk-return chart, with no numeric threshold assigned. All hover labels expose
-the rule and performance. The Plotly gl3d partial bundle is loaded lazily only
-for 3D charts; the existing cartesian bundle remains used by other plots.
+The risk-return chart shows all calendar and threshold strategies together,
+with realized annual volatility on X and CAGR on Y. Hover labels expose the
+rule and performance. The allocation chart marks actual rebalance dates; event
+rows show weights before execution and commissions as a percentage of capital
+immediately before the trade, including the initial purchase.
 
 Equity curves initially include the annual baseline, monthly and Buy & Hold
 alternatives; the legend toggles all other curves. Selecting a table row or rule

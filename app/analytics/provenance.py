@@ -9,7 +9,7 @@ from pathlib import Path
 
 from app.analytics.models import ReturnPanel
 
-ENGINE_VERSION = "3.1.0"
+ENGINE_VERSION = "3.1.1"
 
 
 def reproducible(function):

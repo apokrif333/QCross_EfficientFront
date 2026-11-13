@@ -290,5 +290,5 @@ self-financing commissions, including initial purchases. Model-based arithmetic
 means/covariances remain unchanged. Historical reporting is net of costs with
 gross results disclosed separately. See [portfolio simulation](rebalancing-engine.md) for conventions and legacy snapshot replay.
 
-`POST /api/v1/analytics/rebalancing-optimization` adds the dedicated twenty-rule
+`POST /api/v1/analytics/rebalancing-optimization` adds the dedicated 21-rule
 comparison job. See [request, response, charts and example](rebalancing-optimization.md).

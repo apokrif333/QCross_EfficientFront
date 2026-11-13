@@ -317,7 +317,7 @@ class RebalancingOptimizationResult(BaseModel):
     assets: list[str]
     user_weights: dict[str, float]
     transaction_fee_rate: float
-    strategies: list[dict[str, Any]] = Field(min_length=20, max_length=20)
+    strategies: list[dict[str, Any]] = Field(min_length=20, max_length=21)
     period: dict[str, Any]
     reproducibility: dict[str, Any]
 

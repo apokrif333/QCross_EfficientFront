@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { rebalancingFixture } from "../src/test/rebalancingFixture";
-test("rebalancing snapshot renders 3D, twenty strategies, weights and events", async ({
+test("rebalancing snapshot renders all strategies, weights and events", async ({
   page,
 }) => {
   const result = rebalancingFixture();
@@ -39,20 +39,30 @@ test("rebalancing snapshot renders 3D, twenty strategies, weights and events", a
     .click();
   await expect(
     page
-      .getByRole("table", { name: "Сравнение 20 правил ребалансировки" })
+      .getByRole("table", { name: "Сравнение правил ребалансировки" })
       .locator("tbody tr"),
-  ).toHaveCount(20);
+  ).toHaveCount(21);
+  const table = page.getByRole("table", {
+    name: "Сравнение правил ребалансировки",
+  });
+  const firstCell = table.locator("tbody tr").first().locator("td").first();
+  const before = await firstCell.boundingBox();
+  await table.locator("..").evaluate((el) => {
+    el.scrollLeft = el.scrollWidth;
+  });
+  const after = await firstCell.boundingBox();
+  expect(Math.abs(after!.x - before!.x)).toBeLessThan(2);
   const chart = page.getByRole("img", {
-    name: "3D Rebalancing Robustness",
+    name: "Правила ребалансировки: фактические доходность и риск",
     exact: true,
   });
-  await expect(chart.locator("canvas").first()).toBeVisible();
+  await expect(chart.locator(".js-plotly-plot")).toBeVisible();
   const data = await chart.locator(".js-plotly-plot").evaluate((el: any) => ({
     type: el._fullData[0].type,
-    z: el._fullData[0].z,
+    count: el._fullData.filter((trace: any) => trace.showlegend).length,
   }));
-  expect(data.type).toBe("scatter3d");
-  expect(data.z).toHaveLength(13);
+  expect(data.type).toBe("scatter");
+  expect(data.count).toBe(21);
   await page
     .getByRole("combobox", { name: "Стратегия для весов и сделок" })
     .selectOption("threshold_10");

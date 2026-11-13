@@ -317,5 +317,5 @@ means/covariances remain unchanged. Historical reporting is net of costs with
 gross results disclosed separately. See [portfolio simulation](rebalancing-engine.md) for conventions and legacy snapshot replay.
 
 The standalone [Rebalancing Optimization](rebalancing-optimization.md) job compares
-all twenty calendar/relative-threshold rules with identical inputs and costs.
+all 21 calendar/relative-threshold rules with identical inputs and costs.
 It does not change optimization moments, CV splits or Bootstrap sampling.

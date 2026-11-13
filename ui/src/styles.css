@@ -713,6 +713,20 @@ details {
   border-radius: 6px;
   margin: 16px 0;
 }
+.rebalancing-table th:first-child,
+.rebalancing-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #fff;
+}
+.rebalancing-table th:first-child {
+  z-index: 2;
+  background: #f6f8f9;
+}
+.rebalancing-table .annual-baseline td:first-child {
+  background: #edf7f7;
+}
 table {
   border-collapse: collapse;
   width: 100%;

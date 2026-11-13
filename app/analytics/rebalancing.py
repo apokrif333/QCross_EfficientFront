@@ -1,4 +1,4 @@
-"""Historical in-sample comparison of twenty shared-simulator policies."""
+"""Historical in-sample comparison of shared-simulator policies."""
 
 import time
 
@@ -15,6 +15,7 @@ CALENDARS = [
     (12, "Каждый год"),
     (24, "Каждые 2 года"),
     (36, "Каждые 3 года"),
+    (48, "Каждые 4 года"),
     (60, "Каждые 5 лет"),
     (None, "Buy & Hold"),
 ]

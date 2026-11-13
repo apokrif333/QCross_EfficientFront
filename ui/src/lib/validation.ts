@@ -404,7 +404,8 @@ const results = {
             })
             .passthrough(),
         )
-        .length(20),
+        .min(20)
+        .max(21),
     })
     .passthrough(),
   frontier: base

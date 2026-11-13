@@ -24,30 +24,71 @@ afterEach(() => {
   cleanup();
   plots.mockClear();
 });
-it("plots ordered thresholds in 3D and leaves calendar policies in 2D", () => {
+it("plots all strategies with volatility on X and CAGR on Y", () => {
   render(<RebalancingView result={result} instruments={instruments} />);
-  const chart = plots.mock.calls.find(
-    ([p]) => p.title === "3D Rebalancing Robustness",
-  )![0];
-  expect(chart.threeD).toBe(true);
-  expect(chart.data[0].type).toBe("scatter3d");
-  expect(chart.data[0].z).toEqual([
-    10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 150, 200,
-  ]);
   const calendar = plots.mock.calls.find(
-    ([p]) => p.title === "Календарные правила ребалансировки",
+    ([p]) =>
+      p.title === "Правила ребалансировки: фактические доходность и риск",
   )![0];
-  expect(calendar.data[0].x).toHaveLength(7);
+  const markers = calendar.data.filter(
+    (trace: { showlegend: boolean }) => trace.showlegend,
+  );
+  expect(markers).toHaveLength(21);
+  const ordered = [...result.strategies].sort((a, b) =>
+    a.label.localeCompare(b.label, "ru", { numeric: true }),
+  );
+  expect(markers.map((trace: { name: string }) => trace.name)).toEqual(
+    ordered.map((s) => s.label),
+  );
+  expect(markers[0].x[0]).toBe(ordered[0].net.annualized_volatility);
+  expect(markers[0].y[0]).toBe(ordered[0].net.annualized_cagr);
   expect(calendar.data[0].z).toBeUndefined();
+  expect(
+    calendar.data
+      .filter((trace: { mode: string }) => trace.mode === "text+markers")
+      .map((trace: { text: string[] }) => trace.text[0]),
+  ).toEqual(expect.arrayContaining(["10%", "B&H", "год"]));
+  const equity = plots.mock.calls.find(
+    ([p]) => p.title === "Капитал по правилам ребалансировки",
+  )![0];
+  expect(equity.data.map((trace: { name: string }) => trace.name)).toEqual(
+    ordered.map((s) => s.label),
+  );
+  const weights = plots.mock.calls.find(
+    ([p]) => p.title === "Фактические веса портфеля",
+  )![0];
+  expect(weights.data[0].customdata).toEqual(weights.data[0].y);
+  expect(weights.data[0].hovertemplate).toContain("%{customdata:.2%}");
+  expect(
+    weights.layout.shapes.some((s: { xref: string }) => s.xref === "x"),
+  ).toBe(true);
+  expect(
+    weights.layout.shapes.every((s: { xref: string }) => s.xref === "x"),
+  ).toBe(true);
+  expect(screen.getByText("Веса перед ребалансировкой")).toBeInTheDocument();
+  expect(screen.getByText("Комиссии, % капитала")).toBeInTheDocument();
   const table = screen.getByRole("table", {
-    name: "Сравнение 20 правил ребалансировки",
+    name: "Сравнение правил ребалансировки",
   });
-  expect(within(table).getAllByRole("row")).toHaveLength(21);
+  expect(within(table).getAllByRole("row")).toHaveLength(22);
+  const annual = result.strategies.find((s) => s.id === "calendar_12")!;
+  const annualRow = screen.getByText(/Каждый год · базовый/).closest("tr")!;
+  expect(
+    within(annualRow).getByText(
+      `${(annual.total_commissions * 100).toFixed(4)}%`,
+    ),
+  ).toBeInTheDocument();
   expect(screen.getByText(/Каждый год · базовый/).closest("tr")).toHaveClass(
     "annual-baseline",
   );
   fireEvent.click(screen.getByRole("button", { name: "До комиссий" }));
-  expect(plots.mock.calls.at(-4)![0].data[0].x).not.toEqual(chart.data[0].x);
+  const updated = [...plots.mock.calls]
+    .reverse()
+    .find(
+      ([p]) =>
+        p.title === "Правила ребалансировки: фактические доходность и риск",
+    )![0];
+  expect(updated.data[0].x).not.toEqual(calendar.data[0].x);
 });
 it("round-trips actual simulation results and validates explicit user weights", () => {
   const request = result.reproducibility.api_request!;

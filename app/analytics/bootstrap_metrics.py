@@ -12,7 +12,9 @@ PORTFOLIO_METRICS = (
 )
 
 
-def fixed_portfolio_metrics(values, weights, risk_free_returns, **simulation_options) -> dict:
+def fixed_portfolio_metrics(
+    values, weights, risk_free_returns, *, include_wealth=False, **simulation_options
+) -> dict:
     from app.analytics.portfolio_simulator import simulate_portfolio
 
     simulation = simulate_portfolio(
@@ -25,6 +27,7 @@ def fixed_portfolio_metrics(values, weights, risk_free_returns, **simulation_opt
     )
     return {
         **simulation["net"],
+        **({"net_wealth": simulation["net_wealth"]} if include_wealth else {}),
         "gross_metrics": simulation["gross"],
         "trading_costs": {
             k: simulation[k]

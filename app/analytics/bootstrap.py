@@ -161,16 +161,35 @@ def analyze_bootstrap(
     started = time.perf_counter()
     constraints, estimate, mean, covariance = prepare(panel, **options)
     fixed_user_weights = user_allocation(panel.assets, user_weights) if user_weights else None
+    controls_enabled = panel.control_config.get("mode", "none") != "none"
     paired = (
-        PairedBootstrap(panel.assets, fixed_user_weights, constraints, **panel.simulation_options)
+        PairedBootstrap(
+            panel.assets,
+            fixed_user_weights,
+            constraints,
+            controls_enabled=controls_enabled,
+            **panel.simulation_options,
+        )
         if fixed_user_weights is not None and include_paired_comparison
         else None
     )
     engine = PortfolioOptimizer(mean, covariance, constraints, **panel.differential)
+    original_user_risk = None
+    if controls_enabled and "max_return_at_user_risk" in objectives:
+        from app.analytics.portfolio_controls import compare_controls
+
+        original_user_risk = compare_controls(panel, user_weights, record_history=False)[
+            "controlled"
+        ]["net"]["annualized_volatility"]
     originals = {
         objective: _target_solution(engine, target_return, risk_free_rate)
         if objective == "target_return"
-        else engine.optimize(objective, risk_free_rate, user_weights=fixed_user_weights)
+        else engine.optimize(
+            objective,
+            risk_free_rate,
+            user_weights=fixed_user_weights,
+            user_risk_limit=original_user_risk,
+        )
         for objective in objectives
     }
     records = {objective: [] for objective in objectives}
@@ -182,28 +201,43 @@ def analyze_bootstrap(
         indices = stationary_indices(len(panel.values), expected_block_length, rng)
         fingerprint.update(indices.astype("<i8").tobytes())
         values = panel.values[indices]
-        if panel.control_config.get("mode", "none") != "none":
+        control_sample = None
+        if controls_enabled:
+            from app.analytics.control_cache import indices_hash
             from app.analytics.portfolio_controls import compare_controls
 
             try:
-                control_samples.append(
-                    compare_controls(panel, user_weights, indices, record_history=False)
+                control_sample = compare_controls(
+                    panel,
+                    user_weights,
+                    indices,
+                    record_history=False,
+                    include_wealth=paired is not None and iteration % 2 == 1,
                 )
             except Exception as exc:
-                control_samples.append({"status": "failed", "reason": str(exc)})
+                control_sample = {"status": "failed", "reason": str(exc)}
+            control_sample["indices_sha256"] = indices_hash(indices)
+            control_samples.append(control_sample)
         sample_rf = (
             panel.risk_free_returns[indices] if panel.risk_free_returns is not None else None
         )
         fixed_metrics_record = {}
         if fixed_user_weights is not None:
             try:
-                metrics = fixed_portfolio_metrics(
-                    values,
-                    fixed_user_weights,
-                    sample_rf
-                    if sample_rf is not None
-                    else np.full(len(values), (1 + risk_free_rate) ** (1 / 12) - 1),
-                    **panel.simulation_options,
+                metrics = (
+                    fixed_portfolio_metrics(
+                        values,
+                        fixed_user_weights,
+                        sample_rf
+                        if sample_rf is not None
+                        else np.full(len(values), (1 + risk_free_rate) ** (1 / 12) - 1),
+                        **panel.simulation_options,
+                    )
+                    if not controls_enabled
+                    else {
+                        **control_sample["controlled"]["net"],
+                        "gross_metrics": control_sample["controlled"]["gross"],
+                    }
                 )
                 fixed_metrics_record = {
                     "observations": len(values),
@@ -231,6 +265,7 @@ def analyze_bootstrap(
                     if sample_rf is not None
                     else np.full(len(values), (1 + risk_free_rate) ** (1 / 12) - 1),
                     sample_estimate,
+                    control_sample=control_sample,
                 )
                 paired_consumed = True
             sample_mean, sample_covariance = values.mean(0) * 12, sample_estimate.matrix * 12
@@ -292,6 +327,7 @@ def analyze_bootstrap(
                     if sample_rf is not None
                     else np.full(len(values), (1 + risk_free_rate) ** (1 / 12) - 1),
                     None,
+                    control_sample=control_sample,
                 )
             if fixed_user_weights is not None and len(efficiency_records) == iteration:
                 efficiency_records.append(
@@ -313,13 +349,29 @@ def analyze_bootstrap(
                 )
             continue
         for objective in objectives:
-            result = (
-                _target_solution(sample_engine, target_return, risk_free_rate)
-                if objective == "target_return"
-                else sample_engine.optimize(
-                    objective, risk_free_rate, user_weights=fixed_user_weights
+            if (
+                objective == "max_return_at_user_risk"
+                and controls_enabled
+                and (not control_sample or "controlled" not in control_sample)
+            ):
+                result = OptimizationResult(
+                    "control_failed",
+                    None,
+                    {"reason": (control_sample or {}).get("reason", "missing simulation")},
                 )
-            )
+            else:
+                result = (
+                    _target_solution(sample_engine, target_return, risk_free_rate)
+                    if objective == "target_return"
+                    else sample_engine.optimize(
+                        objective,
+                        risk_free_rate,
+                        user_weights=fixed_user_weights,
+                        user_risk_limit=control_sample["controlled"]["net"]["annualized_volatility"]
+                        if controls_enabled and objective == "max_return_at_user_risk"
+                        else None,
+                    )
+                )
             record = {
                 "iteration": iteration,
                 "status": result.status,
@@ -471,6 +523,7 @@ def analyze_bootstrap(
         "portfolio_control_samples": control_samples,
         "paired_comparison": paired.result(len(panel.values)) if paired is not None else None,
         "efficiency_robustness": {
+            "user_portfolio_mode": "controlled" if controls_enabled else "passive",
             "user_weights": dict(zip(panel.assets, fixed_user_weights.tolist(), strict=True)),
             "evaluation": "stationary_bootstrap_resampled_scenarios_not_future_probability",
             **summarize_distances(efficiency_records),
@@ -495,6 +548,7 @@ def analyze_resampled_frontier(
     objective: str | None = None,
     target_return: float | None = None,
     user_weights: dict | None = None,
+    bootstrap_control_cache: dict | None = None,
     **options,
 ) -> dict:
     # Global portfolio controls do not define this shared risk-aversion curve.
@@ -515,6 +569,29 @@ def analyze_resampled_frontier(
     started = time.perf_counter()
     constraints, estimate, mean, covariance = prepare(panel, **options)
     fixed_user_weights = user_allocation(panel.assets, user_weights)
+    controls_enabled = panel.control_config.get("mode", "none") != "none"
+    if controls_enabled:
+        from app.analytics.portfolio_controls import compare_controls
+    from app.analytics.control_cache import (
+        control_cache_key,
+        indices_hash,
+        usable_original,
+        usable_sample,
+    )
+
+    cache = bootstrap_control_cache or {}
+    cache_matches = bool(
+        controls_enabled
+        and cache.get("version") == 1
+        and cache.get("key")
+        == control_cache_key(panel, user_weights, expected_block_length, random_seed)
+        and usable_original(cache.get("original", {}).get("controlled"))
+        and usable_original(cache.get("original", {}).get("baseline"))
+    )
+    cached_samples = cache.get("samples", []) if cache_matches else []
+    reused_samples = computed_samples = 0
+
+    control_failures = []
     rng, fingerprint = np.random.default_rng(random_seed), hashlib.sha256()
     weights = [[] for _ in aversions]
     records, diagnostics, user_sample_moments = [], [], []
@@ -548,16 +625,50 @@ def analyze_resampled_frontier(
             for point, result in enumerate(solutions):
                 weights[point].append(result.weights)
             if fixed_user_weights is not None:
-                user_sample_moments.append(
-                    (
-                        float(values.mean(0) @ fixed_user_weights * 12),
-                        float(
-                            np.sqrt(
-                                max(0, fixed_user_weights @ sample.matrix @ fixed_user_weights * 12)
+                if controls_enabled:
+                    try:
+                        saved = (
+                            cached_samples[iteration] if iteration < len(cached_samples) else None
+                        )
+                        if usable_sample(saved) and saved.get("indices_sha256") == indices_hash(
+                            indices
+                        ):
+                            reused_samples += 1
+                            if saved.get("error"):
+                                raise AnalyticsError(saved["error"])
+                            user_sample_moments.append(
+                                (saved["expected_return"], saved["volatility"])
                             )
-                        ),
+                        else:
+                            computed_samples += 1
+                            path = compare_controls(
+                                panel, user_weights, indices, record_history=False
+                            )["controlled"]["net"]
+                            user_sample_moments.append(
+                                (
+                                    path["annualized_arithmetic_return"],
+                                    path["annualized_volatility"],
+                                )
+                            )
+                    except Exception as exc:
+                        control_failures.append({"iteration": iteration, "reason": str(exc)})
+                else:
+                    user_sample_moments.append(
+                        (
+                            float(values.mean(0) @ fixed_user_weights * 12),
+                            float(
+                                np.sqrt(
+                                    max(
+                                        0,
+                                        fixed_user_weights
+                                        @ sample.matrix
+                                        @ fixed_user_weights
+                                        * 12,
+                                    )
+                                )
+                            ),
+                        )
                     )
-                )
             records.append({"iteration": iteration, "status": "optimal"})
         except (AnalyticsError, np.linalg.LinAlgError) as exc:
             records.append(
@@ -593,6 +704,44 @@ def analyze_resampled_frontier(
         else None
     )
     user_sample_average = None
+    control_result = None
+    if controls_enabled and fixed_user_weights is not None:
+        control_result = (
+            cache["original"] if cache_matches else compare_controls(panel, user_weights)
+        )
+        path = control_result["controlled"]
+        net = path["net"]
+        control_result["months"] = [str(m) for m in panel.returns.index]
+        control_result["source_metadata"] = panel.control_metadata
+        user_portfolio = {
+            "status": "historical_path",
+            "weights": dict(zip(panel.assets, fixed_user_weights.tolist(), strict=True)),
+            "diagnostics": {
+                "user_portfolio_mode": "controlled",
+                "evaluation": "net_historical_path",
+            },
+            "metrics": {
+                "expected_return": net["annualized_arithmetic_return"],
+                "volatility": net["annualized_volatility"],
+                "historical_arithmetic_return": net["annualized_arithmetic_return"],
+                "historical_volatility": net["annualized_volatility"],
+                "historical_cagr": net["annualized_cagr"],
+                "historical_sharpe_ratio": net["historical_sharpe_ratio"],
+                "sharpe_ratio": None,
+                "historical_max_drawdown": net["maximum_drawdown"],
+                "terminal_wealth": net["terminal_wealth"],
+                "gross_historical_metrics": path["gross"],
+                "trading_costs": {
+                    k: path[k]
+                    for k in (
+                        "total_commissions",
+                        "trade_count",
+                        "rebalancing_events",
+                        "annualized_turnover",
+                    )
+                },
+            },
+        }
     if user_sample_moments:
         average_moments = np.mean(user_sample_moments, axis=0)
         user_sample_average = {
@@ -612,6 +761,17 @@ def analyze_resampled_frontier(
         "frontier": points,
         "user_portfolio": user_portfolio,
         "user_sample_average": user_sample_average,
+        "user_portfolio_mode": "controlled" if controls_enabled else "passive",
+        "portfolio_controls": control_result,
+        "user_sample_diagnostics": {
+            "cache_status": "matched" if cache_matches else "incompatible" if cache else "absent",
+            "reused_samples": reused_samples,
+            "computed_samples": computed_samples,
+            "successful_samples": len(user_sample_moments),
+            "failed_control_samples": len(control_failures),
+            "failures": control_failures,
+            "excluded_frontier_samples": summary["failed_iterations"],
+        },
         "expected_block_length": expected_block_length,
         "random_seed": random_seed,
         "sample_fingerprint": fingerprint.hexdigest(),

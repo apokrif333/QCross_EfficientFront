@@ -32,7 +32,7 @@ joint original/hedge matrix and configuration. Legacy requests remain mode none.
 
 `mode=trend` requires `trend.destination` (`remaining` or `hedge`) and per-original
 asset `trend.asset_rules`: indicator `disabled`, `sma` or `momentum`, and integer
-`lookback_months` 2–36. Missing rules are disabled. During warm-up assets remain
+`lookback_months` 1–36. Missing rules are disabled. During warm-up assets remain
 active. SMA uses the last L completed month-end TRI values including the current
 one; equality is active. Momentum compares current TRI against L months earlier,
 with the initial index at t=0. Zero momentum is active. Log TRI calculations
@@ -67,8 +67,7 @@ their API strategy records also include separate control comparisons.
     "hedge_weights": {"BIL_REFERENCE": 1.0},
     "trend": {
       "destination": "hedge",
-      "asset_rules": {"1": {"indicator": "momentum", "lookback_months": 12}},
-      "sensitivity_asset": "1"
+      "asset_rules": {"1": {"indicator": "momentum", "lookback_months": 12}}
     }
   }
 }
@@ -93,11 +92,14 @@ CV tables and Bootstrap distribution summaries keep the controlled comparison
 separate from the original trained portfolio comparison. Trade logs disclose
 entries, exits, policy events and aggregate executed asset notionals.
 
-Selecting one enabled original asset for sensitivity produces exactly 35
-recalculations (lookbacks 2–36) with all other rules/fees/weights unchanged.
-Run the analytics request again after changing that asset selection. The 3D
-plot connects actual results by period; gross/net switching uses these stored
-calculations. No interpolated surface or best-period selection is performed.
+Sensitivity evaluates each common lookback from 1 to 36 months. Each scenario
+applies that lookback to all active trend rules on assets with positive portfolio
+weights. The selected indicators, fees and weights are fixed. The scatter plot
+shows maximum portfolio drawdown on X and portfolio CAGR on Y. Points share one
+color and have their lookback in months printed above them. Gross/net switching
+uses the saved scenario statistics. The legacy `sensitivity_asset` request field
+is ignored. Results from prior sensitivity methods require recalculation to
+show the common-lookback chart.
 The selected history is shared by every scenario; synthetic samples retain
 the full selected observation count. Signal warm-up restarts within each CV
 validation block or Bootstrap sample, without fitting on future months.

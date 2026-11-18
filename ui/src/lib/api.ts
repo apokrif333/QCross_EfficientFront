@@ -1,4 +1,13 @@
-import type { ApiRequest, Catalog, Job, Kind, Result } from "../types";
+import type {
+  ApiRequest,
+  AssetTrendSensitivitySeries,
+  BootstrapControlCache,
+  Catalog,
+  Job,
+  Kind,
+  Provenance,
+  Result,
+} from "../types";
 import { requestSchemaFor } from "./validation";
 const BASE = import.meta.env.VITE_API_BASE_URL || "";
 export class ApiError extends Error {
@@ -61,6 +70,7 @@ export async function runJob(
   body: ApiRequest,
   onProgress: (job: Job) => void,
   signal: AbortSignal,
+  controlCache?: BootstrapControlCache,
 ): Promise<Result> {
   body = {
     ...body,
@@ -68,7 +78,54 @@ export async function runJob(
     risk_free_source: body.risk_free_source ?? "fixed_annual",
   };
   requestSchemaFor(kind).parse(body);
-  let job = await requestJson<Job>(
+  return submitJob<Result>(
+    kind,
+    kind === "resampled-frontier" && controlCache
+      ? { ...body, bootstrap_control_cache: controlCache }
+      : body,
+    onProgress,
+    signal,
+  );
+}
+
+export function runAssetTrendSensitivity(
+  body: ApiRequest,
+  referenceHash: string,
+  onProgress: (job: Job<unknown>) => void,
+  signal: AbortSignal,
+) {
+  return submitJob<{
+    by_asset: Record<string, AssetTrendSensitivitySeries>;
+    reproducibility: Provenance;
+  }>(
+    "asset-trend-sensitivity",
+    {
+      ...body,
+      reference_panel_sha256: referenceHash,
+    },
+    onProgress,
+    signal,
+  ).catch((error) => {
+    if (
+      error instanceof ApiError &&
+      error.status === 404 &&
+      error.message === "Not Found"
+    )
+      throw new ApiError(
+        "Запущенный FastAPI не поддерживает этот расчёт. Перезапустите сервер из текущей версии проекта.",
+        404,
+      );
+    throw error;
+  });
+}
+
+async function submitJob<T>(
+  kind: Job["kind"],
+  body: object,
+  onProgress: (job: Job<T>) => void,
+  signal: AbortSignal,
+): Promise<T> {
+  let job = await requestJson<Job<T>>(
     `/api/v1/analytics/${kind}`,
     {
       method: "POST",
@@ -99,12 +156,12 @@ export async function runJob(
       }, 350);
       signal.addEventListener("abort", abort, { once: true });
     });
-    job = await requestJson<Job>(job.status_url, {}, signal);
+    job = await requestJson<Job<T>>(job.status_url, {}, signal);
     onProgress(job);
   }
   if (job.status !== "completed")
     throw new ApiError(job.error || `Задание: ${job.status}`);
-  const finished = await requestJson<Job>(job.result_url, {}, signal);
+  const finished = await requestJson<Job<T>>(job.result_url, {}, signal);
   if (!finished.result)
     throw new ApiError("API завершил задание без результата.");
   return finished.result;

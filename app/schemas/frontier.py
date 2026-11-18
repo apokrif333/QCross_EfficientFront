@@ -78,13 +78,8 @@ class AnalyticsRequest(BaseModel):
         if self.portfolio_controls.mode != "none" and allocation is None:
             raise ValueError("Portfolio controls require explicit user_weights totaling 100%.")
         trend = self.portfolio_controls.trend
-        if trend and (
-            set(trend.asset_rules) - set(assets)
-            or (trend.sensitivity_asset and trend.sensitivity_asset not in assets)
-        ):
-            raise ValueError(
-                "Trend rules and sensitivity asset must belong to the original universe."
-            )
+        if trend and set(trend.asset_rules) - set(assets):
+            raise ValueError("Trend rules must belong to the original universe.")
         if (
             self.objective == "max_return_at_user_risk"
             or "max_return_at_user_risk" in (self.bootstrap_objectives or [])
@@ -126,7 +121,24 @@ class AnalyticsRequest(BaseModel):
         }
 
 
+class CachedControlSample(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    indices_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    expected_return: float | None = None
+    volatility: float | None = Field(default=None, ge=0)
+    error: str | None = None
+
+
+class BootstrapControlCache(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    version: Literal[1]
+    key: str = Field(pattern=r"^[a-f0-9]{64}$")
+    original: dict[str, Any]
+    samples: list[CachedControlSample] = Field(max_length=2000)
+
+
 class ResampledFrontierRequest(AnalyticsRequest):
+    bootstrap_control_cache: BootstrapControlCache | None = None
     bootstrap_iterations: int = Field(default=250, ge=1, le=500)
 
     def uses_target_return(self) -> bool:
@@ -140,6 +152,11 @@ class RebalancingOptimizationRequest(AnalyticsRequest):
 
     @model_validator(mode="after")
     def explicit_portfolio(self):
+        if self.portfolio_controls.mode != "none":
+            raise ValueError(
+                "Rebalancing optimization is available only for passive portfolios. "
+                "Set portfolio_controls.mode='none'."
+            )
         if user_allocation(list(map(str, self.instrument_ids)), self.user_weights) is None:
             raise ValueError("Rebalancing optimization requires explicit user_weights.")
         return self
@@ -148,6 +165,29 @@ class RebalancingOptimizationRequest(AnalyticsRequest):
 class RollingEfficiencyRequest(AnalyticsRequest):
     def uses_target_return(self) -> bool:
         return False
+
+
+class AssetTrendSensitivityRequest(AnalyticsRequest):
+    reference_panel_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    def uses_target_return(self) -> bool:
+        return False
+
+    @model_validator(mode="after")
+    def valid_sensitivity_assets(self):
+        trend = self.portfolio_controls.trend
+        if (
+            self.portfolio_controls.mode != "trend"
+            or trend is None
+            or not any(
+                rule.indicator != "disabled" and (self.user_weights or {}).get(asset_id, 0) > 0
+                for asset_id, rule in trend.asset_rules.items()
+            )
+        ):
+            raise ValueError(
+                "At least one positive-weight asset must have SMA or Momentum enabled."
+            )
+        return self
 
 
 class PortfolioMetrics(BaseModel):
@@ -334,6 +374,28 @@ class RebalancingOptimizationResult(BaseModel):
     reproducibility: dict[str, Any]
 
 
+class TrendSensitivityStats(BaseModel):
+    annualized_cagr: float | None
+    maximum_drawdown: float
+
+
+class TrendSensitivityPoint(BaseModel):
+    lookback_months: int = Field(ge=1, le=36)
+    gross: TrendSensitivityStats
+    net: TrendSensitivityStats
+
+
+class AssetTrendSensitivitySeries(BaseModel):
+    asset_id: str
+    indicator: Literal["sma", "momentum"]
+    points: list[TrendSensitivityPoint] = Field(min_length=36, max_length=36)
+
+
+class AssetTrendSensitivityResult(BaseModel):
+    by_asset: dict[str, AssetTrendSensitivitySeries]
+    reproducibility: dict[str, Any]
+
+
 class JobRead(BaseModel):
     job_id: str
     kind: Literal[
@@ -343,6 +405,7 @@ class JobRead(BaseModel):
         "resampled-frontier",
         "rolling-efficiency",
         "rebalancing-optimization",
+        "asset-trend-sensitivity",
     ]
     status: Literal["running", "completed", "failed", "timed_out"]
     submitted_at: str
@@ -361,5 +424,6 @@ class JobResultRead(JobRead):
         | ResampledFrontierResult
         | RollingEfficiencyResult
         | RebalancingOptimizationResult
+        | AssetTrendSensitivityResult
         | None
     )

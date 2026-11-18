@@ -344,6 +344,36 @@ it("shows the user portfolio on the original sample and as a bootstrap average",
   ).toBeVisible();
 });
 
+it("labels both controlled Resampled markers and preserves their snapshot values", () => {
+  const calculation = saved("resampled-frontier", "resampled-frontier.json");
+  const result = calculation.result as ResampledResult;
+  result.user_portfolio_mode = "controlled";
+  result.user_portfolio = { ...result.frontier[0], status: "historical_path" };
+  result.user_sample_average = {
+    expected_return: 0.07,
+    volatility: 0.11,
+    successful_samples: 4,
+  };
+  const restored = parseSnapshot(
+    JSON.stringify(createSnapshot([calculation], instruments)),
+  ).calculations[0].result as ResampledResult;
+  render(<ResampledView result={restored} instruments={instruments} />);
+  const data = plots.mock.lastCall![0].data;
+  expect(
+    data.find(
+      (p: { name: string }) =>
+        p.name === "Портфель под управлением — исходная выборка",
+    ),
+  ).toBeDefined();
+  const average = data.find(
+    (p: { name: string }) =>
+      p.name === "Портфель под управлением — среднее Bootstrap",
+  );
+  expect(average.x).toEqual([0.11]);
+  expect(average.y).toEqual([0.07]);
+  expect(average.hovertemplate).toContain("после комиссий");
+});
+
 it("shows all fixed-portfolio distributions with their full horizon and preserves snapshots", () => {
   const calculation = saved("bootstrap", "bootstrap.json");
   const r = calculation.result as BootstrapResult;

@@ -12,14 +12,15 @@ class DownsideSettings(BaseModel):
 class TrendRule(BaseModel):
     model_config = ConfigDict(extra="forbid")
     indicator: Literal["disabled", "sma", "momentum"] = "disabled"
-    lookback_months: int = Field(default=12, strict=True, ge=2, le=36)
+    lookback_months: int = Field(default=12, strict=True, ge=1, le=36)
 
 
 class TrendSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
     destination: Literal["remaining", "hedge"] = "remaining"
     asset_rules: dict[str, TrendRule] = Field(default_factory=dict, max_length=15)
-    sensitivity_asset: str | None = None
+    # Accepted for requests saved before sensitivity became automatic.
+    sensitivity_asset: str | None = Field(default=None, deprecated=True)
 
 
 class PortfolioControls(BaseModel):

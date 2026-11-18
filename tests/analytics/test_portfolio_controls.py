@@ -160,9 +160,21 @@ def test_controls_preserve_optimizer_and_bootstrap_indices(panel):
         return value
 
     assert without_timing(plain["objectives"]) == without_timing(controlled["objectives"])
-    assert without_timing(plain["paired_comparison"]) == without_timing(
-        controlled["paired_comparison"]
-    )
+    passive_pairs = plain["paired_comparison"]
+    managed_pairs = controlled["paired_comparison"]
+    assert passive_pairs["user_portfolio_mode"] == "passive"
+    assert managed_pairs["user_portfolio_mode"] == "controlled"
+    assert passive_pairs["generated_datasets"] == managed_pairs["generated_datasets"] == 4
+    # Validation reference moments still use the same generated market observations.
+    assert passive_pairs["annual_mean"] == managed_pairs["annual_mean"]
+    assert passive_pairs["annual_covariance"] == managed_pairs["annual_covariance"]
+    for i, pair in enumerate(managed_pairs["results"]):
+        sample = controlled["portfolio_control_samples"][2 * i + 1]
+        assert pair["user"]["annualized_cagr"] == sample["controlled"]["net"]["annualized_cagr"]
+        assert (
+            passive_pairs["results"][i]["user"]["annualized_cagr"]
+            == sample["baseline"]["net"]["annualized_cagr"]
+        )
 
 
 @pytest.mark.parametrize("basis", ["nominal", "real"])
@@ -193,7 +205,6 @@ def test_control_api_alignment_and_original_universe(
                 trend=dict(
                     destination="hedge",
                     asset_rules={"1": dict(indicator="sma", lookback_months=3)},
-                    sensitivity_asset="1",
                 ),
             ),
             frontier_points=3,
@@ -212,7 +223,7 @@ def test_control_api_alignment_and_original_universe(
                 assert [
                     p["lookback_months"]
                     for p in result["portfolio_controls"]["sensitivity"]["points"]
-                ] == list(range(2, 37))
+                ] == list(range(1, 37))
             assert result["portfolio_controls"]["assets"] == ["1", "2", "3", "99"]
             if kind == "bootstrap":
                 assert len(result["portfolio_control_samples"]) == 4
@@ -299,3 +310,76 @@ def test_hedge_shortening_and_fingerprint(panel, monkeypatch):
     aligned.control_returns.iloc[0, 2] += 0.001
     transform_control_panel(aligned)
     assert panel_provenance(aligned)["reference_panel_sha256"] != first
+
+
+def test_zero_weight_sensitivity_does_not_run_extra_simulations(panel, monkeypatch):
+    from dataclasses import replace
+
+    from app.analytics.portfolio_controls import attach_control_results
+
+    config = {
+        "mode": "trend",
+        "hedge_weights": {"2": 1},
+        "trend": {
+            "destination": "hedge",
+            "asset_rules": {"3": {"indicator": "sma", "lookback_months": 12}},
+            "sensitivity_asset": "3",
+        },
+    }
+    panel = replace(panel, control_config=config, control_returns=panel.returns)
+    calls = []
+
+    def fake_compare(*args, **kwargs):
+        calls.append(kwargs)
+        return {"controlled": {}}
+
+    monkeypatch.setattr("app.analytics.portfolio_controls.compare_controls", fake_compare)
+    result = {}
+    attach_control_results(panel, result, {"1": 0.6, "2": 0.4, "3": 0})
+    assert len(calls) == 1
+    assert "sensitivity" not in result["portfolio_controls"]
+
+
+def test_sensitivity_applies_common_period_to_all_enabled_assets(panel):
+    from copy import deepcopy
+    from dataclasses import replace
+
+    from app.analytics.portfolio_controls import attach_control_results, compare_controls
+
+    config = {
+        "mode": "trend",
+        "hedge_weights": {"3": 1},
+        "trend": {
+            "destination": "hedge",
+            "asset_rules": {
+                "1": {"indicator": "momentum", "lookback_months": 10},
+                "2": {"indicator": "sma", "lookback_months": 12},
+                "3": {"indicator": "disabled", "lookback_months": 8},
+            },
+            "sensitivity_asset": "1",
+        },
+    }
+    panel = replace(
+        panel,
+        control_config=config,
+        control_returns=panel.returns,
+        simulation_options={"transaction_fee_rate": 0.002},
+    )
+    weights = {"1": 0.5, "2": 0.3, "3": 0.2}
+    result = {"portfolio_controls": compare_controls(panel, weights)}
+    attach_control_results(panel, result, weights)
+    controls = result["portfolio_controls"]
+    assert controls["sensitivity"]["scope"] == "common_lookback"
+    points = controls["sensitivity"]["points"]
+    assert [p["lookback_months"] for p in points] == list(range(1, 37))
+    for period in (1, 10, 12, 36):
+        changed = deepcopy(config)
+        for asset in ("1", "2"):
+            changed["trend"]["asset_rules"][asset]["lookback_months"] = period
+        expected = compare_controls(replace(panel, control_config=changed), weights)["controlled"]
+        assert points[period - 1] == {
+            "lookback_months": period,
+            "gross": expected["gross"],
+            "net": expected["net"],
+        }
+    assert controls["config"]["trend"]["asset_rules"] == config["trend"]["asset_rules"]

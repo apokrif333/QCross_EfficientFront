@@ -115,6 +115,34 @@ def test_missing_bil_is_not_replaced_by_a_fixed_rate(panel):
         )
 
 
+@pytest.mark.parametrize("mode", ["downside_vol", "trend"])
+def test_rebalancing_rejects_controls_in_engine_and_api(panel, settings, mode):
+    from dataclasses import replace
+
+    config = {
+        "mode": mode,
+        "hedge_weights": {"2": 1},
+        "downside_vol": {"target_annual": 0.06, "lookback_months": 1},
+        "trend": {"destination": "hedge", "asset_rules": {}},
+    }
+    with pytest.raises(AnalyticsError, match="only for passive portfolios"):
+        analyze_rebalancing(
+            replace(panel, control_config=config), user_weights={"1": 0.6, "2": 0.4}
+        )
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/api/v1/analytics/rebalancing-optimization",
+            json={
+                "instrument_ids": [1, 2],
+                "user_weights": {"1": 0.6, "2": 0.4},
+                "portfolio_controls": config,
+            },
+        )
+        assert response.status_code == 422
+        assert "only for passive portfolios" in response.text
+        assert not client.app.state.analytics_jobs.jobs
+
+
 @pytest.mark.parametrize("basis", ["nominal", "real"])
 def test_async_rebalancing_job_ignores_global_objective_and_cv_history(
     panel, settings, session_factory, basis

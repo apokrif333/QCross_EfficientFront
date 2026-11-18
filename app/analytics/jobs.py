@@ -21,6 +21,7 @@ def _worker(connection, panel, kind: str, options: dict) -> None:
     from app.analytics.bootstrap import analyze_bootstrap, analyze_resampled_frontier
     from app.analytics.cross_validation import analyze_cross_validation
     from app.analytics.frontier import analyze_frontier
+    from app.analytics.portfolio_controls import analyze_asset_trend_sensitivity
     from app.analytics.rebalancing import analyze_rebalancing
     from app.analytics.rolling_efficiency import analyze_rolling_efficiency
 
@@ -31,6 +32,7 @@ def _worker(connection, panel, kind: str, options: dict) -> None:
         "resampled-frontier": analyze_resampled_frontier,
         "rolling-efficiency": analyze_rolling_efficiency,
         "rebalancing-optimization": analyze_rebalancing,
+        "asset-trend-sensitivity": analyze_asset_trend_sensitivity,
     }
     try:
         api_request = options.pop("_api_request", None)
@@ -40,7 +42,9 @@ def _worker(connection, panel, kind: str, options: dict) -> None:
         result["reproducibility"]["random_seed"] = (
             api_request.get("random_seed") if api_request else None
         )
-        result["reproducibility"]["optimization_parameters"] = options
+        result["reproducibility"]["optimization_parameters"] = {
+            k: v for k, v in options.items() if k != "bootstrap_control_cache"
+        }
         connection.send({"result": result})
     except Exception as exc:
         connection.send({"error": f"{type(exc).__name__}: {exc}"})

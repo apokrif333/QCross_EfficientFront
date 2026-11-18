@@ -8,17 +8,20 @@ export default function PairedDifferenceHistogram({
 }: {
   value?: PairedComparison | null;
 }) {
-  const [metric, setMetric] = useState<"delta_cagr" | "delta_volatility">(
-    "delta_cagr",
-  );
+  const [metric, setMetric] = useState<
+    "delta_cagr" | "delta_volatility" | "delta_max_drawdown"
+  >("delta_cagr");
   if (!value)
     return (
       <p className="hint">
         Для распределений разниц повторите Bootstrap с вашим портфелем.
       </p>
     );
-  const isCagr = metric === "delta_cagr";
-  const label = isCagr ? "Разница CAGR" : "Разница волатильности";
+  const label = {
+    delta_cagr: "Разница CAGR",
+    delta_volatility: "Разница волатильности",
+    delta_max_drawdown: "Разница просадки",
+  }[metric];
   const samples = value.results.flatMap((r) => {
     const delta = r.differences?.[metric];
     return r.optimized && delta != null && Number.isFinite(delta)
@@ -39,8 +42,8 @@ export default function PairedDifferenceHistogram({
         Оптимизированный портфель − ваш портфель, п.п. Для каждой пары
         используются одни и те же месяцы Validation. Успешных значений:{" "}
         {samples.length} из {value.requested_comparisons}. Горизонт:{" "}
-        {value.horizon_months ?? "—"} мес. Для волатильности отрицательная
-        разница означает снижение риска.
+        {value.horizon_months ?? "—"} мес. Для волатильности и максимальной
+        просадки отрицательная разница означает снижение.
       </p>
       <div
         className="segmented"
@@ -49,19 +52,27 @@ export default function PairedDifferenceHistogram({
       >
         <button
           type="button"
-          className={isCagr ? "active" : ""}
-          aria-pressed={isCagr}
+          className={metric === "delta_cagr" ? "active" : ""}
+          aria-pressed={metric === "delta_cagr"}
           onClick={() => setMetric("delta_cagr")}
         >
           Разница CAGR
         </button>
         <button
           type="button"
-          className={!isCagr ? "active" : ""}
-          aria-pressed={!isCagr}
+          className={metric === "delta_volatility" ? "active" : ""}
+          aria-pressed={metric === "delta_volatility"}
           onClick={() => setMetric("delta_volatility")}
         >
           Разница волатильности
+        </button>
+        <button
+          type="button"
+          className={metric === "delta_max_drawdown" ? "active" : ""}
+          aria-pressed={metric === "delta_max_drawdown"}
+          onClick={() => setMetric("delta_max_drawdown")}
+        >
+          Разница просадки
         </button>
       </div>
       <h4>{label}, п.п.</h4>

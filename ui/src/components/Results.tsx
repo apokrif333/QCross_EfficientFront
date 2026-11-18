@@ -42,7 +42,7 @@ function hover(
 ) {
   const m = p.metrics;
   const digits = p.status === "historical_path" ? 3 : 2;
-  return `<b>${escape(label)}</b><br>${p.status === "historical_path" ? "Историческая" : "Ожидаемая"} (арифм.) ${percent(m?.expected_return, digits)}<br>Историческая CAGR ${percent(m?.historical_cagr, digits)}<br>Волатильность ${percent(displayedVolatility(m), digits)}${p.status === "historical_path" || !showEstimated ? "" : `<br>Estimated Sharpe ${number(m?.sharpe_ratio)}`}<br>Historical Sharpe ${number(m?.historical_sharpe_ratio, p.status === "historical_path" ? 4 : 3)}<br>${visibleWeights(
+  return `<b>${escape(label)}</b><br>${p.status === "historical_path" ? "Историческая" : "Ожидаемая"} (арифм.) ${percent(m?.expected_return, digits)}<br>Историческая CAGR ${percent(m?.historical_cagr, digits)}<br>Волатильность ${percent(displayedVolatility(m), digits)}<br>Максимальная просадка (DD) ${percent(m?.historical_max_drawdown, digits)}${p.status === "historical_path" || !showEstimated ? "" : `<br>Estimated Sharpe ${number(m?.sharpe_ratio)}`}<br>Historical Sharpe ${number(m?.historical_sharpe_ratio, p.status === "historical_path" ? 4 : 3)}<br>${visibleWeights(
     p.weights ?? {},
   )
     .map(([a, w]) => `${escape(ticker(a, instruments))}: ${percent(w)}`)
@@ -121,7 +121,11 @@ function BootstrapPortfolioMetrics({ result }: { result: BootstrapResult }) {
   };
   return (
     <section className="subsection">
-      <h3>Показатели фиксированного портфеля</h3>
+      <h3>
+        {robustness.user_portfolio_mode === "controlled"
+          ? "Показатели портфеля под управлением"
+          : "Показатели фиксированного портфеля"}
+      </h3>
       {robustness.gross_distributions && (
         <div className="segmented">
           <button aria-pressed={!gross} onClick={() => setGross(false)}>
@@ -1220,35 +1224,35 @@ export function ResampledView({
   result: ResampledResult;
   instruments: Instrument[];
 }) {
+  const controlled = r.user_portfolio_mode === "controlled";
+  const originalLabel = controlled
+    ? "Портфель под управлением — исходная выборка"
+    : "Ваш портфель — исходная выборка";
+  const averageLabel = controlled
+    ? "Портфель под управлением — среднее Bootstrap"
+    : "Ваш портфель — среднее Bootstrap";
   const data = useMemo(
     () => [
       trace(r.frontier, "Resampled Frontier", "#b98943", instruments, true),
       ...assetTrace(r.asset_portfolios, instruments),
       ...(r.user_portfolio?.metrics && r.user_portfolio.weights
-        ? [
-            trace(
-              [r.user_portfolio],
-              "Ваш портфель — исходная выборка",
-              "#1d7880",
-              instruments,
-            ),
-          ]
+        ? [trace([r.user_portfolio], originalLabel, "#1d7880", instruments)]
         : []),
       ...(r.user_sample_average
         ? [
             {
               type: "scatter",
               mode: "markers",
-              name: "Ваш портфель — среднее Bootstrap",
+              name: averageLabel,
               x: [r.user_sample_average.volatility],
               y: [r.user_sample_average.expected_return],
               marker: { color: "#893e88", size: 14, symbol: "star" },
-              hovertemplate: `<b>Ваш портфель — среднее Bootstrap</b><br>Средняя годовая доходность: %{y:.2%}<br>Средняя годовая волатильность: %{x:.2%}<br>Успешных выборок: ${r.user_sample_average.successful_samples}<extra></extra>`,
+              hovertemplate: `<b>${averageLabel}</b><br>Средняя годовая ${controlled ? "историческая арифметическая доходность после комиссий" : "доходность"}: %{y:.2%}<br>Средняя годовая ${controlled ? "историческая " : ""}волатильность: %{x:.2%}<br>Успешных выборок: ${r.user_sample_average.successful_samples}<extra></extra>`,
             } as Data,
           ]
         : []),
     ],
-    [r, instruments],
+    [r, instruments, originalLabel, averageLabel, controlled],
   );
   const [selected, setSelected] = useState<{
     label: string;
@@ -1272,8 +1276,8 @@ export function ResampledView({
                       ),
                       instruments,
                     )
-                  : e.points[0].data.name === "Ваш портфель — исходная выборка"
-                    ? "Ваш портфель — исходная выборка"
+                  : e.points[0].data.name === originalLabel
+                    ? originalLabel
                     : "Resampled point",
               portfolio: e.points[0].customdata as unknown as Portfolio,
             });
@@ -1283,9 +1287,26 @@ export function ResampledView({
       <p className="hint">
         Усреднены веса при одинаковой risk aversion. Это не точная классическая
         efficient frontier.
+        {controlled &&
+          " Обе точки вашего портфеля показывают управляемые траектории после комиссий: на исходной истории и в среднем по Bootstrap. Каждая выборка использует собственную траекторию управления. Кривая построена по модельным оценкам; точки управляемого портфеля показывают исторические показатели."}
         {r.user_sample_average &&
           " Кривая и исходная точка оценены на полной выборке; средняя точка — среднее доходности и волатильности вашего портфеля в успешных Bootstrap-выборках."}
       </p>
+      {controlled && r.user_sample_diagnostics?.reused_samples != null && (
+        <p className="hint">
+          Сохранённых траекторий Bootstrap использовано:{" "}
+          {r.user_sample_diagnostics.reused_samples}. Рассчитано заново:{" "}
+          {r.user_sample_diagnostics.computed_samples}.
+        </p>
+      )}
+      {!!r.user_sample_diagnostics?.failed_control_samples && (
+        <p className="warning">
+          Ошибок расчёта управления:{" "}
+          {r.user_sample_diagnostics.failed_control_samples}. Средняя точка
+          использует {r.user_sample_diagnostics.successful_samples} успешных
+          выборок.
+        </p>
+      )}
       {r.failed_iterations > 0 && (
         <pre>{JSON.stringify(r.failure_reasons, null, 2)}</pre>
       )}

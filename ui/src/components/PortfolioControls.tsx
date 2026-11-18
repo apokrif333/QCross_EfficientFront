@@ -17,6 +17,9 @@ export default function PortfolioControls({
   locked: boolean;
 }) {
   const c = request.portfolio_controls ?? { mode: "none", hedge_weights: {} };
+  const weightedAssets = request.instrument_ids.filter(
+    (id) => (request.user_weights?.[String(id)] ?? 0) > 0,
+  );
   const [hedgeQuery, setHedgeQuery] = useState("");
   const hedgeMatch = instruments.find(
     (i) =>
@@ -124,7 +127,7 @@ export default function PortfolioControls({
                     <option value="hedge">Хедж-портфель</option>
                   </select>
                 </label>
-                {request.instrument_ids.map((id) => {
+                {weightedAssets.map((id) => {
                   const key = String(id);
                   const rule = c.trend!.asset_rules[key] ?? {
                     indicator: "disabled",
@@ -162,7 +165,7 @@ export default function PortfolioControls({
                         Период, месяцев
                         <input
                           type="number"
-                          min="2"
+                          min="1"
                           max="36"
                           value={rule.lookback_months}
                           disabled={rule.indicator === "disabled"}
@@ -186,39 +189,10 @@ export default function PortfolioControls({
                     </div>
                   );
                 })}
-                <label>
-                  Актив для 3D-чувствительности периода
-                  <select
-                    value={c.trend.sensitivity_asset ?? ""}
-                    onChange={(e) =>
-                      set({
-                        ...c,
-                        trend: {
-                          ...c.trend!,
-                          sensitivity_asset: e.target.value || null,
-                        },
-                      })
-                    }
-                  >
-                    <option value="">Не рассчитывать</option>
-                    {request.instrument_ids
-                      .filter(
-                        (id) =>
-                          c.trend!.asset_rules[String(id)]?.indicator &&
-                          c.trend!.asset_rules[String(id)].indicator !==
-                            "disabled",
-                      )
-                      .map((id) => (
-                        <option key={id} value={id}>
-                          {instruments.find((i) => i.id === id)?.ticker ?? id}
-                        </option>
-                      ))}
-                  </select>
-                </label>
                 <p className="hint">
                   При отсутствии активных позиций весь капитал направляется в
-                  заданный хедж. Чувствительность: 35 расчётов для одного
-                  актива, периоды 2–36 месяцев, после запуска расчёта.
+                  заданный хедж. График чувствительности проверяет общий период
+                  от 1 до 36 месяцев для активов с включённым SMA или Momentum.
                 </p>
               </>
             )}

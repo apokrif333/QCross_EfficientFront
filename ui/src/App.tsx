@@ -14,7 +14,13 @@ import type {
   RebalancingResult,
 } from "./types";
 import { DEFAULT_REQUEST, METHODS } from "./types";
-import { fetchCatalog, requestJson, runJob } from "./lib/api";
+import {
+  fetchCatalog,
+  requestJson,
+  runAssetTrendSensitivity,
+  runJob,
+} from "./lib/api";
+import { reusableControlCache } from "./lib/controlCache";
 import {
   compareCalculations,
   compatible,
@@ -87,7 +93,7 @@ export default function App() {
   const [error, setError] = useState(""),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(""),
-    [progress, setProgress] = useState<Job | null>(null);
+    [progress, setProgress] = useState<Job<unknown> | null>(null);
   const [baseline, setBaseline] = useState<Calculation[]>([]),
     [comparisons, setComparisons] = useState<
       { label: string; comparison: Comparison }[]
@@ -193,9 +199,14 @@ export default function App() {
     bootstrap = records.find((c) => c.kind === "bootstrap"),
     rebalancing = records.find((c) => c.kind === "rebalancing-optimization"),
     resampled = records.find((c) => c.kind === "resampled-frontier");
+  const rebalancingBlocked =
+    tab === "Rebalancing Optimization" &&
+    (request.portfolio_controls?.mode ?? "none") !== "none";
   const visible =
     tab === "Rebalancing Optimization"
-      ? rebalancing
+      ? rebalancingBlocked
+        ? undefined
+        : rebalancing
       : tab === "Cross-validation"
         ? cv
         : tab === "Bootstrap"
@@ -297,7 +308,15 @@ export default function App() {
     };
     const cvError = cvHistoryError(body, kind, commonObservations);
     if (cvError) throw new Error(cvError);
-    const result = await runJob(kind, body, setProgress, signal);
+    const result = await runJob(
+      kind,
+      body,
+      setProgress,
+      signal,
+      kind === "resampled-frontier"
+        ? reusableControlCache(body, calculations)
+        : undefined,
+    );
     const calculation: Calculation = {
       id: crypto.randomUUID(),
       kind,
@@ -317,6 +336,61 @@ export default function App() {
       ),
     ]);
     return calculation;
+  }
+  async function addTrendSensitivity(
+    calculation: Calculation,
+    signal: AbortSignal,
+  ): Promise<Calculation> {
+    const referenceHash =
+      calculation.result.reproducibility.reference_panel_sha256;
+    if (!referenceHash)
+      throw new Error(
+        "Повторите общий расчёт портфеля, чтобы рассчитать чувствительность активов.",
+      );
+    const body = effectiveRequest(calculation.request);
+    const sensitivity = await runAssetTrendSensitivity(
+      {
+        ...body,
+        return_basis: body.return_basis ?? "nominal",
+        risk_free_source: body.risk_free_source ?? "fixed_annual",
+      },
+      referenceHash,
+      setProgress,
+      signal,
+    );
+    const next = {
+      ...calculation,
+      result: {
+        ...calculation.result,
+        asset_trend_sensitivity: Object.fromEntries(
+          Object.entries(sensitivity.by_asset).map(([id, series]) => [
+            id,
+            { ...series, reproducibility: sensitivity.reproducibility },
+          ]),
+        ),
+      },
+    };
+    setCalculations((current) =>
+      current.map((record) => (record.id === next.id ? next : record)),
+    );
+    return next;
+  }
+  async function calculateTrendSensitivity(calculation: Calculation) {
+    if (busy) return;
+    setError("");
+    setProgress(null);
+    const abort = new AbortController();
+    controller.current = abort;
+    setBusy("Чувствительность SMA/Momentum по активам");
+    try {
+      await addTrendSensitivity(calculation, abort.signal);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy("");
+      setProgress(null);
+      controller.current = null;
+    }
   }
   async function calculate(kinds: Kind[], compare = false) {
     if (formError) {
@@ -407,7 +481,7 @@ export default function App() {
         setBusy(
           `Повторение ${original.kind} · ${original.request.covariance_method}`,
         );
-        const next = await execute(
+        let next = await execute(
           original.kind,
           {
             ...original.request,
@@ -421,11 +495,14 @@ export default function App() {
           },
           abort.signal,
         );
+        if (Object.keys(original.result.asset_trend_sensitivity ?? {}).length)
+          next = await addTrendSensitivity(next, abort.signal);
+        const comparison = compareCalculations(original, next, absTol, relTol);
         setComparisons((prev) => [
           ...prev,
           {
             label: `${original.kind} / ${original.request.covariance_method}`,
-            comparison: compareCalculations(original, next, absTol, relTol),
+            comparison,
           },
         ]);
       }
@@ -657,7 +734,10 @@ export default function App() {
                 <button
                   className="primary"
                   disabled={
-                    !!busy || !!formError || request.instrument_ids.length < 2
+                    !!busy ||
+                    !!formError ||
+                    request.instrument_ids.length < 2 ||
+                    rebalancingBlocked
                   }
                   onClick={() =>
                     void calculate(
@@ -760,13 +840,23 @@ export default function App() {
                 </div>
               </>
             )}
-            {tab === "Rebalancing Optimization" && rebalancing && (
-              <RebalancingView
-                result={rebalancing.result as RebalancingResult}
-                instruments={instruments}
-              />
+            {tab === "Rebalancing Optimization" && (
+              <p className="hint">
+                Оптимизация ребалансировки доступна только для пассивного
+                портфеля.
+                {rebalancingBlocked &&
+                  " Для расчёта выберите режим «Без управления»."}
+              </p>
             )}
-            {tab !== "Snapshot" && !visible && (
+            {tab === "Rebalancing Optimization" &&
+              rebalancing &&
+              !rebalancingBlocked && (
+                <RebalancingView
+                  result={rebalancing.result as RebalancingResult}
+                  instruments={instruments}
+                />
+              )}
+            {tab !== "Snapshot" && !visible && !rebalancingBlocked && (
               <div className="empty">
                 <span>↗</span>
                 <h3>Расчёт ещё не выполнен</h3>
@@ -912,10 +1002,18 @@ export default function App() {
                 {visible.origin.toUpperCase()} · {visible.result.status}
               </p>
               <ControlResults
+                key={visible.id}
                 result={visible.result}
                 instruments={instruments}
                 gross={controlGross}
                 onGrossChange={setControlGross}
+                userWeights={visible.request.user_weights}
+                sensitivityBusy={!!busy}
+                onCalculateSensitivity={
+                  mode === "live"
+                    ? () => void calculateTrendSensitivity(visible)
+                    : undefined
+                }
               />
               {visible.result.warnings.map((w, i) => (
                 <p className="warning" key={i}>

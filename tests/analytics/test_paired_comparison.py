@@ -1,4 +1,5 @@
 import time
+from base64 import b64decode
 
 import numpy as np
 import pytest
@@ -69,6 +70,18 @@ def test_paired_sampling_alignment_and_moments(panel, method, basis):
             values[valid], np.array(list(record["weights"].values())), rf[valid]
         )
         assert record["optimized"] == opt
+        for label, weights in [("user", USER), ("optimized", record["weights"])]:
+            from app.analytics.portfolio_simulator import simulate_portfolio
+
+            saved = np.exp(np.frombuffer(b64decode(record["wealth_log_f32"][label]), dtype="<f4"))
+            path = simulate_portfolio(
+                values[valid],
+                [weights[a] for a in panel.assets],
+                rf[valid],
+                record_history=False,
+                allow_solver_residuals=True,
+            )["net_wealth"]
+            np.testing.assert_allclose(saved, path, rtol=2e-6)
         assert record["differences"]["delta_cagr"] == pytest.approx(
             opt["annualized_cagr"] - expected["annualized_cagr"]
         )
@@ -129,6 +142,21 @@ def test_zero_sharpe_denominator_and_delta_drawdown(panel):
     assert summary["win_frequencies"]["higher_sharpe"]["denominator"] == 0
 
 
+def test_lower_drawdown_frequency_excludes_failed_and_missing_and_counts_ties():
+    records = [
+        {"optimized": {}, "differences": {"delta_max_drawdown": delta}}
+        for delta in (-0.1, 0, 0.2, None)
+    ]
+    records.append({"optimized": None, "differences": {"delta_max_drawdown": -0.2}})
+    result = summarize(records)["win_frequencies"]["lower_drawdown"]
+    assert result["denominator"] == 3
+    assert result["fraction"] == pytest.approx(1 / 3)
+    assert summarize([])["win_frequencies"]["lower_drawdown"] == {
+        "fraction": None,
+        "denominator": 0,
+    }
+
+
 def test_500_datasets_have_250_pairs_and_500_user_paths(panel):
     started = time.perf_counter()
     result = analyze_bootstrap(
@@ -136,6 +164,9 @@ def test_500_datasets_have_250_pairs_and_500_user_paths(panel):
     )
     assert result["paired_comparison"]["valid_count"] == 250
     assert result["paired_comparison"]["generated_datasets"] == 500
+    assert [r["validation_generation"] for r in result["paired_comparison"]["results"]] == list(
+        range(2, 501, 2)
+    )
     for key, data in result["efficiency_robustness"]["distributions"].items():
         assert data["valid_count"] == 500, key
     print(f"500 datasets / 250 pairs: {time.perf_counter() - started:.3f} seconds")
@@ -167,6 +198,9 @@ def test_paired_jobs_and_new_objective(panel, settings, session_factory, basis):
             if endpoint in {"cross-validation", "bootstrap"}:
                 assert result["paired_comparison"]["valid_count"] == (
                     4 if endpoint == "cross-validation" else 2
+                )
+                assert ("wealth_log_f32" in result["paired_comparison"]["results"][0]) == (
+                    endpoint == "bootstrap"
                 )
         invalid = {**body, "bootstrap_iterations": 3}
         assert client.post("/api/v1/analytics/bootstrap", json=invalid).status_code == 422

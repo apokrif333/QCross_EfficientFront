@@ -295,3 +295,42 @@ comparison job. See [request, response, charts and example](rebalancing-optimiza
 
 Requests optionally accept typed `portfolio_controls` (`none`, `downside_vol`,
 `trend`). See [configuration, alignment and separate response fields](portfolio-controls.md).
+
+## Controlled Bootstrap comparison
+
+`POST /api/v1/analytics/bootstrap` reports
+`paired_comparison.user_portfolio_mode = "controlled"` when `portfolio_controls.mode`
+is enabled. The optimizer uses net realized controlled Train volatility as its risk
+budget (`risk_budget_source = "controlled_training_path"`). Each pair's `user`,
+`differences` and Validation `clouds[].user` use the controlled Validation path.
+The optimizer's weights are selected on Train and frozen for Validation.
+
+`efficiency_robustness.user_portfolio_mode` identifies whether the all-generation
+performance distributions describe the controlled or passive portfolio. Both gross
+and net distributions are available. Passive and controlled results for each generated
+dataset remain in `portfolio_control_samples`; failed controlled comparisons are
+reported without a passive fallback. Legacy snapshots without the mode field retain
+their original passive interpretation. Recalculate to obtain controlled comparisons.
+
+For `resampled-frontier`, `user_portfolio_mode = "controlled"` means both
+`user_portfolio.metrics` and `user_sample_average` use net controlled historical paths.
+Their plotted `expected_return` is annual arithmetic path return; `volatility` is
+realized annualized path volatility. The original marker has `status = "historical_path"`.
+`user_sample_diagnostics` exposes successful samples, failed control samples with
+reasons and excluded frontier samples. Control failures do not change frontier status.
+The shared-risk-aversion curve remains model-based. Legacy results without the mode
+field retain their existing passive markers; rerun to calculate controlled markers.
+
+Bootstrap responses include `portfolio_control_cache` when controls are active.
+Optionally pass this object as `bootstrap_control_cache` to `resampled-frontier`.
+The server verifies its data/settings key and per-generation index hashes before
+reuse. The cache is a calculation artifact and is omitted from the saved API request
+and optimization settings; Bootstrap snapshot results retain it. Resampled diagnostics
+include `cache_status`, `reused_samples`, and `computed_samples`. Incompatible or
+missing cache entries are computed normally. No resampling or curve methodology
+changes are involved.
+
+`POST /api/v1/analytics/rebalancing-optimization` requires
+`portfolio_controls.mode = "none"` (the default). Active `downside_vol` or `trend`
+controls return HTTP 422 before a job is submitted. Select the passive portfolio
+mode to compare rebalancing rules.

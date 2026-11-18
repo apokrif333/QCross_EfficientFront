@@ -1,7 +1,47 @@
 import { useState } from "react";
 import Plot from "./Plot";
 import { number, percent, ticker, escapeHtml } from "../lib/display";
-import type { Instrument } from "../types";
+import type {
+  AssetTrendSensitivityResult,
+  Instrument,
+  TrendSensitivityPoint,
+} from "../types";
+
+function sensitivityRegression(
+  points: TrendSensitivityPoint[],
+  side: "gross" | "net",
+) {
+  const pairs = points.flatMap((point) => {
+    const x = point[side].maximum_drawdown;
+    const y = point[side].annualized_cagr;
+    return typeof x === "number" &&
+      Number.isFinite(x) &&
+      typeof y === "number" &&
+      Number.isFinite(y)
+      ? [{ x, y }]
+      : [];
+  });
+  if (pairs.length < 2) return null;
+  const x = [
+    Math.min(...pairs.map((p) => p.x)),
+    Math.max(...pairs.map((p) => p.x)),
+  ];
+  const yMin = Math.min(...pairs.map((p) => p.y));
+  const yMax = Math.max(...pairs.map((p) => p.y));
+  if (x[0] === x[1]) return null;
+  const meanX = pairs.reduce((sum, p) => sum + p.x, 0) / pairs.length;
+  const meanY = pairs.reduce((sum, p) => sum + p.y, 0) / pairs.length;
+  const xx = pairs.reduce((sum, p) => sum + (p.x - meanX) ** 2, 0);
+  const yy = pairs.reduce((sum, p) => sum + (p.y - meanY) ** 2, 0);
+  if (xx === 0) return null;
+  const xy = pairs.reduce((sum, p) => sum + (p.x - meanX) * (p.y - meanY), 0);
+  const correlation =
+    yMin === yMax || yy === 0
+      ? null
+      : Math.max(-1, Math.min(1, xy / Math.sqrt(xx * yy)));
+  const y = x.map((value) => meanY + (xy / xx) * (value - meanX));
+  return { correlation, x, y };
+}
 
 const labels: Record<string, string> = {
   annualized_cagr: "CAGR",
@@ -29,18 +69,36 @@ const metric = (key: string, v: number | null) =>
       ? `$${number(v, 4)}`
       : percent(v, 3);
 
+function drawdowns(wealth: (number | null)[]): (number | null)[] {
+  let peak = 0;
+  let missing = false;
+  return wealth.map((value) => {
+    if (value == null || !Number.isFinite(value) || value < 0) missing = true;
+    if (missing || value == null) return null;
+    peak = Math.max(peak, value);
+    return peak > 0 ? value / peak - 1 : null;
+  });
+}
+
 export default function ControlResults({
   result,
   instruments,
   gross: selectedGross,
   onGrossChange,
+  userWeights,
+  sensitivityBusy,
+  onCalculateSensitivity,
 }: {
   result: any;
   instruments: Instrument[];
   gross?: boolean;
   onGrossChange?: (value: boolean) => void;
+  userWeights?: Record<string, number> | null;
+  sensitivityBusy?: boolean;
+  onCalculateSensitivity?: () => void;
 }) {
   const [localGross, setLocalGross] = useState(false);
+  const [sensitivityAsset, setSensitivityAsset] = useState<string | null>(null);
   const gross = selectedGross ?? localGross;
   const setGross = onGrossChange ?? setLocalGross;
   const c = result.portfolio_controls;
@@ -48,6 +106,23 @@ export default function ControlResults({
   const side = gross ? "gross" : "net";
   const name = (a: string) =>
     a === "BIL_REFERENCE" ? "BIL" : ticker(a, instruments);
+  const portfolioSensitivity: TrendSensitivityPoint[] =
+    c.sensitivity?.scope === "common_lookback" ? c.sensitivity.points : [];
+  const byAsset: Record<string, AssetTrendSensitivityResult> =
+    result.asset_trend_sensitivity ?? {};
+  const trendAssets = (c.assets as string[]).filter((asset) => {
+    const indicator = c.config.trend?.asset_rules?.[asset]?.indicator;
+    return (
+      (userWeights?.[asset] ?? 0) > 0 &&
+      (indicator === "sma" || indicator === "momentum")
+    );
+  });
+  const pages = [null, ...trendAssets.filter((asset) => byAsset[asset])];
+  const page = Math.max(0, pages.indexOf(sensitivityAsset));
+  const activeAsset = pages[page];
+  const assetSeries = activeAsset === null ? undefined : byAsset[activeAsset];
+  const sensitivity = assetSeries?.points ?? portfolioSensitivity;
+  const regression = sensitivityRegression(sensitivity, side);
   const annualCommission = (path: any): number | null => {
     if (
       !Array.isArray(path.events) ||
@@ -141,6 +216,18 @@ export default function ControlResults({
         }))}
       />
       <Plot
+        title="Просадки: исходный и управляемый"
+        data={["baseline", "controlled"].map((k) => ({
+          type: "scatter",
+          mode: "lines",
+          name: k === "baseline" ? "Исходный" : "Управляемый",
+          x: [c.months[0], ...c.months],
+          y: drawdowns(c[k][`${side}_wealth`]),
+          hovertemplate: "%{fullData.name}<br>%{x}: %{y:.2%}<extra></extra>",
+        }))}
+        layout={{ yaxis: { title: { text: "Просадка" }, tickformat: ".0%" } }}
+      />
+      <Plot
         title="Управляемый портфель: фактические веса"
         data={c.assets
           .map((a: string, i: number) => ({ a, i }))
@@ -214,38 +301,110 @@ export default function ControlResults({
           }}
         />
       )}
-      {c.sensitivity && (
-        <Plot
-          title={`Чувствительность SMA/Momentum: ${name(c.sensitivity.asset)}`}
-          threeD
-          height={500}
-          data={[
-            {
-              type: "scatter3d",
-              mode: "lines+markers",
-              x: c.sensitivity.points.map((p: any) => p[side].annualized_cagr),
-              y: c.sensitivity.points.map(
-                (p: any) => p[side].annualized_volatility,
-              ),
-              z: c.sensitivity.points.map((p: any) => p.lookback_months),
-              text: c.sensitivity.points.map(
-                (p: any) =>
-                  `Период: ${p.lookback_months}<br>CAGR: ${percent(p[side].annualized_cagr)}<br>Vol: ${percent(p[side].annualized_volatility)}<br>Sharpe: ${number(p[side].historical_sharpe_ratio)}<br>Просадка: ${percent(p[side].maximum_drawdown)}<br>Комиссии: ${percent(p.total_commissions)} начального капитала`,
-              ),
-              hovertemplate: "%{text}<extra></extra>",
-            },
-          ]}
-          layout={{
-            scene: {
-              xaxis: { title: { text: "CAGR" }, tickformat: ".1%" },
-              yaxis: {
-                title: { text: "Годовая волатильность" },
+      {portfolioSensitivity.length > 0 && (
+        <>
+          <h4>Чувствительность к периоду SMA/Momentum</h4>
+          {onCalculateSensitivity &&
+            trendAssets.some((asset) => !byAsset[asset]) && (
+              <button
+                type="button"
+                disabled={sensitivityBusy}
+                onClick={onCalculateSensitivity}
+              >
+                Рассчитать для активов
+              </button>
+            )}
+          {pages.length > 1 && (
+            <div
+              className="sensitivity-actions"
+              aria-label="Выбор графика чувствительности"
+            >
+              <button
+                type="button"
+                aria-label="Предыдущий график"
+                onClick={() =>
+                  setSensitivityAsset(
+                    pages[(page - 1 + pages.length) % pages.length],
+                  )
+                }
+              >
+                ←
+              </button>
+              <strong aria-live="polite">
+                {activeAsset === null ? "Весь портфель" : name(activeAsset)}
+              </strong>
+              <button
+                type="button"
+                aria-label="Следующий график"
+                onClick={() =>
+                  setSensitivityAsset(pages[(page + 1) % pages.length])
+                }
+              >
+                →
+              </button>
+            </div>
+          )}
+          <p className="hint">
+            {assetSeries
+              ? `${name(assetSeries.asset_id)}: 100% начального веса, ${assetSeries.indicator === "sma" ? "SMA" : "Momentum"}. При выходе по сигналу капитал переходит в заданный хедж.`
+              : "Для каждой точки один период применяется ко всем активам с включённым SMA или Momentum."}{" "}
+            Число над точкой — период в месяцах.
+          </p>
+          <p>
+            Корреляция Пирсона (r): {number(regression?.correlation)}
+            {regression?.correlation != null
+              ? ` · R²: ${number(regression.correlation ** 2)}`
+              : " · недостаточно различающихся данных"}
+          </p>
+          <Plot
+            title="Чувствительность к периоду SMA/Momentum"
+            data={[
+              {
+                type: "scatter",
+                mode: "text+markers",
+                x: sensitivity.map((p) => p[side].maximum_drawdown),
+                y: sensitivity.map((p) => p[side].annualized_cagr),
+                text: sensitivity.map((p) => String(p.lookback_months)),
+                textposition: "top center",
+                cliponaxis: false,
+                marker: { color: "#0072b2", size: 8 },
+                hovertemplate:
+                  "Период: %{text} мес.<br>Максимальная просадка: %{x:.2%}<br>CAGR: %{y:.2%}<extra></extra>",
+              },
+              ...(regression
+                ? [
+                    {
+                      type: "scatter" as const,
+                      mode: "lines" as const,
+                      name: "Линейная регрессия",
+                      x: regression.x,
+                      y: regression.y,
+                      line: {
+                        color: "#c0873a",
+                        width: 2,
+                        dash: "dash" as const,
+                      },
+                      hovertemplate:
+                        "Линейная регрессия<br>Максимальная просадка: %{x:.2%}<br>CAGR: %{y:.2%}<extra></extra>",
+                    },
+                  ]
+                : []),
+            ]}
+            layout={{
+              xaxis: {
+                title: { text: "Максимальная просадка портфеля" },
                 tickformat: ".1%",
               },
-              zaxis: { title: { text: "Период, месяцев" } },
-            },
-          }}
-        />
+              yaxis: { title: { text: "CAGR портфеля" }, tickformat: ".1%" },
+            }}
+          />
+        </>
+      )}
+      {c.sensitivity && c.sensitivity.scope !== "common_lookback" && (
+        <p className="hint">
+          Чтобы увидеть чувствительность к общему периоду SMA/Momentum,
+          повторите расчёт.
+        </p>
       )}
       <details>
         <summary>Сигналы и сделки</summary>

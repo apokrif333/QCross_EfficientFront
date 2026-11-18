@@ -50,6 +50,9 @@
   position: relative;
   z-index: 2;
 }
+.asset-builder:focus-within {
+  z-index: 3;
+}
 .asset-builder .section-heading p {
   font-size: 12px;
 }
@@ -431,6 +434,13 @@ a {
   color: #224654;
   box-shadow: 0 1px 4px #1633441a;
 }
+.sensitivity-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
 .mode-control {
   text-align: right;
   flex-shrink: 0;
@@ -712,6 +722,18 @@ details {
   border: 1px solid #e5ecee;
   border-radius: 6px;
   margin: 16px 0;
+}
+.table-sort {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+.table-sort:focus-visible {
+  outline: 2px solid #197b83;
+  outline-offset: 3px;
 }
 .rebalancing-table th:first-child,
 .rebalancing-table td:first-child {

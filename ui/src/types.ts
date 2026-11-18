@@ -212,6 +212,7 @@ export interface EfficiencyDistance {
   diagnostics: Record<string, unknown>;
 }
 export interface EfficiencyDistribution {
+  user_portfolio_mode?: "passive" | "controlled";
   user_weights: Record<string, number>;
   evaluation?: string;
   valid_count: number;
@@ -324,12 +325,23 @@ export interface BootstrapObjective {
   failures: unknown[];
 }
 export interface BootstrapResult extends BaseResult {
+  portfolio_control_cache?: BootstrapControlCache;
   conditional_bootstrap: boolean;
   sample_fingerprint: string;
   objectives: Record<string, BootstrapObjective>;
   efficiency_robustness?: EfficiencyDistribution | null;
 }
 export interface ResampledResult extends BaseResult {
+  user_portfolio_mode?: "passive" | "controlled";
+  user_sample_diagnostics?: {
+    reused_samples?: number;
+    computed_samples?: number;
+    cache_status?: string;
+    successful_samples: number;
+    failed_control_samples: number;
+    excluded_frontier_samples: number;
+    failures: { iteration: number; reason: string }[];
+  };
   frontier: Portfolio[];
   user_portfolio?: Portfolio | null;
   user_sample_average?: {
@@ -344,13 +356,25 @@ export interface ResampledResult extends BaseResult {
   failure_reasons: Record<string, number>;
   conditional_bootstrap: boolean;
 }
-export type Result =
+export interface BootstrapControlCache {
+  version: 1;
+  key: string;
+  original: Record<string, unknown>;
+  samples: {
+    indices_sha256: string;
+    expected_return: number | null;
+    volatility: number | null;
+    error: string | null;
+  }[];
+}
+export type Result = (
   | RebalancingResult
   | FrontierResult
   | CVResult
   | BootstrapResult
   | ResampledResult
-  | RollingEfficiencyResult;
+  | RollingEfficiencyResult
+) & { asset_trend_sensitivity?: Record<string, AssetTrendSensitivityResult> };
 export interface RollingEfficiencyResult {
   status: "complete" | "incomplete";
   methodology: string;
@@ -396,16 +420,16 @@ export interface Calculation {
   origin: Mode;
   created_at: string;
 }
-export interface Job {
+export interface Job<T = Result> {
   job_id: string;
-  kind: Kind;
+  kind: Kind | "asset-trend-sensitivity";
   status: "running" | "completed" | "failed" | "timed_out";
   result_url: string;
   status_url: string;
   timeout_seconds: number;
   elapsed_seconds: number;
   error: string | null;
-  result?: Result | null;
+  result?: T | null;
 }
 export interface Snapshot {
   schema: "qcross-portfolio-lab/v1";
@@ -503,6 +527,8 @@ export interface PairedComparison {
   results: {
     status: string;
     pair?: number;
+    validation_generation?: number;
+    wealth_log_f32?: { user?: string; optimized?: string };
     fold?: number;
     training_direction?: string;
     validation?: Period;
@@ -533,6 +559,23 @@ export interface SimulationStats {
   sortino_ratio: number | null;
   maximum_drawdown: number;
   terminal_wealth: number | null;
+}
+type SensitivityStats = Pick<
+  SimulationStats,
+  "maximum_drawdown" | "annualized_cagr"
+>;
+export interface TrendSensitivityPoint {
+  lookback_months: number;
+  gross: SensitivityStats;
+  net: SensitivityStats;
+}
+export interface AssetTrendSensitivitySeries {
+  asset_id: string;
+  indicator: "sma" | "momentum";
+  points: TrendSensitivityPoint[];
+}
+export interface AssetTrendSensitivityResult extends AssetTrendSensitivitySeries {
+  reproducibility: Provenance;
 }
 export interface RebalancingStrategy {
   initial_net_wealth?: number;

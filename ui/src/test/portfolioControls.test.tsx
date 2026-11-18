@@ -24,6 +24,52 @@ afterEach(() => {
   cleanup();
   plots.mockClear();
 });
+it("offers indicators only for assets with positive portfolio weights and no sensitivity selector", () => {
+  const [a, b, c] = instruments;
+  const rule = { indicator: "sma" as const, lookback_months: 12 };
+  const request: ApiRequest = {
+    ...DEFAULT_REQUEST,
+    instrument_ids: [a.id, b.id, c.id],
+    user_weights: { [a.id]: 0.6, [b.id]: 0.4, [c.id]: 0 },
+    portfolio_controls: {
+      mode: "trend",
+      hedge_weights: { [a.id]: 1 },
+      trend: {
+        destination: "hedge",
+        asset_rules: { [a.id]: rule, [c.id]: rule },
+        sensitivity_asset: String(c.id),
+      },
+    },
+  };
+  const { rerender } = render(
+    <PortfolioControls
+      request={request}
+      instruments={instruments}
+      onChange={() => {}}
+      locked={false}
+    />,
+  );
+  expect(screen.getByRole("combobox", { name: a.ticker })).toBeInTheDocument();
+  expect(screen.getByRole("combobox", { name: b.ticker })).toBeInTheDocument();
+  expect(screen.queryByRole("combobox", { name: c.ticker })).toBeNull();
+  expect(
+    screen.queryByRole("combobox", { name: /чувствительности/i }),
+  ).toBeNull();
+  const changed = {
+    ...request,
+    user_weights: { [a.id]: 0.6, [b.id]: 0, [c.id]: 0.4 },
+  };
+  rerender(
+    <PortfolioControls
+      request={changed}
+      instruments={instruments}
+      onChange={() => {}}
+      locked={false}
+    />,
+  );
+  expect(screen.queryByRole("combobox", { name: b.ticker })).toBeNull();
+  expect(screen.getByRole("combobox", { name: c.ticker })).toBeInTheDocument();
+});
 it("offers exactly three exclusive modes and a reusable BIL hedge", () => {
   function Editor() {
     const [request, set] = useState<ApiRequest>({
@@ -72,7 +118,7 @@ it("validates hedge totals, lookbacks, modes and legacy absence", () => {
     hedge_weights: { BIL_REFERENCE: 1 },
     trend: {
       destination: "hedge",
-      asset_rules: { "1": { indicator: "momentum", lookback_months: 12 } },
+      asset_rules: { "1": { indicator: "momentum", lookback_months: 1 } },
     },
   };
   expect(
@@ -94,7 +140,7 @@ it("validates hedge totals, lookbacks, modes and legacy absence", () => {
     }).success,
   ).toBe(false);
 });
-it("uses actual sensitivity points for the 3D plot", () => {
+it("plots a single labeled point per common period with drawdown on X and CAGR on Y", () => {
   const stats = {
     annualized_cagr: 0.1,
     annualized_volatility: 0.2,
@@ -113,9 +159,13 @@ it("uses actual sensitivity points for the 3D plot", () => {
     ],
     events: [],
   };
-  const points = Array.from({ length: 35 }, (_, i) => ({
-    lookback_months: i + 2,
-    net: { ...stats, annualized_cagr: i / 1000 },
+  const points = Array.from({ length: 36 }, (_, i) => ({
+    lookback_months: i + 1,
+    net: {
+      ...stats,
+      annualized_cagr: 0.1 - i / 1000,
+      maximum_drawdown: 0.2 + i / 1000,
+    },
     gross: stats,
     total_commissions: 0.001,
   }));
@@ -129,12 +179,16 @@ it("uses actual sensitivity points for the 3D plot", () => {
           assets: ["1"],
           baseline: path,
           controlled: path,
-          sensitivity: { asset: "1", points },
+          sensitivity: { scope: "common_lookback", points },
         },
       }}
     />,
   );
-  const p = plots.mock.calls.find(([p]) => p.threeD)![0];
+  const sensitivity = () =>
+    plots.mock.calls
+      .filter(([p]) => p.title === "Чувствительность к периоду SMA/Momentum")
+      .at(-1)![0];
+  const p = sensitivity();
   expect(
     screen.getByText("Нисходящая годовая волатильность"),
   ).toBeInTheDocument();
@@ -144,8 +198,30 @@ it("uses actual sensitivity points for the 3D plot", () => {
   expect(weights.data[0].hovertemplate).toContain(
     instruments.find((i) => i.id === 1)!.ticker,
   );
-  expect(p.data[0].z).toEqual(points.map((p) => p.lookback_months));
-  expect(p.data[0].x).toEqual(points.map((p) => p.net.annualized_cagr));
+  expect(p.threeD).toBeUndefined();
+  expect(p.layout.xaxis.title.text).toBe("Максимальная просадка портфеля");
+  expect(p.layout.yaxis.title.text).toBe("CAGR портфеля");
+  expect(p.data).toHaveLength(2);
+  expect(p.data[1].name).toBe("Линейная регрессия");
+  expect(p.data[1].x).toEqual([0.2, 0.23500000000000001]);
+  expect(p.data[1].y[0]).toBeCloseTo(0.1);
+  expect(p.data[1].y[1]).toBeCloseTo(0.065);
+  expect(screen.getByText(/Корреляция Пирсона/)).toHaveTextContent(
+    "r): -1.000 · R²: 1.000",
+  );
+  expect(p.data[0].mode).toBe("text+markers");
+  expect(p.data[0].textposition).toBe("top center");
+  expect(p.data[0].text).toEqual(points.map((p) => String(p.lookback_months)));
+  expect(p.data[0].x).toEqual(points.map((p) => p.net.maximum_drawdown));
+  expect(p.data[0].y).toEqual(points.map((p) => p.net.annualized_cagr));
+  fireEvent.click(screen.getByRole("button", { name: "После комиссий" }));
+  expect(sensitivity().data[0].x).toEqual(
+    points.map((p) => p.gross.maximum_drawdown),
+  );
+  expect(sensitivity().data).toHaveLength(1);
+  expect(screen.getByText(/Корреляция Пирсона/)).toHaveTextContent(
+    "недостаточно различающихся данных",
+  );
 });
 
 it("averages annual commission ratios including zero and partial years", () => {
@@ -200,4 +276,61 @@ it("averages annual commission ratios including zero and partial years", () => {
     .getByText("Среднегодовые комиссии, % капитала")
     .closest("tr")!;
   expect(within(row).getAllByText("1.0000%")).toHaveLength(2);
+});
+
+it("plots drawdowns for both portfolios and follows the commission toggle", () => {
+  const stats = { annualized_cagr: 0.1 };
+  const base = {
+    net: stats,
+    gross: stats,
+    net_wealth: [1, 1.2, 0.9, 1.3, 0],
+    gross_wealth: [1, 1.2, 1.08, 1.3, 1.3],
+    weight_history: [[1], [1], [1], [1]],
+    signal_history: [],
+    events: [],
+  };
+  const managed = {
+    ...base,
+    net_wealth: [1, 1.1, 1.1, 0.88, 1.2],
+    gross_wealth: [1, 1.1, 1.1, 0.99, 1.2],
+  };
+  render(
+    <ControlResults
+      instruments={instruments}
+      result={{
+        portfolio_controls: {
+          config: { mode: "trend", trend: { asset_rules: {} } },
+          months: ["2020-01", "2020-02", "2020-03", "2020-04"],
+          assets: ["1"],
+          baseline: base,
+          controlled: managed,
+        },
+      }}
+    />,
+  );
+  const getDrawdowns = () =>
+    plots.mock.calls
+      .filter(([p]) => p.title === "Просадки: исходный и управляемый")
+      .at(-1)![0];
+  const net = getDrawdowns();
+  expect(net.data.map((line: { name: string }) => line.name)).toEqual([
+    "Исходный",
+    "Управляемый",
+  ]);
+  expect(net.data[0].y[2]).toBeCloseTo(-0.25);
+  expect(net.data[0].y[3]).toBe(0);
+  expect(net.data[0].y[4]).toBe(-1);
+  expect(net.data[1].y[3]).toBeCloseTo(-0.2);
+  expect(net.data[0].x).toEqual([
+    "2020-01",
+    "2020-01",
+    "2020-02",
+    "2020-03",
+    "2020-04",
+  ]);
+  expect(net.layout.yaxis.tickformat).toBe(".0%");
+  fireEvent.click(screen.getByRole("button", { name: "После комиссий" }));
+  const gross = getDrawdowns();
+  expect(gross.data[0].y[2]).toBeCloseTo(-0.1);
+  expect(gross.data[1].y[3]).toBeCloseTo(-0.1);
 });

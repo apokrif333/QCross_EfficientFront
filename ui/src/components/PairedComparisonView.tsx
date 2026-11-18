@@ -3,6 +3,7 @@ import type { Data } from "plotly.js";
 import type { Instrument, PairedComparison, RiskReturn } from "../types";
 import { percent, number, ticker } from "../lib/display";
 import Plot from "./Plot";
+import BootstrapValidationTable from "./BootstrapValidationTable";
 
 const labels: Record<string, string> = {
   delta_arithmetic_return: "Δ годовой арифметической доходности",
@@ -15,6 +16,7 @@ const wins: Record<string, string> = {
   higher_cagr: "Выше CAGR",
   higher_sharpe: "Выше Sharpe",
   lower_volatility: "Ниже волатильность",
+  lower_drawdown: "Ниже просадки",
   higher_cagr_no_higher_volatility: "Выше CAGR при не большей волатильности",
 };
 export default function PairedComparisonView({
@@ -63,7 +65,9 @@ export default function PairedComparisonView({
         ),
       ),
       density(
-        "Ваш портфель",
+        value.user_portfolio_mode === "controlled"
+          ? "Ваш портфель под управлением"
+          : "Ваш портфель",
         clouds.map((c) => c.user),
         "#197b83",
       ),
@@ -85,6 +89,26 @@ export default function PairedComparisonView({
     ];
   }, [value, instruments]);
   if (!value) return null;
+  const availableDrawdowns = value.results
+    .filter((row) => row.optimized != null)
+    .map((row) => row.differences?.delta_max_drawdown)
+    .filter(
+      (delta): delta is number =>
+        typeof delta === "number" && Number.isFinite(delta),
+    );
+  const frequencies =
+    value.win_frequencies.lower_drawdown || !value.results.length
+      ? value.win_frequencies
+      : {
+          ...value.win_frequencies,
+          lower_drawdown: {
+            fraction: availableDrawdowns.length
+              ? availableDrawdowns.filter((delta) => delta < 0).length /
+                availableDrawdowns.length
+              : null,
+            denominator: availableDrawdowns.length,
+          },
+        };
   const format = (key: string, v: number | null | undefined) =>
     key === "delta_sharpe" ? number(v) : percent(v);
   return (
@@ -123,7 +147,7 @@ export default function PairedComparisonView({
         ошибок: {value.failed_count}.
       </p>
       <div className="metrics">
-        {Object.entries(value.win_frequencies).map(([k, v]) => (
+        {Object.entries(frequencies).map(([k, v]) => (
           <span key={k}>
             {wins[k] ?? k}
             <b>{percent(v.fraction)}</b>
@@ -159,6 +183,9 @@ export default function PairedComparisonView({
           </tbody>
         </table>
       </div>
+      {value.generated_datasets != null && value.results.length > 0 && (
+        <BootstrapValidationTable value={value} instruments={instruments} />
+      )}
       {data.length > 0 && (
         <>
           <h4>Validation: распределение доходности и риска</h4>

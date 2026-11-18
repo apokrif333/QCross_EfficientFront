@@ -33,6 +33,11 @@ def analyze_rebalancing(
     group_constraints=None,
     **options,
 ):
+    if panel.control_config.get("mode", "none") != "none":
+        raise AnalyticsError(
+            "Rebalancing optimization is available only for passive portfolios. "
+            "Set portfolio_controls.mode='none'."
+        )
     started = time.perf_counter()
     panel.simulation_options = {
         "transaction_fee_rate": transaction_fee_rate,
@@ -72,10 +77,6 @@ def analyze_rebalancing(
         result = simulate_portfolio(
             panel.values, weights, rf, policy=policy, transaction_fee_rate=transaction_fee_rate
         )
-        if panel.control_config.get("mode", "none") != "none":
-            from app.analytics.portfolio_controls import compare_controls
-
-            result["portfolio_controls"] = compare_controls(panel, user_weights, policy=policy)
         for event in result["events"]:
             event["date"] = months[max(0, event["month_index"])]
             event["boundary"] = (

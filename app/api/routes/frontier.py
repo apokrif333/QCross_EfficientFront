@@ -5,9 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.analytics.constraints import build_constraints, numbered_groups, user_allocation
+from app.analytics.control_loader import load_control_panel, transform_control_panel
 from app.analytics.data_loader import attach_references, instrument_groups, load_returns
 from app.analytics.jobs import JobCapacityError
-from app.analytics.models import AnalyticsError
+from app.analytics.models import AnalyticsError, ReturnPanel
 from app.analytics.provenance import engine_identity, panel_provenance
 from app.analytics.splitting import (
     MIN_COVARIANCE_TRAIN,
@@ -21,6 +22,7 @@ from app.api.dependencies import get_session
 from app.db.models import Instrument, ReturnSeries
 from app.schemas.frontier import (
     AnalyticsRequest,
+    AssetTrendSensitivityRequest,
     JobRead,
     JobResultRead,
     RebalancingOptimizationRequest,
@@ -32,26 +34,29 @@ router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
 DatabaseSession = Annotated[Session, Depends(get_session)]
 
 
+def _load_panel(body: AnalyticsRequest, session: Session) -> ReturnPanel:
+    panel = load_returns(
+        session,
+        body.instrument_ids,
+        currency=body.currency,
+        start_date=body.start_date,
+        end_date=body.end_date,
+    )
+    panel = load_control_panel(session, panel, body.portfolio_controls.model_dump())
+    panel = attach_references(
+        session,
+        panel,
+        return_basis=body.return_basis,
+        risk_free_source=body.risk_free_source,
+        risk_free_rate=body.risk_free_rate,
+    )
+    transform_control_panel(panel)
+    return panel
+
+
 def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: str) -> dict:
     try:
-        panel = load_returns(
-            session,
-            body.instrument_ids,
-            currency=body.currency,
-            start_date=body.start_date,
-            end_date=body.end_date,
-        )
-        from app.analytics.control_loader import load_control_panel, transform_control_panel
-
-        panel = load_control_panel(session, panel, body.portfolio_controls.model_dump())
-        panel = attach_references(
-            session,
-            panel,
-            return_basis=body.return_basis,
-            risk_free_source=body.risk_free_source,
-            risk_free_rate=body.risk_free_rate,
-        )
-        transform_control_panel(panel)
+        panel = _load_panel(body, session)
         options = body.estimator_options()
         panel = numbered_groups(panel, body.asset_groups)
         constraints = build_constraints(
@@ -141,8 +146,12 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
                     frontier_points=body.frontier_points,
                     risk_aversions=body.risk_aversions,
                     user_weights=body.user_weights,
+                    bootstrap_control_cache=body.bootstrap_control_cache.model_dump()
+                    if body.bootstrap_control_cache
+                    else None,
                 )
         options["_api_request"] = body.model_dump(mode="json")
+        options["_api_request"].pop("bootstrap_control_cache", None)
         if kind == "bootstrap":
             # Preserve the effective default when this full request is replayed.
             options["_api_request"]["bootstrap_objectives"] = options["objectives"]
@@ -195,24 +204,7 @@ def analytics_catalog(session: DatabaseSession) -> dict:
 @router.post("/data-preview")
 def data_preview(body: AnalyticsRequest, session: DatabaseSession) -> dict:
     try:
-        panel = load_returns(
-            session,
-            body.instrument_ids,
-            currency=body.currency,
-            start_date=body.start_date,
-            end_date=body.end_date,
-        )
-        from app.analytics.control_loader import load_control_panel, transform_control_panel
-
-        panel = load_control_panel(session, panel, body.portfolio_controls.model_dump())
-        panel = attach_references(
-            session,
-            panel,
-            return_basis=body.return_basis,
-            risk_free_source=body.risk_free_source,
-            risk_free_rate=body.risk_free_rate,
-        )
-        transform_control_panel(panel)
+        panel = _load_panel(body, session)
         return {
             "return_basis": panel.return_basis,
             "risk_free_source": panel.risk_free_source,
@@ -279,6 +271,32 @@ def rolling_efficiency(
     body: RollingEfficiencyRequest, request: Request, session: DatabaseSession
 ) -> dict:
     return _submit(body, request, session, "rolling-efficiency")
+
+
+@router.post("/asset-trend-sensitivity", response_model=JobRead, status_code=202)
+def asset_trend_sensitivity(
+    body: AssetTrendSensitivityRequest, request: Request, session: DatabaseSession
+) -> dict:
+    try:
+        panel = _load_panel(body, session)
+        if panel_provenance(panel)["reference_panel_sha256"] != body.reference_panel_sha256:
+            raise HTTPException(
+                409, "История или исходные данные изменились. Повторите общий расчёт портфеля."
+            )
+        return request.app.state.analytics_jobs.submit(
+            panel,
+            "asset-trend-sensitivity",
+            {
+                "user_weights": body.user_weights,
+                "transaction_fee_rate": body.transaction_fee_rate,
+                "rebalancing_interval_months": body.rebalancing_interval_months,
+                "_api_request": body.model_dump(mode="json"),
+            },
+        )
+    except AnalyticsError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except JobCapacityError as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": "5"}) from exc
 
 
 @router.get("/jobs/{job_id}", response_model=JobRead)

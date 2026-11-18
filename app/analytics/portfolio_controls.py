@@ -1,11 +1,12 @@
 """Sequential user-sleeve controls, independent of optimizer moments."""
 
-from copy import deepcopy
-
 import numpy as np
 
 from app.analytics.models import AnalyticsError
 from app.analytics.portfolio_simulator import simulate_portfolio
+from app.analytics.provenance import panel_provenance
+
+TREND_LOOKBACKS = range(1, 37)
 
 
 class DownsideTarget:
@@ -95,9 +96,7 @@ class TrendTarget:
         return desired
 
 
-def compare_controls(panel, user_weights, indices=None, *, record_history=True, policy=None):
-    if panel.control_config.get("mode", "none") == "none":
-        return None
+def _control_inputs(panel, user_weights, indices=None):
     if not user_weights or panel.control_returns is None:
         raise AnalyticsError("Portfolio controls require explicit weights and aligned hedge data.")
     frame = panel.control_returns
@@ -110,15 +109,22 @@ def compare_controls(panel, user_weights, indices=None, *, record_history=True, 
         rf = np.full(len(frame), (1 + rate) ** (1 / 12) - 1)
     if indices is not None:
         rf = rf[indices]
+    return values, base, hedge, rf, list(frame.columns)
+
+
+def compare_controls(
+    panel, user_weights, indices=None, *, record_history=True, policy=None, include_wealth=False
+):
+    if panel.control_config.get("mode", "none") == "none":
+        return None
+    values, base, hedge, rf, assets = _control_inputs(panel, user_weights, indices)
     settings = {**panel.simulation_options, "record_history": record_history, "policy": policy}
     if panel.control_config["mode"] == "downside_vol":
         params = panel.control_config["downside_vol"]
         provider = DownsideTarget(base, hedge, params["target_annual"], params["lookback_months"])
     else:
         params = panel.control_config["trend"]
-        provider = TrendTarget(
-            base, hedge, list(frame.columns), params["asset_rules"], params["destination"]
-        )
+        provider = TrendTarget(base, hedge, assets, params["asset_rules"], params["destination"])
     baseline = simulate_portfolio(values, base, rf, **settings)
     controlled = simulate_portfolio(values, base, rf, target_provider=provider, **settings)
     if not record_history:
@@ -131,9 +137,10 @@ def compare_controls(panel, user_weights, indices=None, *, record_history=True, 
             "rebalancing_events",
         )
         baseline = {k: baseline[k] for k in keys}
-        controlled = {k: controlled[k] for k in keys}
+        controlled_keys = (*keys, "net_wealth") if include_wealth else keys
+        controlled = {k: controlled[k] for k in controlled_keys}
     return {
-        "assets": list(frame.columns),
+        "assets": assets,
         "config": panel.control_config,
         "baseline": baseline,
         "controlled": controlled,
@@ -141,28 +148,141 @@ def compare_controls(panel, user_weights, indices=None, *, record_history=True, 
     }
 
 
+def _enabled_trend_rules(rules, user_weights):
+    return {
+        asset: rule
+        for asset, rule in rules.items()
+        if user_weights.get(asset, 0) > 0 and rule["indicator"] != "disabled"
+    }
+
+
+def _trend_sensitivity(panel, user_weights, configured_path):
+    values, base, hedge, rf, assets = _control_inputs(panel, user_weights)
+    trend = panel.control_config["trend"]
+    rules = trend["asset_rules"]
+    enabled_rules = _enabled_trend_rules(rules, user_weights)
+    if not enabled_rules:
+        return []
+    configured_periods = {rule["lookback_months"] for rule in enabled_rules.values()}
+    points = []
+    for lookback in TREND_LOOKBACKS:
+        path = configured_path
+        if configured_periods != {lookback}:
+            varied_rules = {
+                **rules,
+                **{
+                    asset: {**rule, "lookback_months": lookback}
+                    for asset, rule in enabled_rules.items()
+                },
+            }
+            provider = TrendTarget(base, hedge, assets, varied_rules, trend["destination"])
+            path = simulate_portfolio(
+                values,
+                base,
+                rf,
+                target_provider=provider,
+                record_history=False,
+                **panel.simulation_options,
+            )
+        points.append({"lookback_months": lookback, "gross": path["gross"], "net": path["net"]})
+    return points
+
+
+def analyze_asset_trend_sensitivity(
+    panel,
+    *,
+    user_weights: dict[str, float],
+    transaction_fee_rate: float,
+    rebalancing_interval_months: int | None,
+) -> dict:
+    """Run a separate 100% allocation sweep for each enabled original asset."""
+    values, _, hedge, rf, assets = _control_inputs(panel, user_weights)
+    trend = panel.control_config["trend"]
+    rules = _enabled_trend_rules(trend["asset_rules"], user_weights)
+    if not rules:
+        raise AnalyticsError("No positive-weight assets with SMA or Momentum enabled.")
+    settings = {
+        "transaction_fee_rate": transaction_fee_rate,
+        "rebalancing_interval_months": rebalancing_interval_months,
+        "record_history": False,
+    }
+    return {
+        "by_asset": {
+            asset: {
+                "asset_id": asset,
+                "indicator": rules[asset]["indicator"],
+                "points": _single_asset_sensitivity(
+                    values,
+                    hedge,
+                    rf,
+                    assets,
+                    asset,
+                    rules[asset]["indicator"],
+                    trend["destination"],
+                    settings,
+                ),
+            }
+            for asset in assets
+            if asset in rules
+        },
+        "reproducibility": panel_provenance(panel),
+    }
+
+
+def _single_asset_sensitivity(
+    values, hedge, rf, assets, asset_id, indicator, destination, settings
+):
+    base = np.array([float(asset == asset_id) for asset in assets])
+    included = (base > 0) | (hedge > 0)
+    values, base, hedge = values[:, included], base[included], hedge[included]
+    assets = [asset for asset, keep in zip(assets, included, strict=True) if keep]
+    points = []
+    for lookback in TREND_LOOKBACKS:
+        provider = TrendTarget(
+            base,
+            hedge,
+            assets,
+            {asset_id: {"indicator": indicator, "lookback_months": lookback}},
+            destination,
+        )
+        path = simulate_portfolio(
+            values,
+            base,
+            rf,
+            target_provider=provider,
+            **settings,
+        )
+        points.append(
+            {
+                "lookback_months": lookback,
+                **{
+                    side: {
+                        metric: path[side][metric]
+                        for metric in ("annualized_cagr", "maximum_drawdown")
+                    }
+                    for side in ("gross", "net")
+                },
+            }
+        )
+    return points
+
+
 def attach_control_results(panel, result, user_weights):
     if panel.control_config.get("mode", "none") == "none":
         return
-    result["portfolio_controls"] = compare_controls(panel, user_weights)
-    result["portfolio_controls"]["months"] = [str(m) for m in panel.returns.index]
-    result["portfolio_controls"]["source_metadata"] = panel.control_metadata
-    config = panel.control_config
-    if config["mode"] == "trend":
-        trend = config["trend"]
-        asset = trend.get("sensitivity_asset")
-        if asset and trend["asset_rules"].get(asset, {}).get("indicator", "disabled") != "disabled":
-            from dataclasses import replace
-
-            points = []
-            for lookback in range(2, 37):
-                changed = deepcopy(config)
-                changed["trend"]["asset_rules"][asset]["lookback_months"] = lookback
-                sample = compare_controls(
-                    replace(panel, control_config=changed), user_weights, record_history=False
-                )
-                points.append({"lookback_months": lookback, **sample["controlled"]})
-            result["portfolio_controls"]["sensitivity"] = {"asset": asset, "points": points}
+    controls = result.get("portfolio_controls")
+    if controls is None:
+        controls = compare_controls(panel, user_weights)
+        result["portfolio_controls"] = controls
+    controls["months"] = [str(m) for m in panel.returns.index]
+    controls["source_metadata"] = panel.control_metadata
+    if (
+        panel.control_config["mode"] == "trend"
+        and controls.get("sensitivity", {}).get("scope") != "common_lookback"
+    ):
+        points = _trend_sensitivity(panel, user_weights, controls["controlled"])
+        if points:
+            controls["sensitivity"] = {"scope": "common_lookback", "points": points}
     if "folds" in result:
         for fold in result["folds"]:
             period = fold["validation"]

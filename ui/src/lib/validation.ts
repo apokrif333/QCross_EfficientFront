@@ -20,7 +20,7 @@ const requestFields = z.object({
             z.string(),
             z.object({
               indicator: z.enum(["disabled", "sma", "momentum"]),
-              lookback_months: n.int().min(2).max(36),
+              lookback_months: n.int().min(1).max(36),
             }),
           ),
           sensitivity_asset: z.string().nullish(),
@@ -138,16 +138,22 @@ export const rollingRequestSchema = requestFields.refine(
 );
 export function requestSchemaFor(kind: Kind) {
   if (kind === "rebalancing-optimization")
-    return requestFields.refine(
-      (r) =>
-        Math.abs(
-          Object.values(r.user_weights ?? {}).reduce((a, b) => a + b, 0) - 1,
-        ) < 1e-8,
-      {
-        message: "Explicit user weights totaling 100% are required",
-        path: ["user_weights"],
-      },
-    );
+    return requestFields
+      .refine((r) => (r.portfolio_controls?.mode ?? "none") === "none", {
+        message:
+          "Оптимизация ребалансировки доступна только для пассивного портфеля. Отключите управление портфелем.",
+        path: ["portfolio_controls", "mode"],
+      })
+      .refine(
+        (r) =>
+          Math.abs(
+            Object.values(r.user_weights ?? {}).reduce((a, b) => a + b, 0) - 1,
+          ) < 1e-8,
+        {
+          message: "Explicit user weights totaling 100% are required",
+          path: ["user_weights"],
+        },
+      );
   if (kind === "resampled-frontier") return resampledRequestSchema;
   if (kind === "rolling-efficiency") return rollingRequestSchema;
   if (kind === "bootstrap")
@@ -217,6 +223,30 @@ const provenance = z
     optimization_parameters: z.record(z.string(), z.unknown()),
   })
   .passthrough();
+const trendSensitivityStats = z.object({
+  annualized_cagr: n.nullable(),
+  maximum_drawdown: n.min(0).max(1),
+});
+const assetTrendSensitivity = z.record(
+  z.string(),
+  z.object({
+    asset_id: z.string(),
+    indicator: z.enum(["sma", "momentum"]),
+    points: z
+      .array(
+        z.object({
+          lookback_months: n.int().min(1).max(36),
+          gross: trendSensitivityStats,
+          net: trendSensitivityStats,
+        }),
+      )
+      .length(36)
+      .refine((points) =>
+        points.every((point, i) => point.lookback_months === i + 1),
+      ),
+    reproducibility: provenance.extend({ reference_panel_sha256: hash }),
+  }),
+);
 const efficiencyDistance = z
   .object({
     status: z.string(),
@@ -328,10 +358,23 @@ const pairedComparison = z
         denominator: n.int().nonnegative(),
       }),
     ),
-    results: z.array(z.object({ status: z.string() }).passthrough()),
+    results: z.array(
+      z
+        .object({
+          status: z.string(),
+          wealth_log_f32: z
+            .object({
+              user: z.base64().optional(),
+              optimized: z.base64().optional(),
+            })
+            .optional(),
+        })
+        .passthrough(),
+    ),
   })
   .passthrough();
 const base = z.object({
+  asset_trend_sensitivity: assetTrendSensitivity.optional(),
   paired_comparison: pairedComparison.nullable().optional(),
   efficiency_robustness: efficiencyDistribution.nullable().optional(),
   asset_portfolios: z.record(z.string(), portfolio).optional(),
@@ -628,12 +671,28 @@ export function validateRecord(value: unknown): void {
     .parse(value);
   requestSchemaFor(record.kind).parse({
     ...record.request,
+    ...(record.kind === "rebalancing-optimization"
+      ? {
+          portfolio_controls: {
+            ...record.request.portfolio_controls,
+            mode: "none",
+          },
+        }
+      : {}),
     include_paired_comparison:
       record.request.include_paired_comparison ?? false,
   });
   const r = results[record.kind].parse(record.result);
   requestSchemaFor(record.kind).parse({
     ...r.reproducibility.api_request,
+    ...(record.kind === "rebalancing-optimization"
+      ? {
+          portfolio_controls: {
+            ...r.reproducibility.api_request.portfolio_controls,
+            mode: "none",
+          },
+        }
+      : {}),
     include_paired_comparison:
       r.reproducibility.api_request.include_paired_comparison ?? false,
   });

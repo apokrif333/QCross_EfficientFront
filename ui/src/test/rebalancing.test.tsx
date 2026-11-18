@@ -20,6 +20,46 @@ vi.mock("../components/Plot", () => ({
   },
 }));
 const result = rebalancingFixture();
+it.each(["downside_vol", "trend"])(
+  "blocks new %s requests but reads historical snapshots",
+  (mode) => {
+    const request = {
+      ...result.reproducibility.api_request!,
+      portfolio_controls: {
+        mode,
+        hedge_weights: { "1": 1 },
+        downside_vol: { target_annual: 0.06, lookback_months: 1 },
+        trend: { destination: "hedge", asset_rules: {} },
+      },
+    };
+    const parsed = requestSchemaFor("rebalancing-optimization").safeParse(
+      request,
+    );
+    expect(parsed.success).toBe(false);
+    if (!parsed.success)
+      expect(
+        parsed.error.issues.some((i) =>
+          i.message.includes("только для пассивного"),
+        ),
+      ).toBe(true);
+    const historical = structuredClone(result);
+    historical.reproducibility.api_request = request as never;
+    const calculation = {
+      id: "historical-managed",
+      kind: "rebalancing-optimization",
+      request,
+      result: historical,
+      origin: "live",
+      created_at: "test",
+    } as Calculation;
+    const snapshot = parseSnapshot(
+      JSON.stringify(createSnapshot([calculation], instruments)),
+    );
+    expect(snapshot.calculations[0].request.portfolio_controls?.mode).toBe(
+      mode,
+    );
+  },
+);
 afterEach(() => {
   cleanup();
   plots.mockClear();

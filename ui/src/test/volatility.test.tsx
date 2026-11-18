@@ -56,7 +56,11 @@ it("shows passive and controlled paths at their realized arithmetic return and r
     portfolio_controls: {
       baseline: {
         net: baseline,
-        gross: { ...baseline, annualized_volatility: 0.13 },
+        gross: {
+          ...baseline,
+          annualized_volatility: 0.13,
+          maximum_drawdown: 0.25,
+        },
       },
       controlled: {
         net: controlled,
@@ -79,6 +83,9 @@ it("shows passive and controlled paths at their realized arithmetic return and r
     const trace = traces.find((p: { name: string }) => p.name === label);
     expect(trace.x).toEqual([stats.annualized_volatility]);
     expect(trace.y).toEqual([stats.annualized_arithmetic_return]);
+    expect(trace.hovertemplate[0]).toContain(
+      "Максимальная просадка (DD) 20.000%",
+    );
     const row = within(
       screen.getByRole("button", { name: label }).closest("tr")!,
     );
@@ -101,6 +108,11 @@ it("shows passive and controlled paths at their realized arithmetic return and r
       controlGross
     />,
   );
+  const grossTraces = JSON.parse(screen.getByTestId("plot-data").textContent!);
+  expect(
+    grossTraces.find((p: { name: string }) => p.name === "Портфель (пассивный)")
+      .hovertemplate[0],
+  ).toContain("Максимальная просадка (DD) 25.000%");
   expect(
     within(
       screen
@@ -196,6 +208,13 @@ it.each([false, true])(
     const traces = JSON.parse(screen.getByTestId("plot-data").textContent!);
     expect(traces[0].x[0]).toBe(metrics.volatility);
     expect(traces[0].hovertemplate[0]).toContain("Волатильность 9.59%");
+    expect(traces[0].hovertemplate[0]).toContain(
+      "Максимальная просадка (DD) 20.00%",
+    );
+    expect(
+      traces.find((trace: { name: string }) => trace.name === "Активы")
+        .hovertemplate[0],
+    ).toContain("Максимальная просадка (DD) 20.00%");
     expect(traces[0].hovertemplate[0]).toContain("Sharpe 0.740");
     const gmvLabel = compare ? "Sample · GMV" : "GMV";
     const button = screen.getByRole("button", { name: gmvLabel });

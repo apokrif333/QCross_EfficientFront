@@ -323,3 +323,58 @@ It does not change optimization moments, CV splits or Bootstrap sampling.
 Optional [portfolio controls](portfolio-controls.md) operate sequentially on the
 explicit user allocation. They produce separate controlled paths; trained model
 moments, CV directions and paired Bootstrap definitions retain their meanings.
+
+## Controlled portfolios in paired Stationary Bootstrap
+
+When portfolio controls are enabled, each generated dataset runs a fresh sequential
+controlled simulation, with its own warm-up and the same sampled asset, hedge and BIL
+months. The odd-numbered Train simulation's net realized annual volatility supplies
+the optimizer's risk budget. Asset moments and conditional `cv_linear` parameters
+retain their existing definitions. The optimized allocation is frozen for the matching
+even-numbered Validation dataset, where it is compared against the user's controlled
+simulation. Controls apply to the user's portfolio; optimized allocations retain their
+existing rebalancing convention. Validation observations cannot influence Train fitting.
+
+The Validation user density cloud and paired differences use controlled net performance.
+User performance distributions use the controlled paths across **all** generations,
+including Train and Validation, with separate gross distributions. Passive paths remain
+available in `portfolio_control_samples[].baseline`. A failed controlled simulation
+fails that optional comparison explicitly; it never substitutes the passive portfolio.
+With controls disabled, comparisons and distributions retain passive semantics.
+Sampling indices, seeds, full-length horizons and pair counts are unchanged.
+
+## Controlled portfolio markers on Resampled Frontier
+
+With portfolio controls enabled, the user's original-sample marker uses the controlled
+net historical path's annual arithmetic return and realized annual volatility. The
+Bootstrap marker averages those same two path statistics across successful shared
+risk-aversion samples with successful controlled simulations. Each simulation starts
+fresh and uses exactly that sample's asset, hedge and BIL indices, selected return
+basis, rebalancing policy and commissions. These are means of sample statistics,
+not the performance of averaged dynamic allocations.
+
+`user_portfolio_mode` identifies the marker semantics. `user_sample_diagnostics`
+reports failed controlled simulations separately from frontier failures. Failed
+controlled paths never substitute passive results; if none succeed, the mean marker
+is absent. The shared-risk-aversion curve keeps its existing model-based construction.
+Without controls, the existing model-based passive markers remain compatible.
+
+Bootstrap results now include a portable `portfolio_control_cache`, retained in
+snapshots. The UI automatically passes a compatible saved cache when requesting
+Resampled Frontier. Its key covers actual asset/hedge/BIL observations, dates,
+return basis, controls, original weights, execution settings, seed, block length and
+engine source identity. Every reused generation must also match its sampled-index
+SHA-256. A shorter Resampled job can reuse the corresponding prefix of a longer
+Bootstrap run. Only generations successful for that frontier enter its mean marker.
+
+Compatible cached paths, including the original-history comparison, are reused
+without recalculating signals. Missing/incompatible paths are simulated; cached
+control failures remain explicitly reported failures. Diagnostics expose reused and
+computed sample counts. Older snapshots lacking this cache remain readable and
+calculate paths normally; a new Bootstrap run saves reusable summaries.
+
+Rebalancing Optimization is available only for passive portfolios
+(`portfolio_controls.mode = "none"`). Disable Target Downside Volatility or trend
+controls before starting this analysis. The UI disables calculation while controls
+are active; the API rejects such requests before job submission, and the analytics
+engine also enforces the restriction. Historical snapshots remain readable.

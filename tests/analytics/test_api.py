@@ -63,6 +63,7 @@ def test_real_process_api_roundtrip(endpoint, panel, settings, session_factory):
             assert robustness["distributions"]["annualized_cagr"]["valid_count"] == 3
             assert robustness["distributions"]["terminal_wealth"]["horizon_years"] == 20
             assert robustness["distributions"]["return_shortfall"]["valid_count"] == 0
+            assert not completed["bootstrap_trend_sensitivity_available"]
         provenance = completed["result"]["reproducibility"]
         expected = AnalyticsRequest.model_validate(body).model_dump(mode="json")
         if endpoint == "bootstrap":
@@ -73,6 +74,78 @@ def test_real_process_api_roundtrip(endpoint, panel, settings, session_factory):
         assert len(provenance["source_series"][0]["series_version"]) == 64
         assert client.get("/api/v1/analytics/jobs/not-a-job").status_code == 404
         assert client.get("/api/v1/analytics/jobs/not-a-job/result").status_code == 404
+
+
+def test_bootstrap_trend_sensitivity_is_a_separate_job(panel, settings, session_factory):
+    seed_database(session_factory, panel)
+    fee_rate = 0.002
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/api/v1/analytics/bootstrap",
+            json={
+                "risk_free_source": "fixed_annual",
+                "instrument_ids": [1, 2, 3],
+                "bootstrap_iterations": 3,
+                "include_paired_comparison": False,
+                "transaction_fee_rate": fee_rate,
+                "rebalancing_interval_months": 4,
+                "user_weights": {"1": 0.6, "2": 0.4},
+                "portfolio_controls": {
+                    "mode": "trend",
+                    "hedge_weights": {"3": 1},
+                    "trend": {
+                        "destination": "hedge",
+                        "asset_rules": {"1": {"indicator": "momentum", "lookback_months": 12}},
+                    },
+                },
+            },
+        )
+        assert response.status_code == 202, response.text
+        bootstrap = wait_result(client, response.json())
+        assert bootstrap["status"] == "completed", bootstrap
+        assert bootstrap["bootstrap_trend_sensitivity_available"]
+        assert "trend_sensitivity" not in bootstrap["result"]
+        assert "sensitivity" not in bootstrap["result"]["portfolio_controls"]
+        assert (
+            "_sample_indices"
+            not in bootstrap["result"]["reproducibility"]["optimization_parameters"]
+        )
+
+        response = client.post(
+            "/api/v1/analytics/bootstrap-trend-sensitivity",
+            json={"bootstrap_job_id": bootstrap["job_id"]},
+        )
+        assert response.status_code == 202, response.text
+        sensitivity = wait_result(client, response.json())
+        assert sensitivity["job_id"] != bootstrap["job_id"]
+        assert sensitivity["status"] == "completed", sensitivity
+        value = sensitivity["result"]["trend_sensitivity"]
+        assert value["iterations"] == 3
+        assert value["commission_basis"] == "pretrade_nav"
+        assert set(value["by_asset"]) == {"1"}
+        for series in [value["portfolio"], value["by_asset"]["1"]]:
+            assert len(series) == 36
+            assert all(len(samples) == 3 for samples in series)
+        for point, sample in zip(
+            value["portfolio"][11], bootstrap["result"]["portfolio_control_samples"], strict=True
+        ):
+            controlled = sample["controlled"]
+            assert point == pytest.approx(
+                [
+                    controlled[side][metric]
+                    for side in ("net", "gross")
+                    for metric in ("annualized_cagr", "maximum_drawdown", "annualized_volatility")
+                ]
+                + [
+                    fee_rate * controlled["annualized_turnover"]
+                    + fee_rate / (1 + fee_rate) * 12 / len(panel.values)
+                ]
+            )
+
+        expired = client.post(
+            "/api/v1/analytics/bootstrap-trend-sensitivity", json={"bootstrap_job_id": "expired"}
+        )
+        assert expired.status_code == 404
 
 
 def test_api_rejects_invalid_inputs_before_starting_workers(panel, settings, session_factory):

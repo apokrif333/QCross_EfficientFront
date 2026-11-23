@@ -219,7 +219,10 @@ def test_control_api_alignment_and_original_universe(
             assert done["status"] == "completed", done
             result = done["result"]
             assert result["assets"] == ["1", "2"]
-            if control_mode == "trend":
+            if control_mode == "trend" and kind == "bootstrap":
+                assert done["bootstrap_trend_sensitivity_available"]
+                assert "sensitivity" not in result["portfolio_controls"]
+            elif control_mode == "trend":
                 assert [
                     p["lookback_months"]
                     for p in result["portfolio_controls"]["sensitivity"]["points"]

@@ -23,6 +23,7 @@ from app.db.models import Instrument, ReturnSeries
 from app.schemas.frontier import (
     AnalyticsRequest,
     AssetTrendSensitivityRequest,
+    BootstrapTrendSensitivityRequest,
     JobRead,
     JobResultRead,
     RebalancingOptimizationRequest,
@@ -295,6 +296,20 @@ def asset_trend_sensitivity(
         )
     except AnalyticsError as exc:
         raise HTTPException(422, str(exc)) from exc
+    except JobCapacityError as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": "5"}) from exc
+
+
+@router.post("/bootstrap-trend-sensitivity", response_model=JobRead, status_code=202)
+def bootstrap_trend_sensitivity(body: BootstrapTrendSensitivityRequest, request: Request) -> dict:
+    try:
+        return request.app.state.analytics_jobs.submit_bootstrap_trend_sensitivity(
+            body.bootstrap_job_id
+        )
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
     except JobCapacityError as exc:
         raise HTTPException(429, str(exc), headers={"Retry-After": "5"}) from exc
 

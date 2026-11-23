@@ -326,10 +326,37 @@ export interface BootstrapObjective {
 }
 export interface BootstrapResult extends BaseResult {
   portfolio_control_cache?: BootstrapControlCache;
+  portfolio_control_samples?: BootstrapControlSample[];
   conditional_bootstrap: boolean;
   sample_fingerprint: string;
   objectives: Record<string, BootstrapObjective>;
   efficiency_robustness?: EfficiencyDistribution | null;
+  trend_sensitivity?: BootstrapTrendSensitivity | null;
+}
+export interface BootstrapControlSample {
+  status?: string;
+  baseline?: { net?: Partial<SimulationStats> };
+  controlled?: { net?: Partial<SimulationStats> };
+}
+type BootstrapTrendMetrics = [
+  cagr: number | null,
+  drawdown: number | null,
+  volatility: number | null,
+];
+export type BootstrapTrendPoint =
+  | BootstrapTrendMetrics
+  | [
+      ...net: BootstrapTrendMetrics,
+      ...gross: BootstrapTrendMetrics,
+      annualizedCommissions: number | null,
+    ];
+// The outer array is ordered by lookback (1–36 months) and the inner by generation.
+export type BootstrapTrendSeries = BootstrapTrendPoint[][];
+export interface BootstrapTrendSensitivity {
+  iterations: number;
+  commission_basis?: "pretrade_nav";
+  portfolio: BootstrapTrendSeries;
+  by_asset: Record<string, BootstrapTrendSeries>;
 }
 export interface ResampledResult extends BaseResult {
   user_portfolio_mode?: "passive" | "controlled";
@@ -422,7 +449,8 @@ export interface Calculation {
 }
 export interface Job<T = Result> {
   job_id: string;
-  kind: Kind | "asset-trend-sensitivity";
+  kind: Kind | "asset-trend-sensitivity" | "bootstrap-trend-sensitivity";
+  bootstrap_trend_sensitivity_available?: boolean;
   status: "running" | "completed" | "failed" | "timed_out";
   result_url: string;
   status_url: string;
@@ -546,6 +574,22 @@ export interface PairedComparison {
   }[];
   validation_frontier?: RiskReturn[];
 }
+export interface BootstrapPassiveComparison extends Pick<
+  PairedComparison,
+  | "user_weights"
+  | "valid_count"
+  | "failed_count"
+  | "requested_comparisons"
+  | "differences"
+  | "win_frequencies"
+> {
+  comparison_mode: "active_vs_passive";
+  generated_datasets: number;
+  horizon_months: number;
+  results: { differences?: Record<string, number> }[];
+  clouds: { active: RiskReturn; passive: RiskReturn }[];
+}
+export type PortfolioComparison = PairedComparison | BootstrapPassiveComparison;
 export interface RiskReturn {
   expected_return: number;
   volatility: number;

@@ -333,6 +333,37 @@ class BootstrapEfficiencyRead(BaseModel):
     distributions: dict[str, BootstrapMetricDistribution] | None = None
 
 
+# Per-generation summary ordered as net metrics, gross metrics, annualized commissions.
+# Each set of return/risk metrics is CAGR, maximum drawdown and annualized volatility.
+BootstrapTrendMetric = float | None
+BootstrapTrendPoint = tuple[
+    BootstrapTrendMetric,
+    BootstrapTrendMetric,
+    BootstrapTrendMetric,
+    BootstrapTrendMetric,
+    BootstrapTrendMetric,
+    BootstrapTrendMetric,
+    BootstrapTrendMetric,
+]
+
+
+class BootstrapTrendSensitivity(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+    iterations: int = Field(gt=0)
+    commission_basis: Literal["pretrade_nav"]
+    portfolio: list[list[BootstrapTrendPoint]] = Field(min_length=36, max_length=36)
+    by_asset: dict[str, list[list[BootstrapTrendPoint]]]
+
+
+class BootstrapTrendSensitivityRequest(BaseModel):
+    bootstrap_job_id: str
+
+
+class BootstrapTrendSensitivityResult(BaseModel):
+    trend_sensitivity: BootstrapTrendSensitivity
+    reproducibility: dict[str, Any]
+
+
 class BootstrapResult(AnalyticsResultBase):
     conditional_bootstrap: bool
     sample_fingerprint: str
@@ -406,6 +437,7 @@ class JobRead(BaseModel):
         "rolling-efficiency",
         "rebalancing-optimization",
         "asset-trend-sensitivity",
+        "bootstrap-trend-sensitivity",
     ]
     status: Literal["running", "completed", "failed", "timed_out"]
     submitted_at: str
@@ -414,6 +446,7 @@ class JobRead(BaseModel):
     status_url: str
     result_url: str
     error: str | None = None
+    bootstrap_trend_sensitivity_available: bool = False
 
 
 class JobResultRead(JobRead):
@@ -425,5 +458,6 @@ class JobResultRead(JobRead):
         | RollingEfficiencyResult
         | RebalancingOptimizationResult
         | AssetTrendSensitivityResult
+        | BootstrapTrendSensitivityResult
         | None
     )

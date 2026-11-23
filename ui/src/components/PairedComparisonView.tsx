@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { Data } from "plotly.js";
-import type { Instrument, PairedComparison, RiskReturn } from "../types";
+import type { Instrument, PortfolioComparison, RiskReturn } from "../types";
 import { percent, number, ticker } from "../lib/display";
 import Plot from "./Plot";
 import BootstrapValidationTable from "./BootstrapValidationTable";
@@ -23,12 +23,11 @@ export default function PairedComparisonView({
   value,
   instruments,
 }: {
-  value?: PairedComparison | null;
+  value?: PortfolioComparison | null;
   instruments: Instrument[];
 }) {
   const data = useMemo(() => {
     if (!value?.clouds?.length) return [];
-    const clouds = value.clouds;
     const density = (
       name: string,
       points: RiskReturn[],
@@ -55,6 +54,21 @@ export default function PairedComparisonView({
         visible: asset ? "legendonly" : true,
         hovertemplate: `<b>${name}</b><br>Волатильность: %{x:.2%}<br>Годовая арифметическая доходность: %{y:.2%}<br>Плотность: %{z:.3g}<extra></extra>`,
       }) as Data;
+    if ("comparison_mode" in value) {
+      return [
+        density(
+          "Ваш портфель под управлением",
+          value.clouds.map((c) => c.active),
+          "#197b83",
+        ),
+        density(
+          "Пассивный портфель",
+          value.clouds.map((c) => c.passive),
+          "#b34b71",
+        ),
+      ];
+    }
+    const clouds = value.clouds;
     return [
       ...Object.keys(clouds[0].assets).map((a, i) =>
         density(
@@ -89,15 +103,18 @@ export default function PairedComparisonView({
     ];
   }, [value, instruments]);
   if (!value) return null;
-  const availableDrawdowns = value.results
-    .filter((row) => row.optimized != null)
-    .map((row) => row.differences?.delta_max_drawdown)
-    .filter(
-      (delta): delta is number =>
-        typeof delta === "number" && Number.isFinite(delta),
-    );
+  const passive = "comparison_mode" in value;
+  const availableDrawdowns = passive
+    ? []
+    : value.results
+        .filter((row) => row.optimized != null)
+        .map((row) => row.differences?.delta_max_drawdown)
+        .filter(
+          (delta): delta is number =>
+            typeof delta === "number" && Number.isFinite(delta),
+        );
   const frequencies =
-    value.win_frequencies.lower_drawdown || !value.results.length
+    passive || value.win_frequencies.lower_drawdown || !value.results.length
       ? value.win_frequencies
       : {
           ...value.win_frequencies,
@@ -113,12 +130,18 @@ export default function PairedComparisonView({
     key === "delta_sharpe" ? number(v) : percent(v);
   return (
     <section className="subsection">
-      <h3>Ваш портфель и оптимизатор — проверка на Validation</h3>
+      <h3>
+        {passive
+          ? "Ваш активный и пассивный портфели — Stationary Bootstrap"
+          : "Ваш портфель и оптимизатор — проверка на Validation"}
+      </h3>
       {value.user_weights && (
         <p className="hint">
-          {value.user_portfolio_mode === "controlled"
-            ? "Исходные целевые веса управляемого портфеля:"
-            : "Ваш фиксированный портфель:"}{" "}
+          {passive
+            ? "Исходные целевые веса обеих версий:"
+            : value.user_portfolio_mode === "controlled"
+              ? "Исходные целевые веса управляемого портфеля:"
+              : "Ваш фиксированный портфель:"}{" "}
           {Object.entries(value.user_weights)
             .filter(([, w]) => w > 0)
             .map(([a, w]) => `${ticker(a, instruments)} ${percent(w)}`)
@@ -126,18 +149,29 @@ export default function PairedComparisonView({
         </p>
       )}
       <p className="hint">
-        {value.user_portfolio_mode === "controlled" && (
+        {passive ? (
           <>
-            Сравнение с портфелем под управлением. Лимит риска оптимизатора —
-            фактическая годовая волатильность управляемой траектории на Train
-            после комиссий. Сигналы на Validation рассчитываются последовательно
-            заново.{" "}
+            На каждой генерации обе версии используют те же месяцы, ставку
+            комиссии и режим ребалансировки. Пассивная версия использует
+            исходные целевые веса. Δ = пассивный − активный, после комиссий. Для
+            волатильности и просадки уменьшение — улучшение.
+          </>
+        ) : (
+          <>
+            {value.user_portfolio_mode === "controlled" && (
+              <>
+                Сравнение с портфелем под управлением. Лимит риска оптимизатора
+                — фактическая годовая волатильность управляемой траектории на
+                Train после комиссий. Сигналы на Validation рассчитываются
+                последовательно заново.{" "}
+              </>
+            )}
+            Веса оптимизатора выбраны только на Train при риске вашего портфеля
+            на Train. Δ = оптимизатор − ваш портфель. Для волатильности и
+            просадки уменьшение — улучшение. Реализованный риск на Validation
+            может отличаться.
           </>
         )}
-        Веса оптимизатора выбраны только на Train при риске вашего портфеля на
-        Train. Δ = оптимизатор − ваш портфель. Для волатильности и просадки
-        уменьшение — улучшение. Реализованный риск на Validation может
-        отличаться.
       </p>
       <p>
         {value.generated_datasets != null
@@ -149,6 +183,7 @@ export default function PairedComparisonView({
       <div className="metrics">
         {Object.entries(frequencies).map(([k, v]) => (
           <span key={k}>
+            {passive && "Пассивный · "}
             {wins[k] ?? k}
             <b>{percent(v.fraction)}</b>
             <small>{v.denominator} сравнений</small>
@@ -159,7 +194,11 @@ export default function PairedComparisonView({
         <table>
           <thead>
             <tr>
-              <th>Разница на Validation</th>
+              <th>
+                {passive
+                  ? "Разница: пассивный − активный"
+                  : "Разница на Validation"}
+              </th>
               <th>Mean</th>
               <th>Median</th>
               <th>P5–P95</th>
@@ -183,21 +222,38 @@ export default function PairedComparisonView({
           </tbody>
         </table>
       </div>
-      {value.generated_datasets != null && value.results.length > 0 && (
-        <BootstrapValidationTable value={value} instruments={instruments} />
-      )}
+      {!passive &&
+        value.generated_datasets != null &&
+        value.results.length > 0 && (
+          <BootstrapValidationTable value={value} instruments={instruments} />
+        )}
       {data.length > 0 && (
         <>
-          <h4>Validation: распределение доходности и риска</h4>
+          <h4>
+            {passive
+              ? "Активный и пассивный портфели: распределение доходности и риска"
+              : "Validation: распределение доходности и риска"}
+          </h4>
           <p className="hint">
-            Более плотные области темнее. Активы включаются нажатием на легенду.
-            Оба набора синтетических данных получены из одной исторической
-            выборки. Частоты и процентили не являются вероятностями будущих
-            результатов. Граница построена ретроспективно по средним
-            эмпирическим моментам Validation.
+            Более плотные области темнее.{" "}
+            {passive ? (
+              "Каждое облако построено по одним и тем же генерациям Bootstrap."
+            ) : (
+              <>
+                Активы включаются нажатием на легенду. Оба набора синтетических
+                данных получены из одной исторической выборки. Частоты и
+                процентили не являются вероятностями будущих результатов.
+                Граница построена ретроспективно по средним эмпирическим
+                моментам Validation.
+              </>
+            )}
           </p>
           <Plot
-            title="Validation density clouds"
+            title={
+              passive
+                ? "Плотность доходности и риска активного и пассивного портфелей"
+                : "Validation density clouds"
+            }
             data={data}
             layout={{
               xaxis: {

@@ -247,6 +247,37 @@ const assetTrendSensitivity = z.record(
     reproducibility: provenance.extend({ reference_panel_sha256: hash }),
   }),
 );
+const bootstrapTrendMetrics = [
+  n.nullable(),
+  n.min(0).max(1).nullable(),
+  n.nonnegative().nullable(),
+] as const;
+const bootstrapTrendSeries = z
+  .array(
+    z.array(
+      z.union([
+        z.tuple([
+          ...bootstrapTrendMetrics,
+          ...bootstrapTrendMetrics,
+          n.nonnegative().nullable(),
+        ]),
+        z.tuple(bootstrapTrendMetrics),
+      ]),
+    ),
+  )
+  .length(36);
+const bootstrapTrendSensitivity = z
+  .object({
+    iterations: n.int().min(1).max(2000),
+    commission_basis: z.literal("pretrade_nav").optional(),
+    portfolio: bootstrapTrendSeries,
+    by_asset: z.record(z.string(), bootstrapTrendSeries),
+  })
+  .refine(({ iterations, portfolio, by_asset }) =>
+    [portfolio, ...Object.values(by_asset)].every((series) =>
+      series.every((samples) => samples.length === iterations),
+    ),
+  );
 const efficiencyDistance = z
   .object({
     status: z.string(),
@@ -447,6 +478,9 @@ const simulationStats = z.object({
   maximum_drawdown: n.min(0).max(1),
   terminal_wealth: n.nonnegative().nullable(),
 });
+const bootstrapControlPath = z.object({
+  net: simulationStats.partial().optional(),
+});
 const results = {
   "rebalancing-optimization": base
     .extend({
@@ -541,6 +575,16 @@ const results = {
     .extend({
       conditional_bootstrap: z.boolean(),
       sample_fingerprint: z.string(),
+      portfolio_control_samples: z
+        .array(
+          z.object({
+            status: z.string().optional(),
+            baseline: bootstrapControlPath.optional(),
+            controlled: bootstrapControlPath.optional(),
+          }),
+        )
+        .optional(),
+      trend_sensitivity: bootstrapTrendSensitivity.nullish(),
       objectives: z
         .record(
           z.string(),

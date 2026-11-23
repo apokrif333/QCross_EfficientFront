@@ -7,7 +7,7 @@ import pytest
 from app.analytics.bootstrap import analyze_bootstrap, stationary_indices
 from app.analytics.models import OptimizationResult
 from app.analytics.optimizer import PortfolioOptimizer
-from app.analytics.portfolio_controls import compare_controls
+from app.analytics.portfolio_controls import analyze_bootstrap_trend_sensitivity, compare_controls
 
 USER = {"1": 0.6, "2": 0.2, "3": 0.2}
 
@@ -181,3 +181,72 @@ def test_controlled_risk_infeasible_is_not_replaced(panel, monkeypatch):
         for r in result["paired_comparison"]["results"]
     )
     assert result["efficiency_robustness"]["distributions"]["annualized_cagr"]["valid_count"] == 4
+
+
+@pytest.mark.parametrize(
+    ("basis", "destination", "interval"),
+    [("nominal", "hedge", 4), ("real", "remaining", None)],
+)
+def test_trend_sensitivity_reuses_every_draw_with_portfolio_and_single_asset_rules(
+    panel, monkeypatch, basis, destination, interval
+):
+    p = controlled_panel(panel, "trend", basis)
+    trend = p.control_config["trend"]
+    trend["destination"] = destination
+    trend["asset_rules"]["2"] = {"indicator": "sma", "lookback_months": 8}
+    # The hedge overlaps a managed asset and also contains an external instrument.
+    p.control_config["hedge_weights"] = {"2": 0.4, "hedge": 0.6}
+    rng = np.random.default_rng(11)
+    samples = [stationary_indices(len(p.values), 6, rng) for _ in range(3)]
+    remaining = iter(samples)
+    monkeypatch.setattr("app.analytics.bootstrap.stationary_indices", lambda *args: next(remaining))
+    retained = []
+    fee_rate = 0.002
+    result = analyze_bootstrap(
+        p,
+        bootstrap_iterations=len(samples),
+        objectives=["gmv"],
+        user_weights=USER,
+        include_paired_comparison=False,
+        transaction_fee_rate=fee_rate,
+        rebalancing_interval_months=interval,
+        _sample_indices=retained,
+    )
+    assert list(remaining) == []
+    assert "trend_sensitivity" not in result
+    assert "sensitivity" not in result["portfolio_controls"]
+    np.testing.assert_array_equal(retained, samples)
+    sweep = analyze_bootstrap_trend_sensitivity(p, user_weights=USER, _sample_indices=retained)[
+        "trend_sensitivity"
+    ]
+    assert sweep["iterations"] == len(samples)
+    assert set(sweep["by_asset"]) == {"1", "2"}
+    for asset, series in [(None, sweep["portfolio"]), *sweep["by_asset"].items()]:
+        assert np.shape(series) == (36, len(samples), 7)
+        weights = USER if asset is None else {asset: 1.0}
+        for month, actual in enumerate(series, 1):
+            rules = {
+                key: {**rule, "lookback_months": month}
+                for key, rule in trend["asset_rules"].items()
+                if asset is None or asset == key
+            }
+            varied = replace(
+                p, control_config={**p.control_config, "trend": {**trend, "asset_rules": rules}}
+            )
+            expected = []
+            for indices in samples:
+                controlled = compare_controls(varied, weights, indices, record_history=False)[
+                    "controlled"
+                ]
+                expected.append(
+                    [
+                        controlled[side][k]
+                        for side in ("net", "gross")
+                        for k in ("annualized_cagr", "maximum_drawdown", "annualized_volatility")
+                    ]
+                    + [
+                        fee_rate * controlled["annualized_turnover"]
+                        + fee_rate / (1 + fee_rate) * 12 / len(indices)
+                    ]
+                )
+            np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)

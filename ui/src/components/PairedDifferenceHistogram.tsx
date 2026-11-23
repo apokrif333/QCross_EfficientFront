@@ -1,12 +1,12 @@
 import { useState } from "react";
 import type { Data } from "plotly.js";
-import type { PairedComparison } from "../types";
+import type { PortfolioComparison } from "../types";
 import Plot from "./Plot";
 
 export default function PairedDifferenceHistogram({
   value,
 }: {
-  value?: PairedComparison | null;
+  value?: PortfolioComparison | null;
 }) {
   const [metric, setMetric] = useState<
     "delta_cagr" | "delta_volatility" | "delta_max_drawdown"
@@ -22,9 +22,12 @@ export default function PairedDifferenceHistogram({
     delta_volatility: "Разница волатильности",
     delta_max_drawdown: "Разница просадки",
   }[metric];
+  const passive = "comparison_mode" in value;
   const samples = value.results.flatMap((r) => {
     const delta = r.differences?.[metric];
-    return r.optimized && delta != null && Number.isFinite(delta)
+    return (passive || ("optimized" in r && r.optimized)) &&
+      delta != null &&
+      Number.isFinite(delta)
       ? [delta * 100]
       : [];
   });
@@ -37,13 +40,23 @@ export default function PairedDifferenceHistogram({
   } as Data;
   return (
     <section className="subsection">
-      <h3>Распределение разниц на Validation</h3>
+      <h3>
+        {passive
+          ? "Распределение разниц между активным и пассивным портфелями"
+          : "Распределение разниц на Validation"}
+      </h3>
       <p className="hint">
-        Оптимизированный портфель − ваш портфель, п.п. Для каждой пары
-        используются одни и те же месяцы Validation. Успешных значений:{" "}
-        {samples.length} из {value.requested_comparisons}. Горизонт:{" "}
-        {value.horizon_months ?? "—"} мес. Для волатильности и максимальной
-        просадки отрицательная разница означает снижение.
+        {passive ? (
+          "Пассивный портфель − активный, п.п. Для обеих версий используются одни и те же генерации Bootstrap."
+        ) : (
+          <>
+            Оптимизированный портфель − ваш портфель, п.п. Для каждой пары
+            используются одни и те же месяцы Validation.
+          </>
+        )}{" "}
+        Успешных значений: {samples.length} из {value.requested_comparisons}.
+        Горизонт: {value.horizon_months ?? "—"} мес. Для волатильности и
+        максимальной просадки отрицательная разница означает снижение.
       </p>
       <div
         className="segmented"

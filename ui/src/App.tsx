@@ -18,6 +18,7 @@ import {
   fetchCatalog,
   requestJson,
   runAssetTrendSensitivity,
+  runBootstrapTrendSensitivity,
   runJob,
 } from "./lib/api";
 import { reusableControlCache } from "./lib/controlCache";
@@ -124,6 +125,14 @@ export default function App() {
   };
   const controller = useRef<AbortController | null>(null),
     file = useRef<HTMLInputElement>(null);
+  const bootstrapSources = useRef<
+    Partial<
+      Record<
+        ApiRequest["covariance_method"],
+        { calculationId: string; jobId: string }
+      >
+    >
+  >({});
   const instruments = catalog?.instruments ?? [];
   const periodKey = JSON.stringify([
     request.instrument_ids,
@@ -199,6 +208,13 @@ export default function App() {
     bootstrap = records.find((c) => c.kind === "bootstrap"),
     rebalancing = records.find((c) => c.kind === "rebalancing-optimization"),
     resampled = records.find((c) => c.kind === "resampled-frontier");
+  const bootstrapSource = bootstrapSources.current[request.covariance_method];
+  const bootstrapJobId =
+    mode === "live" &&
+    bootstrapSource &&
+    bootstrapSource.calculationId === bootstrap?.id
+      ? bootstrapSource.jobId
+      : undefined;
   const rebalancingBlocked =
     tab === "Rebalancing Optimization" &&
     (request.portfolio_controls?.mode ?? "none") !== "none";
@@ -219,6 +235,7 @@ export default function App() {
     try {
       if (next === "demo") {
         if (!demo) throw new Error("Demo ещё не загружен.");
+        bootstrapSources.current = {};
         setCatalog(demo.catalog);
         setCalculations(demo.calculations);
         adoptRequest(defaultDemoRequest(demo));
@@ -308,10 +325,14 @@ export default function App() {
     };
     const cvError = cvHistoryError(body, kind, commonObservations);
     if (cvError) throw new Error(cvError);
+    let sourceJobId: string | undefined;
     const result = await runJob(
       kind,
       body,
-      setProgress,
+      (job) => {
+        if (job.bootstrap_trend_sensitivity_available) sourceJobId = job.job_id;
+        setProgress(job);
+      },
       signal,
       kind === "resampled-frontier"
         ? reusableControlCache(body, calculations)
@@ -325,6 +346,11 @@ export default function App() {
       origin: "live",
       created_at: new Date().toISOString(),
     };
+    if (kind === "bootstrap") {
+      bootstrapSources.current[body.covariance_method] = sourceJobId
+        ? { calculationId: calculation.id, jobId: sourceJobId }
+        : undefined;
+    }
     setCalculations((prev) => [
       calculation,
       ...prev.filter(
@@ -375,15 +401,37 @@ export default function App() {
     );
     return next;
   }
-  async function calculateTrendSensitivity(calculation: Calculation) {
+  async function calculateTrendSensitivity(
+    calculation: Calculation,
+    bootstrapJobId?: string,
+  ) {
     if (busy) return;
     setError("");
     setProgress(null);
     const abort = new AbortController();
     controller.current = abort;
-    setBusy("Чувствительность SMA/Momentum по активам");
+    setBusy(
+      bootstrapJobId
+        ? "Чувствительность SMA/Momentum · Bootstrap"
+        : "Чувствительность SMA/Momentum по активам",
+    );
     try {
-      await addTrendSensitivity(calculation, abort.signal);
+      if (bootstrapJobId) {
+        const { trend_sensitivity } = await runBootstrapTrendSensitivity(
+          bootstrapJobId,
+          setProgress,
+          abort.signal,
+        );
+        setCalculations((current) =>
+          current.map((record) =>
+            record.id === calculation.id
+              ? { ...record, result: { ...record.result, trend_sensitivity } }
+              : record,
+          ),
+        );
+      } else {
+        await addTrendSensitivity(calculation, abort.signal);
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -437,6 +485,7 @@ export default function App() {
       if (f.size > 80 * 1024 * 1024)
         throw new Error("Максимальный размер снимка — 80 MB.");
       const s = parseSnapshot(await f.text());
+      bootstrapSources.current = {};
       setCalculations(s.calculations);
       setBaseline(s.calculations);
       setCatalog({
@@ -531,6 +580,26 @@ export default function App() {
       : "LIVE · FastAPI";
   return (
     <>
+      {busy && (
+        <div className="notice working" role="status">
+          <span className="spinner" />
+          {busy}
+          {progress && (
+            <span>
+              {progress.status} · {progress.elapsed_seconds.toFixed(1)} с ·
+              лимит {progress.timeout_seconds} с
+            </span>
+          )}
+          {controller.current && (
+            <button
+              className="text-button"
+              onClick={() => controller.current?.abort()}
+            >
+              Отменить ожидание
+            </button>
+          )}
+        </div>
+      )}
       <header className="topbar">
         <a className="brand" href="#">
           <span className="brand-symbol">Q</span>
@@ -610,26 +679,6 @@ export default function App() {
       {message && (
         <div className="notice" role="status">
           {message}
-        </div>
-      )}
-      {busy && (
-        <div className="notice working" role="status">
-          <span className="spinner" />
-          {busy}
-          {progress && (
-            <span>
-              {progress.status} · {progress.elapsed_seconds.toFixed(1)} с ·
-              лимит {progress.timeout_seconds} с
-            </span>
-          )}
-          {controller.current && (
-            <button
-              className="text-button"
-              onClick={() => controller.current?.abort()}
-            >
-              Отменить ожидание
-            </button>
-          )}
         </div>
       )}
       <AssetBuilder
@@ -809,6 +858,16 @@ export default function App() {
                         : undefined
                     }
                     instruments={instruments}
+                    sensitivityBusy={!!busy}
+                    onCalculateSensitivity={
+                      bootstrapJobId
+                        ? () =>
+                            void calculateTrendSensitivity(
+                              bootstrap,
+                              bootstrapJobId,
+                            )
+                        : undefined
+                    }
                   />
                 )}
                 {!bootstrap && resampled && (
@@ -1010,7 +1069,7 @@ export default function App() {
                 userWeights={visible.request.user_weights}
                 sensitivityBusy={!!busy}
                 onCalculateSensitivity={
-                  mode === "live"
+                  mode === "live" && visible.kind !== "bootstrap"
                     ? () => void calculateTrendSensitivity(visible)
                     : undefined
                 }

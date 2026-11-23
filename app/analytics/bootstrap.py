@@ -141,6 +141,7 @@ def analyze_bootstrap(
     user_weights: dict | None = None,
     include_efficiency_robustness: bool = True,
     include_paired_comparison: bool = True,
+    _sample_indices: list[np.ndarray] | None = None,
     **options,
 ) -> dict:
     _validate_settings(bootstrap_iterations, expected_block_length, random_seed)
@@ -199,6 +200,9 @@ def analyze_bootstrap(
     control_samples = []
     for iteration in range(bootstrap_iterations):
         indices = stationary_indices(len(panel.values), expected_block_length, rng)
+        if _sample_indices is not None:
+            # ReturnPanel supports at most 10,000 months.
+            _sample_indices.append(indices.astype(np.uint16))
         fingerprint.update(indices.astype("<i8").tobytes())
         values = panel.values[indices]
         control_sample = None

@@ -31,7 +31,9 @@ def reproducible(function):
             )
         bound = signature(function).bind(*args, **kwargs)
         bound.apply_defaults()
-        settings = {k: v for k, v in bound.arguments.items() if k != "panel"}
+        settings = {
+            k: v for k, v in bound.arguments.items() if k != "panel" and not k.startswith("_")
+        }
         identity = {
             "panel": result["reproducibility"]["reference_panel_sha256"],
             "engine": engine_identity(),

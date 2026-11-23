@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-test("paired Validation density clouds render and assets toggle independently", async ({
+test("Bootstrap switches from Validation to a matched passive comparison for My Portfolio", async ({
   page,
 }) => {
   const manifest = JSON.parse(
@@ -10,6 +10,27 @@ test("paired Validation density clouds render and assets toggle independently", 
   const result = JSON.parse(
     await readFile(resolve("public/demo/bootstrap.json"), "utf8"),
   );
+  result.objectives.max_return_at_user_risk = result.objectives.gmv;
+  result.portfolio_control_samples = Array.from({ length: 500 }, (_, i) => {
+    const active = {
+      annualized_cagr: 0.08,
+      annualized_arithmetic_return: 0.09 + 0.03 * Math.cos(i * 0.96),
+      annualized_volatility: 0.1 + 0.02 * Math.sin(i * 1.36),
+      maximum_drawdown: 0.2,
+    };
+    return {
+      controlled: { net: active },
+      baseline: {
+        net: {
+          ...active,
+          annualized_cagr: 0.1,
+          annualized_arithmetic_return:
+            active.annualized_arithmetic_return + 0.02,
+          annualized_volatility: active.annualized_volatility + 0.01,
+        },
+      },
+    };
+  });
   result.paired_comparison = {
     valid_count: 250,
     failed_count: 0,
@@ -88,6 +109,55 @@ test("paired Validation density clouds render and assets toggle independently", 
   await expect
     .poll(() => graph.evaluate((el: any) => el._fullData[0].visible))
     .toBe(true);
+  const switcher = page.getByRole("group", {
+    name: "С чем сравнивать мой портфель",
+  });
+  await expect(switcher).toHaveCount(0);
+  await page.getByRole("button", { name: "Мой портфель", exact: true }).click();
+  await expect(
+    switcher.getByRole("button", { name: "Validation" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByRole("heading", {
+      name: "Ваш портфель и оптимизатор — проверка на Validation",
+    }),
+  ).toBeVisible();
+  await switcher.getByRole("button", { name: "Пассивный портфель" }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Ваш активный и пассивный портфели — Stationary Bootstrap",
+    }),
+  ).toBeVisible();
+  await expect(page.getByText(/500 генераций · 500 пар/)).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Распределение разниц между активным и пассивным портфелями",
+    }),
+  ).toBeVisible();
+  const passivePlot = page.getByRole("img", {
+    name: "Плотность доходности и риска активного и пассивного портфелей",
+  });
+  await expect(passivePlot.locator(".contourlayer .contour")).toHaveCount(2);
+  await expect(
+    passivePlot.getByText("Пассивный портфель (500)", { exact: true }),
+  ).toBeVisible();
+  const histogram = page
+    .getByRole("img", { name: "Bootstrap: Разница CAGR" })
+    .locator(".js-plotly-plot");
+  await expect
+    .poll(() =>
+      histogram.evaluate((el: any) => ({
+        count: el.data[0].x.length,
+        sign: Math.sign(el.data[0].x[0]),
+      })),
+    )
+    .toEqual({ count: 500, sign: 1 });
+
+  await switcher.getByRole("button", { name: "Validation" }).click();
+  await expect(plot).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Распределение разниц на Validation" }),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "Cross-validation", exact: true })
     .click();

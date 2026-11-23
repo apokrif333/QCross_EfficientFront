@@ -735,6 +735,38 @@ details {
   outline: 2px solid #197b83;
   outline-offset: 3px;
 }
+.bootstrap-trend-table-scroll {
+  max-height: min(65vh, 36rem);
+}
+.bootstrap-trend-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.bootstrap-trend-table th:first-child {
+  position: sticky;
+  left: 0;
+}
+.bootstrap-trend-table thead th:first-child {
+  z-index: 3;
+}
+.bootstrap-trend-table tbody th {
+  z-index: 1;
+  background: #fff;
+}
+.bootstrap-trend-table tbody tr {
+  cursor: pointer;
+}
+.bootstrap-trend-table tbody tr[data-benchmark="true"] > * {
+  background: #e2f1f1;
+  color: #174e55;
+}
+.bootstrap-trend-table td small {
+  display: block;
+  margin-top: 2px;
+  color: #566f7b;
+  white-space: nowrap;
+}
 .rebalancing-table th:first-child,
 .rebalancing-table td:first-child {
   position: sticky;
@@ -805,11 +837,15 @@ td small {
   background: #fcf1ec;
   color: #925b48;
 }
-.working {
+.notice.working {
+  position: sticky;
+  top: 0;
+  z-index: 40;
   display: flex;
   gap: 14px;
   align-items: center;
   flex-wrap: wrap;
+  margin-bottom: 0;
 }
 .working span:last-of-type {
   color: #768b93;

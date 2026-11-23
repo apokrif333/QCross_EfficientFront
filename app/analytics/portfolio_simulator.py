@@ -42,7 +42,10 @@ class CalendarPolicy:
             raise AnalyticsError("Calendar interval must be a positive integer or null.")
 
     def triggers(self, state):
-        return [] if self.interval and state.elapsed_months % self.interval == 0 else None
+        return [] if self.scheduled(state.elapsed_months) else None
+
+    def scheduled(self, elapsed_months):
+        return self.interval is not None and elapsed_months % self.interval == 0
 
 
 @dataclass(frozen=True)
@@ -82,6 +85,24 @@ def execute_target(positions, target, wealth, fee_rate):
     Positions are aggregate notionals per unique asset; buys and sells are netted
     before charging. Cash is spent exactly, including fees; no borrowing.
     """
+    if positions.ndim > 1:
+        # Each fixed set of buys/sells gives a linear equation for post-trade wealth.
+        # Starting at pre-trade wealth, a buy can only switch to a sell.
+        final_wealth = wealth
+        if fee_rate:
+            buys = target * wealth > positions
+            for _ in range(positions.shape[-1] + 1):
+                signs = np.where(buys, 1.0, -1.0)
+                final_wealth = (wealth + fee_rate * (signs * positions).sum(-1, keepdims=True)) / (
+                    1 + fee_rate * (signs * target).sum(-1, keepdims=True)
+                )
+                next_buys = target * final_wealth > positions
+                if np.array_equal(next_buys, buys):
+                    break
+                buys = next_buys
+        final = target * final_wealth
+        trades = final - positions
+        return final, trades, fee_rate * np.abs(trades).sum(-1)
     if wealth <= 0:
         return np.zeros_like(target), np.zeros_like(target), 0.0
     if fee_rate == 0:
@@ -99,6 +120,22 @@ def execute_target(positions, target, wealth, fee_rate):
     return final, trades, float(fee_rate * np.abs(trades).sum())
 
 
+def _return_risk_statistics(monthly, initial_investment):
+    n = monthly.shape[-1]
+    with np.errstate(divide="ignore", over="ignore"):
+        log_growth = np.cumsum(np.log1p(monthly), axis=-1)
+        peaks = np.maximum(0.0, np.maximum.accumulate(log_growth, axis=-1))
+        drawdown = -np.expm1(log_growth - peaks)
+        cagr = np.expm1(log_growth[..., -1] * 12 / n)
+    volatility = monthly.std(axis=-1, ddof=1) * np.sqrt(12) if n > 1 else np.zeros_like(cagr)
+    return (
+        cagr,
+        volatility,
+        np.maximum(drawdown.max(axis=-1), 1 - initial_investment),
+        log_growth[..., -1],
+    )
+
+
 def path_statistics(monthly, wealth, risk_free, *, initial_investment=1.0):
     monthly, wealth, risk_free = map(
         lambda x: np.asarray(x, dtype=float), (monthly, wealth, risk_free)
@@ -107,16 +144,13 @@ def path_statistics(monthly, wealth, risk_free, *, initial_investment=1.0):
     differential = monthly - risk_free
     sd = float(differential.std(ddof=1)) if n > 1 else 0
     downside = float(np.sqrt(np.mean(np.minimum(differential, 0) ** 2)))
-    with np.errstate(divide="ignore"):
-        log_path = np.r_[0.0, np.cumsum(np.log1p(monthly))]
-    drawdown = -np.expm1(log_path - np.maximum.accumulate(log_path))
+    cagr, volatility, drawdown, log_terminal = _return_risk_statistics(monthly, initial_investment)
     with np.errstate(over="ignore"):
-        terminal = float(np.exp(log_path[-1]))
-        cagr = float(np.expm1(log_path[-1] * 12 / n))
+        terminal = float(np.exp(log_terminal))
     return {
-        "annualized_cagr": cagr if np.isfinite(cagr) else None,
+        "annualized_cagr": float(cagr) if np.isfinite(cagr) else None,
         "annualized_arithmetic_return": float(monthly.mean() * 12),
-        "annualized_volatility": float(monthly.std(ddof=1) * np.sqrt(12)) if n > 1 else 0.0,
+        "annualized_volatility": float(volatility),
         "annualized_downside_volatility": float(np.sqrt(12 * np.mean(np.minimum(monthly, 0) ** 2))),
         "historical_sharpe_ratio": float(np.sqrt(12) * differential.mean() / sd)
         if sd > 1e-12
@@ -124,9 +158,90 @@ def path_statistics(monthly, wealth, risk_free, *, initial_investment=1.0):
         "sortino_ratio": float(np.sqrt(12) * differential.mean() / downside)
         if downside > 1e-12
         else None,
-        "maximum_drawdown": max(float(drawdown.max()), 1 - initial_investment),
+        "maximum_drawdown": float(drawdown),
         "terminal_wealth": terminal if np.isfinite(terminal) else None,
     }
+
+
+def simulate_target_paths(
+    values, weights, targets, *, transaction_fee_rate=0.0, rebalancing_interval_months=12
+):
+    """Run known end-of-month targets across scenarios, retaining only summary metrics.
+
+    Values and targets are month-major, with broadcast-compatible scenario dimensions
+    between the month and asset axes. Targets depend only on observed asset returns.
+    """
+    policy = CalendarPolicy(rebalancing_interval_months)
+    if not np.isfinite(transaction_fee_rate) or not 0 <= transaction_fee_rate < 1:
+        raise AnalyticsError("transaction_fee_rate must be in [0,1).")
+    target = allocation(weights, values.shape[-1])
+    positions, _, initial_fee = execute_target(
+        np.zeros_like(target), target, 1.0, transaction_fee_rate
+    )
+    initial_investment = positions.sum()
+    gross_positions = target.copy()
+    fee_fractions = np.full(targets.shape[1:-1], initial_fee)
+    monthly = np.empty((*fee_fractions.shape, len(values)))
+    gross_monthly = np.empty_like(monthly)
+    previous_wealth = 1.0
+    previous_gross_wealth = 1.0
+    for month, (returns, desired) in enumerate(zip(values, targets, strict=True)):
+        positions = positions * (1 + returns)
+        gross_positions = gross_positions * (1 + returns)
+        wealth = positions.sum(axis=-1, keepdims=True)
+        if month + 1 < len(values):
+            actual = np.divide(positions, wealth, out=np.zeros_like(positions), where=wealth > 0)
+            signal = (
+                policy.scheduled(month + 1) | (np.max(np.abs(desired - target), axis=-1) > 1e-10)
+            ) & (wealth[..., 0] > 0)
+            trade = signal & (np.max(np.abs(actual - desired), axis=-1) > 1e-12)
+            if np.any(trade):
+                pretrade_wealth = np.broadcast_to(wealth, (*trade.shape, 1))[trade]
+                positions = np.broadcast_to(positions, desired.shape).copy()
+                positions[trade], _, cost = execute_target(
+                    positions[trade],
+                    desired[trade],
+                    pretrade_wealth,
+                    transaction_fee_rate,
+                )
+                fee_fractions[trade] += cost / pretrade_wealth[:, 0]
+                # Apply the same executions to gross holdings without deducting costs.
+                gross_positions = np.broadcast_to(gross_positions, desired.shape).copy()
+                gross_positions[trade] = desired[trade] * gross_positions[trade].sum(
+                    axis=-1, keepdims=True
+                )
+                wealth = positions.sum(axis=-1, keepdims=True)
+            target = np.where(signal[..., None], desired, target)
+        wealth = wealth[..., 0]
+        if not np.isfinite(wealth).all():
+            raise AnalyticsError("Portfolio wealth overflowed; shorten the selected horizon.")
+        monthly[..., month] = (
+            np.divide(wealth, previous_wealth, out=np.ones_like(wealth), where=previous_wealth > 0)
+            - 1
+        )
+        previous_wealth = wealth
+        gross_wealth = gross_positions.sum(axis=-1)
+        gross_monthly[..., month] = (
+            np.divide(
+                gross_wealth,
+                previous_gross_wealth,
+                out=np.ones_like(gross_wealth),
+                where=previous_gross_wealth > 0,
+            )
+            - 1
+        )
+        previous_gross_wealth = gross_wealth
+    cagr, volatility, drawdown, _ = _return_risk_statistics(monthly, initial_investment)
+    gross_cagr, gross_volatility, gross_drawdown, _ = _return_risk_statistics(gross_monthly, 1.0)
+    return (
+        cagr,
+        drawdown,
+        volatility,
+        gross_cagr,
+        gross_drawdown,
+        gross_volatility,
+        fee_fractions * (12 / len(values)),
+    )
 
 
 def simulate_portfolio(

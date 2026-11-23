@@ -14,6 +14,7 @@ import type {
 } from "../types";
 import { METHODS } from "../types";
 import { compatible } from "../lib/snapshot";
+import { comparePassiveBootstrap } from "../lib/passiveBootstrapComparison";
 import {
   displayedVolatility,
   escapeHtml as escape,
@@ -26,6 +27,7 @@ import Plot from "./Plot";
 import PortfolioTable from "./PortfolioTable";
 import PairedComparisonView from "./PairedComparisonView";
 import PairedDifferenceHistogram from "./PairedDifferenceHistogram";
+import BootstrapTrendSensitivity from "./BootstrapTrendSensitivity";
 
 const AXES = {
   xaxis: { title: { text: "Годовая волатильность" }, tickformat: ".1%" },
@@ -951,13 +953,42 @@ export function BootstrapView({
   result: r,
   resampled,
   instruments,
+  sensitivityBusy,
+  onCalculateSensitivity,
 }: {
   result: BootstrapResult;
   resampled?: ResampledResult;
   instruments: Instrument[];
+  sensitivityBusy?: boolean;
+  onCalculateSensitivity?: () => void;
 }) {
   const [objective, setObjective] = useState("gmv");
+  const [comparePassive, setComparePassive] = useState(false);
   const o = r.objectives[objective] ?? Object.values(r.objectives)[0];
+  const controlSamples = r.portfolio_control_samples;
+  const canComparePassive =
+    o === r.objectives.max_return_at_user_risk && !!controlSamples?.length;
+  const showPassive = canComparePassive && comparePassive;
+  const weights =
+    r.efficiency_robustness?.user_weights ??
+    r.reproducibility.api_request?.user_weights;
+  const comparison = useMemo(
+    () =>
+      showPassive && controlSamples
+        ? comparePassiveBootstrap(
+            controlSamples,
+            r.period.observations,
+            weights,
+          )
+        : r.paired_comparison,
+    [
+      showPassive,
+      controlSamples,
+      r.period.observations,
+      weights,
+      r.paired_comparison,
+    ],
+  );
   const isTarget = o.target_return != null;
   const assets = r.assets,
     stats = o.stability?.assets;
@@ -1027,12 +1058,44 @@ export function BootstrapView({
           </button>
         ))}
       </div>
+      {canComparePassive && (
+        <div
+          className="segmented"
+          role="group"
+          aria-label="С чем сравнивать мой портфель"
+        >
+          <button
+            type="button"
+            className={!showPassive ? "active" : undefined}
+            aria-pressed={!showPassive}
+            onClick={() => setComparePassive(false)}
+          >
+            Validation
+          </button>
+          <button
+            type="button"
+            className={showPassive ? "active" : undefined}
+            aria-pressed={showPassive}
+            onClick={() => setComparePassive(true)}
+          >
+            Пассивный портфель
+          </button>
+        </div>
+      )}
       <PairedComparisonView
-        value={r.paired_comparison}
+        key={String(showPassive)}
+        value={comparison}
         instruments={instruments}
       />
-      <PairedDifferenceHistogram value={r.paired_comparison} />
+      <PairedDifferenceHistogram value={comparison} />
       <BootstrapPortfolioMetrics result={r} />
+      <BootstrapTrendSensitivity
+        key={r.sample_fingerprint}
+        value={r.trend_sensitivity}
+        instruments={instruments}
+        busy={sensitivityBusy}
+        onCalculate={onCalculateSensitivity}
+      />
       {isTarget ? (
         <>
           <p title="Доля исторических бутстрап-выборок, в которых заданная ожидаемая доходность достижима при выбранных ограничениях. Не является вероятностью будущей доходности.">

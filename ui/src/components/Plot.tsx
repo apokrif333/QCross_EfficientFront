@@ -3,6 +3,7 @@ import type {
   Data,
   Layout,
   PlotMouseEvent,
+  PlotRestyleEvent,
   PlotlyHTMLElement,
 } from "plotly.js";
 export interface PlotProps {
@@ -11,6 +12,7 @@ export interface PlotProps {
   title: string;
   layout?: Partial<Layout>;
   onSelect?: (event: PlotMouseEvent) => void;
+  onRestyle?: (event: PlotRestyleEvent) => void;
   height?: number;
 }
 const EMPTY_LAYOUT: Partial<Layout> = {};
@@ -23,13 +25,16 @@ export default function Plot({
   title,
   layout = EMPTY_LAYOUT,
   onSelect,
+  onRestyle,
   height = 420,
   threeD = false,
 }: PlotProps) {
   const ref = useRef<HTMLDivElement>(null),
-    select = useRef(onSelect);
+    select = useRef(onSelect),
+    restyle = useRef(onRestyle);
   const [error, setError] = useState("");
   select.current = onSelect;
+  restyle.current = onRestyle;
   useEffect(() => {
     let active = true,
       observer: ResizeObserver | undefined;
@@ -72,6 +77,10 @@ export default function Plot({
         graph.removeAllListeners?.("plotly_click");
         graph.on("plotly_click", (event: PlotMouseEvent) =>
           select.current?.(event),
+        );
+        graph.removeAllListeners?.("plotly_restyle");
+        graph.on("plotly_restyle", (event: PlotRestyleEvent) =>
+          restyle.current?.(event),
         );
         observer = new ResizeObserver(() => {
           if (

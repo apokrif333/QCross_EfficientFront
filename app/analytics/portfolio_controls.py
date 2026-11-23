@@ -3,10 +3,26 @@
 import numpy as np
 
 from app.analytics.models import AnalyticsError
-from app.analytics.portfolio_simulator import simulate_portfolio
+from app.analytics.portfolio_simulator import simulate_portfolio, simulate_target_paths
 from app.analytics.provenance import panel_provenance
 
 TREND_LOOKBACKS = range(1, 37)
+
+
+def _sma_active(window):
+    peak = window.max(axis=-1)
+    return np.exp(window[..., -1] - peak) >= np.exp(window - peak[..., None]).mean(axis=-1)
+
+
+def _trend_weights(base, hedge, active, destination):
+    kept = base * active
+    mass = kept.sum(axis=-1, keepdims=True)
+    if destination == "remaining":
+        use_hedge = mass <= 0
+        desired = np.divide(kept, mass, out=np.zeros_like(kept, dtype=float), where=~use_hedge)
+        return desired + use_hedge * hedge, use_hedge
+    hedge_fraction = np.maximum(0.0, 1 - mass)
+    return kept + hedge_fraction * hedge, hedge_fraction
 
 
 class DownsideTarget:
@@ -62,20 +78,13 @@ class TrendTarget:
                 else:
                     window = np.array(self.prices[-lookback:])[:, i]
                     # Scale the whole window; avoids overflow of long-run TRI.
-                    peak = window.max()
-                    active[i] = np.exp(current - peak) >= np.exp(window - peak).mean()
+                    active[i] = _sma_active(window)
             signals[asset] = {
                 "active": bool(active[i]),
                 "warmup": indicator != "disabled" and not ready,
             }
-        kept = self.base * active
-        mass = float(kept.sum())
-        if self.destination == "remaining":
-            desired = kept / mass if mass > 0 else self.hedge.copy()
-            hedge_fraction = 0.0 if mass > 0 else 1.0
-        else:
-            hedge_fraction = max(0.0, 1 - mass)
-            desired = kept + hedge_fraction * self.hedge
+        desired, hedge_allocation = _trend_weights(self.base, self.hedge, active, self.destination)
+        hedge_fraction = float(hedge_allocation[0])
         self.diagnostics = {
             "signals": signals,
             "active_assets": [
@@ -153,6 +162,88 @@ def _enabled_trend_rules(rules, user_weights):
         asset: rule
         for asset, rule in rules.items()
         if user_weights.get(asset, 0) > 0 and rule["indicator"] != "disabled"
+    }
+
+
+def _bootstrap_trend_signals(values, assets, rules):
+    """End-of-month signals for every generation and lookback on the same paths."""
+    months, draws, _ = values.shape
+    signals = np.ones((months, draws, len(TREND_LOOKBACKS), len(assets)), dtype=bool)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        prices = np.concatenate((np.zeros_like(values[:1]), np.cumsum(np.log1p(values), axis=0)))
+        for i, asset in enumerate(assets):
+            if asset not in rules:
+                continue
+            price = prices[..., i]
+            for period in TREND_LOOKBACKS:
+                if period > months:
+                    break
+                current = price[period:]
+                if rules[asset]["indicator"] == "momentum":
+                    active = current >= price[:-period]
+                else:
+                    window = np.lib.stride_tricks.sliding_window_view(price[1:], period, axis=0)
+                    active = _sma_active(window)
+                signals[period - 1 :, :, period - 1, i] = np.isfinite(current) & active
+    return signals
+
+
+def has_enabled_trend_rules(panel, user_weights):
+    return (
+        panel.control_config.get("mode") == "trend"
+        and bool(user_weights)
+        and bool(_enabled_trend_rules(panel.control_config["trend"]["asset_rules"], user_weights))
+    )
+
+
+def analyze_bootstrap_trend_sensitivity(panel, *, user_weights, _sample_indices):
+    """Compare common lookbacks on the original Bootstrap draws."""
+    if not has_enabled_trend_rules(panel, user_weights):
+        raise AnalyticsError("No positive-weight assets with SMA or Momentum enabled.")
+    sample_indices = _sample_indices
+    trend = panel.control_config["trend"]
+    rules = _enabled_trend_rules(trend["asset_rules"], user_weights)
+    values, base, hedge, _, assets = _control_inputs(panel, user_weights)
+    asset_columns = {asset: assets.index(asset) for asset in rules}
+    portfolios = {None: base}
+    for asset, column in asset_columns.items():
+        weights = np.zeros_like(base)
+        weights[column] = 1
+        portfolios[asset] = weights
+    results = {
+        asset: np.empty((len(TREND_LOOKBACKS), len(sample_indices), 7)) for asset in portfolios
+    }
+    # Bound the temporary target arrays even for long histories.
+    batch_size = max(1, min(64, 1_000_000 // (len(values) * len(TREND_LOOKBACKS) * len(assets))))
+    for start in range(0, len(sample_indices), batch_size):
+        stop = min(start + batch_size, len(sample_indices))
+        paths = values[sample_indices[start:stop]].transpose(1, 0, 2)
+        signals = _bootstrap_trend_signals(paths, assets, rules)
+        for asset, weights in portfolios.items():
+            included = (weights > 0) | (hedge > 0)
+            active = signals[..., included]
+            targets, _ = _trend_weights(
+                weights[included], hedge[included], active, trend["destination"]
+            )
+            metrics = simulate_target_paths(
+                paths[..., None, included],
+                weights[included],
+                targets,
+                **panel.simulation_options,
+            )
+            results[asset][:, start:stop] = np.stack(metrics, axis=-1).transpose(1, 0, 2)
+
+    def export(samples):
+        return np.where(np.isfinite(samples), samples, None).tolist()
+
+    return {
+        "trend_sensitivity": {
+            "iterations": len(sample_indices),
+            "commission_basis": "pretrade_nav",
+            "portfolio": export(results[None]),
+            "by_asset": {asset: export(results[asset]) for asset in rules},
+        },
+        "reproducibility": panel_provenance(panel),
     }
 
 
@@ -278,6 +369,7 @@ def attach_control_results(panel, result, user_weights):
     controls["source_metadata"] = panel.control_metadata
     if (
         panel.control_config["mode"] == "trend"
+        and result.get("methodology") != "stationary_bootstrap"
         and controls.get("sensitivity", {}).get("scope") != "common_lookback"
     ):
         points = _trend_sensitivity(panel, user_weights, controls["controlled"])

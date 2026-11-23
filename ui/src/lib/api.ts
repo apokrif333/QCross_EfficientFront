@@ -2,6 +2,7 @@ import type {
   ApiRequest,
   AssetTrendSensitivitySeries,
   BootstrapControlCache,
+  BootstrapTrendSensitivity,
   Catalog,
   Job,
   Kind,
@@ -117,6 +118,19 @@ export function runAssetTrendSensitivity(
       );
     throw error;
   });
+}
+
+export function runBootstrapTrendSensitivity(
+  bootstrapJobId: string,
+  onProgress: (job: Job<unknown>) => void,
+  signal: AbortSignal,
+) {
+  return submitJob<{ trend_sensitivity: BootstrapTrendSensitivity }>(
+    "bootstrap-trend-sensitivity",
+    { bootstrap_job_id: bootstrapJobId },
+    onProgress,
+    signal,
+  );
 }
 
 async function submitJob<T>(

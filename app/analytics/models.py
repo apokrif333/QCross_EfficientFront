@@ -28,7 +28,9 @@ class ReturnPanel:
     simulation_options: dict = field(default_factory=dict)
     control_config: dict = field(default_factory=dict)
     control_returns: pd.DataFrame | None = None
+    control_signal_returns: pd.DataFrame | None = None
     control_metadata: list = field(default_factory=list)
+    inflation_factors: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         if not 2 <= len(self.assets) <= 15:
@@ -61,6 +63,14 @@ class ReturnPanel:
     @property
     def values(self) -> np.ndarray:
         return self.returns.to_numpy(dtype=float)
+
+    def path_options(self, indices=None) -> dict:
+        if not self.simulation_options.get("capital_gains_tax_rate") or self.return_basis != "real":
+            return self.simulation_options
+        if self.inflation_factors is None:
+            raise AnalyticsError("Real paths with capital gains tax require aligned inflation.")
+        factors = self.inflation_factors if indices is None else self.inflation_factors[indices]
+        return {**self.simulation_options, "inflation_factors": factors}
 
 
 @dataclass

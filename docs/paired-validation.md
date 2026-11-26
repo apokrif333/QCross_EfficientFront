@@ -1,4 +1,4 @@
-# Portfolio out-of-sample robustness
+# Portfolio validation robustness
 
 `objective: "max_return_at_user_risk"` selects maximum annual arithmetic expected
 return subject to the user's estimated annual training variance. Explicit user
@@ -22,6 +22,7 @@ in the homogeneous Max Sharpe formulation.
   "objective": "max_return_at_user_risk",
   "bootstrap_objectives": ["max_return_at_user_risk"],
   "bootstrap_iterations": 500,
+  "cv_folds": 4,
   "expected_block_length": 12,
   "random_seed": 42,
   "return_basis": "real",
@@ -39,11 +40,10 @@ The job/status/result API and worker timeout are unchanged.
 
 With user weights, comparison is enabled by default for CV and Bootstrap, even
 when another objective is selected. Without weights it is omitted. Set
-`include_paired_comparison: false` to replay a legacy request or explicitly omit
-comparison; this does not affect existing optimization objectives. Bootstrap
-rejects an odd generation count before job submission when pairing is enabled.
-Legacy UI snapshots remain readable and are replayed with pairing disabled when
-the setting was absent. Selecting the new objective requires feasible weights.
+`include_paired_comparison: false` to omit comparison. Both even and odd
+generation counts are accepted. Legacy UI snapshots remain readable and replay
+uses the current methodology. Selecting the user-risk objective requires
+feasible weights.
 
 ## Bidirectional CV
 
@@ -56,19 +56,19 @@ The original requested CV objective and ensemble still run alongside comparison.
 
 ## Paired Bootstrap
 
-The existing Stationary Bootstrap RNG generates the same index stream as before.
-Odd generations train; the immediately following even generations validate.
-No extra draws are made. Each generation has the full selected-history length.
-All assets and historical BIL use the same indices. Nominal/Real transformation
-is performed once on the aligned panel before sampling. Covariance is reused
-from the existing Bootstrap iteration, with conditional cv_linear parameters
-held fixed as previously implemented. Every generation still contributes to
-the user's path distributions, including terminal wealth from $1.
+Each generation independently resamples Train and Validation within every
+bidirectional Fold, using disjoint source months within that Fold. All assets,
+historical BIL and hedges share the sampled indices. The aligned Nominal/Real
+transformation comes before sampling. Every estimator, including CV Linear,
+is fitted on the synthetic Fold Train. With controls enabled, the risk budget
+comes from net realized annual volatility on the same synthetic Train.
 
-Training/Validation draws are independent draws from the same empirical history.
-This is conditional synthetic validation, not an independent future-market test.
-Optional comparison failures have separate counts and do not alter the status or
-failure/feasibility policy of GMV, Max Sharpe or Target Return Bootstrap.
+The Validation blocks are concatenated in source order. The optimizer uses
+the corresponding fitted weights within each block and trades to new targets
+at the boundary. The user's active and passive paths use their regular
+rebalancing rules on the same full Validation. A missing optimizer Fold fit
+excludes the whole generation from the corresponding optimized comparison.
+See [the current methodology](bidirectional-stationary-bootstrap.md).
 
 ## Results
 
@@ -76,18 +76,14 @@ failure/feasibility policy of GMV, Max Sharpe or Target Return Bootstrap.
 `results`, `differences`, and `win_frequencies`. Bootstrap additionally reports
 `generated_datasets`, `horizon_months`, `user_weights`, `clouds`, `annual_mean`,
 `annual_covariance`, `validation_frontier` and an analysis version. A 500-generation
-run yields 250 comparisons, 250 asset/user cloud observations and up to 250
-optimized cloud observations, depending on train-solver success. The existing
-`efficiency_robustness.distributions` separately retains 500 user path values
-per defined metric. Undefined Sharpe values are null with explicit valid counts.
+run requests 500 full Validation comparisons. The optimized cloud and the paired
+differences include only generations with all required Fold fits. Undefined
+metrics are null with explicit valid counts.
 
-Both portfolios' Validation metrics and optimized weights are recorded per pair
-or fold. Differences are optimized minus user: annual arithmetic return, CAGR,
-realized volatility, historical BIL differential Sharpe, and maximum drawdown.
-Drawdown is a positive loss magnitude, so negative drawdown/volatility deltas
-represent improvement. New realized-volatility comparisons use ddof=1, while
-legacy fixed-path distributions retain their established ddof=0 convention.
-All paths use monthly fixed-weight rebalancing, including Real returns.
+The Bootstrap result records full-path metrics and each Fold's fitted target
+weights. Plots report optimized minus user. The passive view reports passive
+minus active on the same scenarios. Drawdown is a positive loss magnitude,
+so negative drawdown and volatility deltas favor the first portfolio.
 
 Each difference has mean, median, P5/P95 and min/max, plus a metric-specific valid
 count. Win frequencies disclose their own denominators: higher CAGR, higher
@@ -105,20 +101,14 @@ the distribution and density. The clouds contain individual Validation outcomes,
 not portfolios evaluated at average weights.
 
 `Ex-post Validation Efficient Frontier` uses the arithmetic average of the
-even-generation annual empirical means and covariances (ddof=1). It is a
+joined Validation annual empirical means and covariances (ddof=1). It is a
 retrospective constrained reference; it is separate from the unchanged shared
 risk-aversion Resampled Frontier. No averaged-weight reference marker is added.
 
 ## Reproducibility and verification
 
-Engine 2.3.1 includes the paired module in the source digest. User allocation,
-pairing option, return basis, data/reference fingerprints, covariance settings,
-seed and unchanged sampling fingerprint identify the calculation.
-
-Deterministic tests cover all four covariance methods and both bases, independent
-shared index draws, BIL alignment, exact moments/deltas, CV isolation, all fold
-directions, feasibility/errors, legacy objective preservation and async jobs.
-`test_500_datasets_have_250_pairs_and_500_user_paths` measured 4.777 seconds for
-500 generations / 250 comparisons on the seeded 240-month, three-asset fixture
-in this workspace. This is a synthetic local benchmark, not a production timing
-guarantee; the configured default worker timeout is 300 seconds.
+The engine records the methodology, Fold geometry and sample fingerprints.
+Deterministic tests cover source-month isolation, shared index draws, BIL
+alignment, continuous simulation, exact metrics, async jobs and legacy
+snapshots. The [methodology page](bidirectional-stationary-bootstrap.md)
+reports the comparison benchmark.

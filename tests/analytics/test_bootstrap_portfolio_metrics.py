@@ -4,9 +4,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.analytics.bootstrap import analyze_bootstrap, stationary_indices
+from app.analytics.bootstrap import analyze_bootstrap, bootstrap_generation
 from app.analytics.bootstrap_metrics import PORTFOLIO_METRICS, fixed_portfolio_metrics
 from app.analytics.models import AnalyticsError, ReturnPanel
+from app.analytics.splitting import bootstrap_folds
 from tests.analytics.test_portfolio_simulator import annual_returns
 
 
@@ -72,24 +73,25 @@ def test_full_sample_metrics_use_exact_existing_indices_and_aligned_bil(
         panel, user_weights=dict(zip(panel.assets, weights, strict=True)), **settings
     )
     assert result["sample_fingerprint"] == baseline["sample_fingerprint"]
-    assert sampled_lengths == [len(panel.values)] * 8
+    splits = bootstrap_folds(len(panel.values), 4, method)
+    assert sampled_lengths == [len(x) for split in splits for x in split] * 8
     assert [r["weights"] for r in result["objectives"]["gmv"]["iterations"]] == [
         r["weights"] for r in baseline["objectives"]["gmv"]["iterations"]
     ]
     robustness = result["efficiency_robustness"]
-    rng = np.random.default_rng(19)
     expected_records = []
-    for record in robustness["results"]:
-        indices = stationary_indices(len(panel.values), 12, rng)
+    for i, record in enumerate(robustness["results"]):
+        indices = np.concatenate([v for _, v in bootstrap_generation(splits, 12, 19, i)])
         expected = manual_metrics(annual_returns(panel.values[indices], weights), rf[indices])
         assert record["observations"] == len(panel.values)
         for key, value in expected.items():
             assert record["portfolio_metrics"][key] == pytest.approx(value)
         expected_records.append(expected)
-    for key, distribution in robustness["distributions"].items():
+    for key in (*expected_records[0], "return_shortfall", "excess_volatility"):
+        distribution = robustness["distributions"][key]
         observations = (
             [r[key] for r in expected_records]
-            if key in PORTFOLIO_METRICS
+            if key in expected_records[0]
             else [r[key] for r in robustness["results"] if r["status"] == "optimal"]
         )
         for name, expected in {
@@ -106,7 +108,7 @@ def test_full_sample_metrics_use_exact_existing_indices_and_aligned_bil(
     assert robustness["horizon"]["sample_length_policy"] == "full_selected_return_panel"
 
 
-@pytest.mark.parametrize("months", [180, 360])
+@pytest.mark.parametrize("months", [241, 360])
 def test_bootstrap_horizon_is_full_selected_history_not_rolling_window(months):
     values = np.random.default_rng(9).normal(0.005, 0.02, (months, 2))
     panel = ReturnPanel(
@@ -144,7 +146,7 @@ def test_path_metrics_survive_frontier_and_estimator_failures(panel, monkeypatch
     for key in PORTFOLIO_METRICS:
         assert robustness["distributions"][key]["valid_count"] == 3
     assert robustness["distributions"]["return_shortfall"]["valid_count"] == 0
-    monkeypatch.setattr(module, "_sample_estimate", fail)
+    monkeypatch.setattr(module, "_fit_bootstrap_fold", fail)
     result = analyze_bootstrap(panel, **settings)
     assert result["status"] == "incomplete"
     assert result["efficiency_robustness"]["distributions"]["annualized_cagr"]["valid_count"] == 3

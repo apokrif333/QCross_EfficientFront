@@ -6,6 +6,11 @@ universe remains limited to 15 instruments. Hedge instruments are aligned once,
 before Nominal/Real conversion, and history shortening is reported. The special
 hedge ID `BIL_REFERENCE` uses the validated historical monthly USD BIL series.
 
+SMA, Momentum and Downside Volatility signals use nominal asset returns in both
+reporting modes. Real mode applies the monthly inflation adjustment to portfolio
+and hedge performance. Historical runs and sensitivity sweeps use the same
+signal convention, including on resampled months.
+
 Downside mode uses `downside_vol.target_annual` and `lookback_months` (1–24).
 The unconditional downside RMS includes zero for positive base returns and is
 annualized by sqrt(12). It uses the original fixed targets exclusively. Warm-up
@@ -92,19 +97,18 @@ CV tables and Bootstrap distribution summaries keep the controlled comparison
 separate from the original trained portfolio comparison. Trade logs disclose
 entries, exits, policy events and aggregate executed asset notionals.
 
-Sensitivity evaluates each common lookback from 1 to 36 months. Each scenario
-applies that lookback to all active trend rules on assets with positive portfolio
-weights. The selected indicators, fees and weights are fixed. The scatter plot
-shows maximum portfolio drawdown on X and portfolio CAGR on Y. Points share one
-color and have their lookback in months printed above them. Gross/net switching
-uses the saved scenario statistics. The legacy `sensitivity_asset` request field
-is ignored. Results from prior sensitivity methods require recalculation to
-show the common-lookback chart.
-The selected history is shared by every scenario; synthetic samples retain
-the full selected observation count. Signal warm-up restarts within each CV
-validation block or Bootstrap sample, without fitting on future months.
+Sensitivity evaluates lookbacks from 1 to 36 months for the whole portfolio and
+for eligible individual assets. The whole-portfolio run applies the lookback
+to all active rules. It keeps the selected indicators, fees, hedges and weights.
+Gross and Net views use saved scenario statistics.
 
-## Verification
+In Stationary Bootstrap, the separate Sensitivity job reuses the same joined
+Validation paths across all lookbacks. Each simulation warms up once at the
+start of the path. The chart shows density clouds for CAGR against drawdown or
+volatility. The table compares lookbacks on matched generations and marks
+Pareto-efficient periods. See [the Bootstrap methodology](bidirectional-stationary-bootstrap.md).
+
+## Historical verification of the controls implementation
 
 The remote main inspected before implementation was
 `d316e451c4b47fae292e58def7b6f25bbcdd6ecc`. The first stage was committed as

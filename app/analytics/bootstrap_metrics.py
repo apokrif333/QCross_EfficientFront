@@ -9,6 +9,12 @@ PORTFOLIO_METRICS = (
     "maximum_drawdown",
     "historical_sharpe_ratio",
     "terminal_wealth",
+    "calmar_ratio",
+    "sortino_ratio",
+    "total_commissions",
+    "total_capital_gains_tax",
+    "annualized_commissions",
+    "annualized_turnover",
 )
 
 
@@ -25,6 +31,10 @@ def fixed_portfolio_metrics(
         allow_solver_residuals=True,
         **simulation_options,
     )
+    return simulation_metrics(simulation, include_wealth=include_wealth)
+
+
+def simulation_metrics(simulation, *, include_wealth=False):
     return {
         **simulation["net"],
         **({"net_wealth": simulation["net_wealth"]} if include_wealth else {}),
@@ -33,11 +43,14 @@ def fixed_portfolio_metrics(
             k: simulation[k]
             for k in (
                 "total_commissions",
+                "total_capital_gains_tax",
+                "annualized_commissions",
                 "trade_count",
                 "rebalancing_events",
                 "annualized_turnover",
                 "execution_target_adjustment",
             )
+            if k in simulation
         },
     }
 
@@ -52,14 +65,18 @@ def summarize_bootstrap_portfolio(records: list[dict], months: int, *, include_g
             if distance:
                 value = record.get(key) if record.get("status") == "optimal" else None
             else:
-                value = record.get("portfolio_metrics", {}).get(key)
+                metrics = record.get("portfolio_metrics", {})
+                value = metrics.get(key, metrics.get("trading_costs", {}).get(key))
             candidates.append(value)
         values = np.asarray([v for v in candidates if v is not None and np.isfinite(v)])
-        summary = dict.fromkeys(("mean", "median", "p5", "p95", "minimum", "maximum"))
+        summary = dict.fromkeys(
+            ("mean", "median", "standard_deviation", "p5", "p95", "minimum", "maximum")
+        )
         if len(values):
             summary.update(
                 mean=float(values.mean()),
                 median=float(np.median(values)),
+                standard_deviation=float(values.std()),
                 p5=float(np.quantile(values, 0.05)),
                 p95=float(np.quantile(values, 0.95)),
                 minimum=float(values.min()),
@@ -75,9 +92,9 @@ def summarize_bootstrap_portfolio(records: list[dict], months: int, *, include_g
             or distance
             or key == "historical_sharpe_ratio",
             "units": "wealth_from_one_usd"
-            if key == "terminal_wealth"
+            if key in {"terminal_wealth", "total_commissions", "total_capital_gains_tax"}
             else "dimensionless"
-            if key == "historical_sharpe_ratio"
+            if key in {"historical_sharpe_ratio", "calmar_ratio", "sortino_ratio"}
             else "decimal_fraction",
         }
     output = {
@@ -112,5 +129,11 @@ def summarize_bootstrap_portfolio(records: list[dict], months: int, *, include_g
                 "distributions"
             ].items()
             if k in PORTFOLIO_METRICS
+            and k not in {
+                "total_commissions",
+                "total_capital_gains_tax",
+                "annualized_commissions",
+                "annualized_turnover",
+            }
         }
     return output

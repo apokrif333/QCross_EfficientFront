@@ -6,17 +6,29 @@ from collections import Counter
 
 import numpy as np
 
-from app.analytics.bootstrap_metrics import fixed_portfolio_metrics, summarize_bootstrap_portfolio
+from app.analytics.bootstrap_metrics import (
+    fixed_portfolio_metrics,
+    simulation_metrics,
+    summarize_bootstrap_portfolio,
+)
 from app.analytics.constraints import user_allocation
+from app.analytics.control_cache import indices_hash
+from app.analytics.cross_validation import period_description
 from app.analytics.efficiency_distance import efficiency_distance, summarize_distances
 from app.analytics.estimators import estimate_covariance
 from app.analytics.frontier import data_diagnostics, describe, prepare
-from app.analytics.metrics import portfolio_metrics
 from app.analytics.models import AnalyticsError, OptimizationResult, ReturnPanel
 from app.analytics.optimizer import PortfolioOptimizer
-from app.analytics.paired_comparison import PairedBootstrap
+from app.analytics.paired_comparison import (
+    JOINED_METRICS,
+    joined_validation_comparison,
+    summarize,
+    validation_frontier,
+)
+from app.analytics.portfolio_controls import compare_controls
 from app.analytics.provenance import reproducible
 from app.analytics.references import differential_moments
+from app.analytics.splitting import BOOTSTRAP_METHODOLOGY, bootstrap_folds
 
 
 def stationary_indices(observations: int, expected_block_length: float, rng) -> np.ndarray:
@@ -128,11 +140,182 @@ def _target_solution(engine, target, risk_free_rate):
     return result
 
 
+def bootstrap_generation(splits, block_length, seed, iteration):
+    """Replay one generation from its zero-based identifier and the original folds."""
+    for fold, (train, validation) in enumerate(splits):
+        train_rng, valid_rng = (
+            np.random.Generator(
+                np.random.PCG64(np.random.SeedSequence([seed, iteration, fold, side]))
+            )
+            for side in (0, 1)
+        )
+        yield (
+            train[stationary_indices(len(train), block_length, train_rng)],
+            validation[stationary_indices(len(validation), block_length, valid_rng)],
+        )
+
+
+def _compact_parameters(parameters):
+    # Full inner search grids can be replayed from the stored fold seed and bounds.
+    return {k: v for k, v in parameters.items() if k not in {"grid", "nll_scores", "split_periods"}}
+
+
+def _fit_bootstrap_fold(
+    panel,
+    train,
+    rf,
+    constraints,
+    objectives,
+    user_weights,
+    fixed_weights,
+    risk_free_rate,
+    target_return,
+    method,
+    folds,
+    controls_enabled,
+):
+    values = panel.values[train]
+    settings = {"folds": folds, "target": "auto" if method == "cv_linear" else "identity"}
+    estimate = estimate_covariance(values, method, **settings)
+    training_rf = rf[train]
+    if np.all(training_rf == training_rf[0]) and np.any(values != training_rf[0], axis=0).all():
+        # Subtracting a constant affects only the mean, including inner CV likelihoods.
+        differential = {
+            "differential_mean": (values.mean(0) - training_rf[0]) * 12,
+            "differential_covariance": estimate.matrix * 12,
+            "differential_estimate": estimate,
+        }
+    else:
+        differential = differential_moments(values, training_rf, method, **settings)
+    engine = PortfolioOptimizer(
+        values.mean(0) * 12, estimate.matrix * 12, constraints, **differential
+    )
+    covariance = {
+        "covariance_parameters": _compact_parameters(estimate.parameters),
+        "covariance_diagnostics": estimate.diagnostics,
+        "differential_covariance_parameters": (
+            _compact_parameters(differential["differential_estimate"].parameters)
+            if differential
+            else {}
+        ),
+    }
+    risk_limit = None
+    control_error = None
+    if controls_enabled and "max_return_at_user_risk" in objectives:
+        try:
+            risk_limit = compare_controls(
+                panel, user_weights, train, record_history=False, sampled_risk_free=training_rf
+            )["controlled"]["net"]["annualized_volatility"]
+        except (AnalyticsError, np.linalg.LinAlgError) as exc:
+            control_error = str(exc)
+    solutions = {}
+    for objective in objectives:
+        try:
+            if objective == "max_return_at_user_risk" and control_error is not None:
+                result = OptimizationResult("control_failed", None, {"reason": control_error})
+            elif objective == "target_return":
+                result = _target_solution(engine, target_return, risk_free_rate)
+            else:
+                result = engine.optimize(
+                    objective,
+                    risk_free_rate,
+                    user_weights=fixed_weights,
+                    user_risk_limit=risk_limit,
+                )
+        except (AnalyticsError, np.linalg.LinAlgError) as exc:
+            result = OptimizationResult("solver_failed", None, {"reason": str(exc)})
+        solutions[objective] = result
+    return solutions, covariance
+
+
+def _validation_record(fits, offsets, values, rf, panel, indices, iteration, include_wealth):
+    folds = [
+        {
+            "fold": fold,
+            "status": fit.status,
+            "weights": dict(zip(panel.assets, fit.weights.tolist(), strict=True))
+            if fit.weights is not None
+            else None,
+            "diagnostics": fit.diagnostics,
+        }
+        for fold, fit in enumerate(fits, 1)
+    ]
+    record = {"iteration": iteration, "weights": None, "folds": folds, "metrics": None}
+    failures = [fit for fit in fits if fit.status != "optimal" or fit.weights is None]
+    if failures:
+        status = next(
+            (fit.status for fit in failures if fit.status != "target_infeasible"),
+            "target_infeasible",
+        )
+        return {**record, "status": status, "reason": status}
+    try:
+        path = fixed_portfolio_metrics(
+            values,
+            fits[0].weights,
+            rf,
+            include_wealth=include_wealth,
+            target_schedule=dict(zip(offsets, (fit.weights for fit in fits[1:]), strict=True)),
+            **panel.path_options(indices),
+        )
+        return {**record, "status": "optimal", "metrics": path}
+    except (AnalyticsError, np.linalg.LinAlgError) as exc:
+        return {**record, "status": "validation_failed", "reason": str(exc)}
+
+
+def _bootstrap_objective_summary(objective, records, constraints, target_return):
+    count = len(records)
+    summary = _summary(records, count)
+    successful = [row for row in records if row["status"] == "optimal"]
+    summary.update(
+        original={"status": "not_applicable", "weights": None, "metrics": None, "diagnostics": {}},
+        resampled=None,
+        stability=None,
+        iterations=records,
+    )
+    if successful and (summary["status"] == "complete" or objective == "target_return"):
+        weights = np.array(
+            [
+                [fold["weights"][asset] for asset in constraints.assets]
+                for row in successful
+                for fold in row["folds"]
+            ]
+        )
+        summary["stability"] = bootstrap_weight_statistics(weights, None, constraints)
+    if objective == "target_return":
+        infeasible = sum(r["status"] == "target_infeasible" for r in records)
+        technical = [r for r in records if r["status"] not in {"optimal", "target_infeasible"}]
+        feasible = sum(
+            all(f["diagnostics"].get("target_feasible") is True for f in row["folds"])
+            for row in records
+        )
+        summary.update(
+            status="incomplete" if technical else "complete",
+            computational_status="incomplete" if technical else "complete",
+            target_return=target_return,
+            target_feasibility_rate=feasible / count,
+            target_feasible_iterations=feasible,
+            target_infeasible_iterations=infeasible,
+            numerical_failure_iterations=len(technical),
+            statistics_condition="successful_target_feasible_samples",
+            feasibility_unknown_iterations=sum(
+                not all(f["diagnostics"].get("target_feasible") is not None for f in row["folds"])
+                and not any(f["diagnostics"].get("target_feasible") is False for f in row["folds"])
+                for row in records
+            ),
+            failed_iterations=len(technical),
+            failure_reasons=dict(Counter(r["status"] for r in technical)),
+            failures=technical,
+        )
+        if technical:
+            summary["stability"] = None
+    return summary
+
+
 @reproducible
 def analyze_bootstrap(
     panel: ReturnPanel,
     *,
-    bootstrap_iterations: int = 1000,
+    bootstrap_iterations: int = 500,
     expected_block_length: float = 12,
     random_seed: int = 42,
     objectives: list[str] | None = None,
@@ -152,388 +335,265 @@ def analyze_bootstrap(
         "target_return",
         "max_return_at_user_risk",
     }:
-        raise AnalyticsError(
-            "Bootstrap supports distinct GMV, Max Sharpe and target_return objectives."
-        )
+        raise AnalyticsError("Invalid or duplicate Bootstrap objective.")
     if "target_return" in objectives and (target_return is None or not np.isfinite(target_return)):
         raise AnalyticsError("Target Return Bootstrap requires a finite annual target_return.")
-    if user_weights and include_paired_comparison and bootstrap_iterations % 2:
-        raise AnalyticsError("Paired Bootstrap requires an even number of generated datasets.")
     started = time.perf_counter()
-    constraints, estimate, mean, covariance = prepare(panel, **options)
-    fixed_user_weights = user_allocation(panel.assets, user_weights) if user_weights else None
+    method = options.get("covariance_method", "sample")
+    cv_folds = options.get("cv_folds", 4)
+    observations = len(panel.values)
+    splits = bootstrap_folds(observations, cv_folds, method)
+    # Descriptive history only; no selected estimator or optimizer is fit on full history.
+    constraints, descriptive, _, _ = prepare(panel, **{**options, "covariance_method": "sample"})
+    fixed_weights = user_allocation(panel.assets, user_weights) if user_weights else None
     controls_enabled = panel.control_config.get("mode", "none") != "none"
-    paired = (
-        PairedBootstrap(
-            panel.assets,
-            fixed_user_weights,
-            constraints,
-            controls_enabled=controls_enabled,
-            **panel.simulation_options,
-        )
-        if fixed_user_weights is not None and include_paired_comparison
-        else None
+    if fixed_weights is None and (controls_enabled or "max_return_at_user_risk" in objectives):
+        raise AnalyticsError("Portfolio controls and My Portfolio require explicit user weights.")
+    if "max_return_at_user_risk" in objectives:
+        constraints.require_feasible(fixed_weights)
+    compare_optimizer = include_paired_comparison and fixed_weights is not None
+    comparison_objective = "max_return_at_user_risk"
+    fitted = list(
+        dict.fromkeys([*objectives, *([comparison_objective] if compare_optimizer else [])])
     )
-    engine = PortfolioOptimizer(mean, covariance, constraints, **panel.differential)
-    original_user_risk = None
-    if controls_enabled and "max_return_at_user_risk" in objectives:
-        from app.analytics.portfolio_controls import compare_controls
+    rf = panel.risk_free_returns
+    if rf is None:
+        rf = np.full(observations, (1 + risk_free_rate) ** (1 / 12) - 1)
+    offsets = np.cumsum([len(valid) for _, valid in splits])[:-1].tolist()
+    outer_folds = [
+        {
+            "fold": i,
+            "train": period_description(panel, train),
+            "validation": period_description(panel, valid),
+            "train_start_index": int(train[0]),
+            "validation_start_index": int(valid[0]),
+        }
+        for i, (train, valid) in enumerate(splits, 1)
+    ]
+    records = {objective: [] for objective in fitted}
+    generations, control_samples, efficiency_records, comparisons, clouds = [], [], [], [], []
+    fingerprint, validation_fingerprint = hashlib.sha256(), hashlib.sha256()
+    validation_mean = np.zeros(len(panel.assets))
+    validation_covariance = np.zeros((len(panel.assets), len(panel.assets)))
 
-        original_user_risk = compare_controls(panel, user_weights, record_history=False)[
-            "controlled"
-        ]["net"]["annualized_volatility"]
-    originals = {
-        objective: _target_solution(engine, target_return, risk_free_rate)
-        if objective == "target_return"
-        else engine.optimize(
-            objective,
-            risk_free_rate,
-            user_weights=fixed_user_weights,
-            user_risk_limit=original_user_risk,
-        )
-        for objective in objectives
-    }
-    records = {objective: [] for objective in objectives}
-    weight_vectors = {objective: [] for objective in objectives}
-    rng, fingerprint = np.random.default_rng(random_seed), hashlib.sha256()
-    efficiency_records = []
-    control_samples = []
     for iteration in range(bootstrap_iterations):
-        indices = stationary_indices(len(panel.values), expected_block_length, rng)
+        draws = list(bootstrap_generation(splits, expected_block_length, random_seed, iteration))
+        valid = np.concatenate([indices for _, indices in draws])
         if _sample_indices is not None:
-            # ReturnPanel supports at most 10,000 months.
-            _sample_indices.append(indices.astype(np.uint16))
-        fingerprint.update(indices.astype("<i8").tobytes())
-        values = panel.values[indices]
-        control_sample = None
-        if controls_enabled:
-            from app.analytics.control_cache import indices_hash
-            from app.analytics.portfolio_controls import compare_controls
-
+            _sample_indices.append(valid.astype(np.uint16))
+        validation_fingerprint.update(valid.astype("<i8").tobytes())
+        validation_hash = indices_hash(valid)
+        values, valid_rf = panel.values[valid], rf[valid]
+        fold_fits = {objective: [] for objective in fitted}
+        fold_diagnostics = []
+        for fold, (train, validation) in enumerate(draws, 1):
+            fingerprint.update(train.astype("<i8").tobytes())
+            fingerprint.update(validation.astype("<i8").tobytes())
             try:
-                control_sample = compare_controls(
+                solutions, diagnostics = _fit_bootstrap_fold(
                     panel,
+                    train,
+                    rf,
+                    constraints,
+                    fitted,
                     user_weights,
-                    indices,
-                    record_history=False,
-                    include_wealth=paired is not None and iteration % 2 == 1,
+                    fixed_weights,
+                    risk_free_rate,
+                    target_return,
+                    method,
+                    cv_folds,
+                    controls_enabled,
                 )
-            except Exception as exc:
-                control_sample = {"status": "failed", "reason": str(exc)}
-            control_sample["indices_sha256"] = indices_hash(indices)
-            control_samples.append(control_sample)
-        sample_rf = (
-            panel.risk_free_returns[indices] if panel.risk_free_returns is not None else None
+            except (AnalyticsError, np.linalg.LinAlgError) as exc:
+                diagnostics = {"reason": str(exc)}
+                solutions = {
+                    objective: OptimizationResult("estimator_failed", None, diagnostics)
+                    for objective in fitted
+                }
+            for objective in fitted:
+                fold_fits[objective].append(solutions[objective])
+            fold_diagnostics.append(
+                {
+                    **diagnostics,
+                    "fold": fold,
+                    "train_sha256": indices_hash(train),
+                    "validation_sha256": indices_hash(validation),
+                    "train_length": len(train),
+                    "validation_length": len(validation),
+                    "train_unique": len(np.unique(train)),
+                    "validation_unique": len(np.unique(validation)),
+                    "shared_source_months": len(np.intersect1d(train, validation)),
+                }
+            )
+        generations.append(
+            {
+                "iteration": iteration,
+                "validation_sha256": validation_hash,
+                "validation_unique": len(np.unique(valid)),
+                "folds": fold_diagnostics,
+            }
         )
-        fixed_metrics_record = {}
-        if fixed_user_weights is not None:
+
+        user_metrics = None
+        control_sample = None
+        if fixed_weights is not None:
             try:
-                metrics = (
-                    fixed_portfolio_metrics(
-                        values,
-                        fixed_user_weights,
-                        sample_rf
-                        if sample_rf is not None
-                        else np.full(len(values), (1 + risk_free_rate) ** (1 / 12) - 1),
-                        **panel.simulation_options,
+                if controls_enabled:
+                    control_sample = compare_controls(
+                        panel,
+                        user_weights,
+                        valid,
+                        record_history=False,
+                        include_wealth=compare_optimizer,
+                        sampled_risk_free=valid_rf,
                     )
-                    if not controls_enabled
-                    else {
-                        **control_sample["controlled"]["net"],
-                        "gross_metrics": control_sample["controlled"]["gross"],
-                    }
-                )
-                fixed_metrics_record = {
-                    "observations": len(values),
-                    "portfolio_metrics": metrics,
-                    "portfolio_metrics_diagnostics": {
-                        "unavailable_metrics": [
-                            key for key, value in metrics.items() if value is None
-                        ],
-                    },
-                }
-            except Exception as exc:  # Optional diagnostics cannot change optimizer outcomes.
-                fixed_metrics_record = {
-                    "observations": len(values),
-                    "portfolio_metrics": {},
-                    "portfolio_metrics_diagnostics": {"reason": str(exc)},
-                }
-        paired_consumed = False
-        try:
-            sample_estimate = _sample_estimate(values, estimate, options)
-            if paired is not None:
-                paired.consume(
-                    iteration,
+                    user_metrics = simulation_metrics(
+                        control_sample["controlled"], include_wealth=compare_optimizer
+                    )
+                    control_sample["controlled"].pop("net_wealth", None)
+                else:
+                    user_metrics = fixed_portfolio_metrics(
+                        values,
+                        fixed_weights,
+                        valid_rf,
+                        include_wealth=compare_optimizer,
+                        **panel.path_options(valid),
+                    )
+            except Exception as exc:  # A failed control path must not drop the generation.
+                control_sample = {"status": "failed", "reason": str(exc)}
+            if controls_enabled:
+                control_samples.append({**control_sample, "indices_sha256": validation_hash})
+
+        for objective in fitted:
+            records[objective].append(
+                _validation_record(
+                    fold_fits[objective],
+                    offsets,
                     values,
-                    sample_rf
-                    if sample_rf is not None
-                    else np.full(len(values), (1 + risk_free_rate) ** (1 / 12) - 1),
-                    sample_estimate,
-                    control_sample=control_sample,
+                    valid_rf,
+                    panel,
+                    valid,
+                    iteration,
+                    compare_optimizer and objective == comparison_objective,
                 )
-                paired_consumed = True
-            sample_mean, sample_covariance = values.mean(0) * 12, sample_estimate.matrix * 12
-            if fixed_user_weights is not None:
+            )
+
+        if fixed_weights is not None:
+            distance = {"status": "disabled", "diagnostics": {}}
+            if include_efficiency_robustness:
                 try:
                     distance = efficiency_distance(
-                        values,
-                        sample_estimate.matrix,
-                        fixed_user_weights,
-                        constraints,
-                        estimator_parameters=sample_estimate.parameters,
-                        covariance_diagnostics=sample_estimate.diagnostics,
+                        values, np.cov(values, rowvar=False), fixed_weights, constraints
                     )
-                    diagnostics = {
-                        key: value
-                        for key, value in distance["diagnostics"].items()
-                        if key not in {"covariance_diagnostics", "estimator_parameters"}
-                    }
-                    efficiency_records.append(
-                        {
-                            "iteration": iteration,
-                            **fixed_metrics_record,
-                            "status": distance["status"],
-                            "user_expected_return": distance.get("user_expected_return"),
-                            "user_volatility": distance.get("user_volatility"),
-                            "return_shortfall": distance["return_shortfall"],
-                            "excess_volatility": distance["excess_volatility"],
-                            "diagnostics": diagnostics,
-                        }
-                    )
-                except Exception as exc:  # Optional diagnostics cannot change optimizer outcomes.
-                    efficiency_records.append(
-                        {
-                            "iteration": iteration,
-                            **fixed_metrics_record,
-                            "status": "failed",
-                            "diagnostics": {"reason": str(exc)},
-                        }
-                    )
-            differential = differential_moments(
+                except Exception as exc:  # Optional ex-post diagnostics cannot change the fit.
+                    distance = {"status": "failed", "diagnostics": {"reason": str(exc)}}
+            efficiency_records.append(
+                {
+                    "iteration": iteration,
+                    **distance,
+                    "observations": observations,
+                    "portfolio_metrics": {
+                        k: v for k, v in (user_metrics or {}).items() if k != "net_wealth"
+                    },
+                }
+            )
+        if compare_optimizer:
+            optimized = records[comparison_objective][-1]
+            comparison, cloud, mean, covariance = joined_validation_comparison(
+                iteration,
                 values,
-                sample_rf,
-                estimate.method,
-                folds=options.get("cv_folds", 4),
-                target=options.get("shrinkage_target", "identity"),
-                fixed_parameters=panel.differential["differential_estimate"].parameters
-                if estimate.method == "cv_linear" and panel.differential
-                else None,
+                panel.assets,
+                user_metrics,
+                optimized,
+                validation_hash,
+                user_failure=(control_sample or {}).get("reason"),
             )
-            sample_engine = PortfolioOptimizer(
-                sample_mean, sample_covariance, constraints, **differential
-            )
-        except (AnalyticsError, np.linalg.LinAlgError) as exc:
-            if paired is not None and not paired_consumed:
-                paired.consume(
-                    iteration,
-                    values,
-                    sample_rf
-                    if sample_rf is not None
-                    else np.full(len(values), (1 + risk_free_rate) ** (1 / 12) - 1),
-                    None,
-                    control_sample=control_sample,
-                )
-            if fixed_user_weights is not None and len(efficiency_records) == iteration:
-                efficiency_records.append(
-                    {
-                        "iteration": iteration,
-                        **fixed_metrics_record,
-                        "status": "failed",
-                        "diagnostics": {"reason": str(exc)},
-                    }
-                )
-            for objective in objectives:
-                records[objective].append(
-                    {
-                        "iteration": iteration,
-                        "status": "estimator_failed",
-                        "reason": str(exc),
-                        "weights": None,
-                    }
-                )
-            continue
-        for objective in objectives:
-            if (
-                objective == "max_return_at_user_risk"
-                and controls_enabled
-                and (not control_sample or "controlled" not in control_sample)
-            ):
-                result = OptimizationResult(
-                    "control_failed",
-                    None,
-                    {"reason": (control_sample or {}).get("reason", "missing simulation")},
-                )
-            else:
-                result = (
-                    _target_solution(sample_engine, target_return, risk_free_rate)
-                    if objective == "target_return"
-                    else sample_engine.optimize(
-                        objective,
-                        risk_free_rate,
-                        user_weights=fixed_user_weights,
-                        user_risk_limit=control_sample["controlled"]["net"]["annualized_volatility"]
-                        if controls_enabled and objective == "max_return_at_user_risk"
-                        else None,
-                    )
-                )
-            record = {
-                "iteration": iteration,
-                "status": result.status,
-                **(
-                    {"target_feasible": result.diagnostics.get("target_feasible")}
-                    if objective == "target_return"
-                    else {}
-                ),
-                "diagnostics": result.diagnostics,
-                "weights": None,
-                "metrics": None,
-                "covariance_diagnostics": sample_estimate.diagnostics,
-                "differential_covariance_parameters": differential[
-                    "differential_estimate"
-                ].parameters
-                if differential
-                else {},
-                "differential_covariance_diagnostics": differential[
-                    "differential_estimate"
-                ].diagnostics
-                if differential
-                else {},
-            }
-            if result.weights is not None:
-                weight_vectors[objective].append(result.weights)
-                record["weights"] = dict(zip(panel.assets, result.weights.tolist(), strict=True))
-                record["metrics"] = portfolio_metrics(
-                    result.weights,
-                    values,
-                    sample_mean,
-                    sample_covariance,
-                    risk_free_rate,
-                    risk_free_returns=sample_rf,
-                    differential=differential,
-                    simulation_options=panel.simulation_options,
-                )
-            records[objective].append(record)
+            comparisons.append(comparison)
+            if cloud is not None:
+                clouds.append(cloud)
+            validation_mean += mean
+            validation_covariance += covariance
+
     results = {}
     for objective in objectives:
-        summary = _summary(records[objective], bootstrap_iterations)
-        if objective == "target_return":
-            technical = [
-                r for r in records[objective] if r["status"] not in {"optimal", "target_infeasible"}
-            ]
-            feasible = sum(r.get("target_feasible") is True for r in records[objective])
-            summary.update(
-                status="complete"
-                if not technical and originals[objective].status != "solver_failed"
-                else "incomplete",
-                computational_status="complete"
-                if not technical and originals[objective].status != "solver_failed"
-                else "incomplete",
-                target_return=target_return,
-                target_feasibility_rate=feasible / bootstrap_iterations,
-                target_feasible_iterations=feasible,
-                target_infeasible_iterations=sum(
-                    r["status"] == "target_infeasible" for r in records[objective]
-                ),
-                numerical_failure_iterations=len(technical),
-                feasibility_unknown_iterations=sum(
-                    r.get("target_feasible") is None for r in records[objective]
-                ),
-                failed_iterations=len(technical),
-                failures=technical,
-                failure_reasons=dict(Counter(r["status"] for r in technical)),
-                statistics_condition="successful_target_feasible_samples",
-                averaging_policy="no_aggregate_if_any_numerical_failure",
-                target_interpretation=(
-                    "Feasibility across historical resamples, not probability of future returns."
-                ),
-                original_target_feasible=originals[objective].diagnostics.get("target_feasible"),
-                resampled_target_evaluation=None,
-            )
+        rows = records[objective]
+        summary = _bootstrap_objective_summary(objective, rows, constraints, target_return)
         summary.update(
-            original=describe(originals[objective], panel, mean, covariance, risk_free_rate),
-            resampled=None,
-            stability=None,
-            iterations=records[objective],
+            summarize_bootstrap_portfolio(
+                [{"portfolio_metrics": row["metrics"] or {}} for row in rows], observations
+            )
         )
-        # GMV/Sharpe retain their 95% gate. Target outcomes need no technical failures;
-        # economically infeasible samples are excluded from conditional statistics.
-        if (
-            summary["status"] == "complete"
-            and weight_vectors[objective]
-            and (originals[objective].weights is not None or objective == "target_return")
-        ):
-            weights = np.stack(weight_vectors[objective])
-            average = weights.mean(0)
-            constraints.require_feasible(average)
-            summary["resampled"] = describe(
-                OptimizationResult(
-                    "averaged", average, {"constraint_violation": constraints.violation(average)}
-                ),
-                panel,
-                mean,
-                covariance,
-                risk_free_rate,
-            )
-            summary["stability"] = bootstrap_weight_statistics(
-                weights, originals[objective].weights, constraints
-            )
-            if objective == "target_return":
-                actual_return = float(average @ mean)
-                summary["resampled_target_evaluation"] = {
-                    "expected_return": actual_return,
-                    "target_return": target_return,
-                    "target_shortfall": max(0.0, target_return - actual_return),
-                    "target_surplus": max(0.0, actual_return - target_return),
-                    "meets_target": actual_return >= target_return - TARGET_TOLERANCE,
-                    "evaluation": "original_full_sample_estimates",
-                    "target_guaranteed": False,
-                }
-        elif originals[objective].weights is None and objective != "target_return":
-            summary["status"] = "incomplete"
         results[objective] = summary
-    data = data_diagnostics(panel, estimate, risk_free_rate)
+    paired = None
+    if compare_optimizer:
+        paired = {
+            **summarize(comparisons, metrics=JOINED_METRICS),
+            "analysis_version": BOOTSTRAP_METHODOLOGY,
+            "generated_datasets": bootstrap_iterations,
+            "horizon_months": observations,
+            "user_portfolio_mode": "controlled" if controls_enabled else "passive",
+            "user_weights": dict(zip(panel.assets, fixed_weights.tolist(), strict=True)),
+            "clouds": clouds,
+            **validation_frontier(
+                validation_mean / bootstrap_iterations,
+                validation_covariance / bootstrap_iterations,
+                constraints,
+            ),
+        }
     return {
-        **data,
+        **data_diagnostics(panel, descriptive, risk_free_rate, include_asset_portfolios=False),
         "status": "complete"
         if all(r["status"] == "complete" for r in results.values())
         else "incomplete",
         "assets": panel.assets,
         "currency": "USD",
         "risk_free_rate": risk_free_rate,
-        "methodology": "stationary_bootstrap",
+        "methodology": BOOTSTRAP_METHODOLOGY,
         "expected_block_length": expected_block_length,
         "restart_probability": 1 / expected_block_length,
         "random_seed": random_seed,
-        "sample_length": len(panel.values),
+        "sample_length": observations,
         "sample_fingerprint": fingerprint.hexdigest(),
-        "conditional_bootstrap": estimate.method == "cv_linear",
-        "hyperparameter_uncertainty_included": estimate.method != "cv_linear",
-        "covariance_method": estimate.method,
-        "covariance_parameters": estimate.parameters,
-        "covariance_diagnostics": estimate.diagnostics,
+        "validation_sample_fingerprint": validation_fingerprint.hexdigest(),
+        "cv_folds": cv_folds,
+        "scenario_counts": {
+            "generations": bootstrap_iterations,
+            "synthetic_train": bootstrap_iterations * cv_folds,
+            "synthetic_validation": bootstrap_iterations * cv_folds,
+            "concatenated_validation": bootstrap_iterations,
+        },
+        "outer_folds": outer_folds,
+        "generations": generations,
+        "index_replay": "pcg64_seed_sequence_seed_generation_fold_side_zero_based_v1",
+        "conditional_bootstrap": False,
+        "hyperparameter_uncertainty_included": True,
+        "covariance_method": method,
+        "covariance_parameters": {"scope": "synthetic_train_per_fold"},
+        "covariance_diagnostics": {"scope": "synthetic_train_per_fold"},
         "source_metadata": panel.metadata,
-        "warnings": data["warnings"]
-        + (
-            [
-                "Conditional bootstrap holds original shrinkage target and "
-                "intensity fixed; hyperparameter-selection uncertainty is excluded."
-            ]
-            if estimate.method == "cv_linear"
-            else []
-        ),
-        "interpretation": "Allocation sensitivity; not guaranteed future-return intervals.",
-        "portfolio_evaluation": "original_and_resampled_on_same_original_full_sample",
+        "control_source_metadata": panel.control_metadata,
+        "portfolio_evaluation": "continuous_concatenated_validation",
         "objectives": results,
         "portfolio_control_samples": control_samples,
-        "paired_comparison": paired.result(len(panel.values)) if paired is not None else None,
+        "passive_portfolio_metrics": summarize_bootstrap_portfolio(
+            [
+                {"portfolio_metrics": simulation_metrics(s["baseline"]) if "baseline" in s else {}}
+                for s in control_samples
+            ],
+            observations,
+        )
+        if controls_enabled
+        else None,
+        "paired_comparison": paired,
         "efficiency_robustness": {
             "user_portfolio_mode": "controlled" if controls_enabled else "passive",
-            "user_weights": dict(zip(panel.assets, fixed_user_weights.tolist(), strict=True)),
-            "evaluation": "stationary_bootstrap_resampled_scenarios_not_future_probability",
+            "user_weights": dict(zip(panel.assets, fixed_weights.tolist(), strict=True)),
+            "evaluation": "concatenated_validation_scenarios",
+            "distance_reference": "ex_post_fixed_user_weights",
             **summarize_distances(efficiency_records),
-            **summarize_bootstrap_portfolio(efficiency_records, len(panel.values)),
+            **summarize_bootstrap_portfolio(efficiency_records, observations),
         }
-        if fixed_user_weights is not None
+        if fixed_weights is not None
         else None,
         "execution_seconds": time.perf_counter() - started,
     }

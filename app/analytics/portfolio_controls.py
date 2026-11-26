@@ -1,5 +1,7 @@
 """Sequential user-sleeve controls, independent of optimizer moments."""
 
+import hashlib
+
 import numpy as np
 
 from app.analytics.models import AnalyticsError
@@ -109,7 +111,15 @@ def _control_inputs(panel, user_weights, indices=None):
     if not user_weights or panel.control_returns is None:
         raise AnalyticsError("Portfolio controls require explicit weights and aligned hedge data.")
     frame = panel.control_returns
-    values = frame.to_numpy() if indices is None else frame.to_numpy()[indices]
+    signal_frame = panel.control_signal_returns if panel.return_basis == "real" else None
+    if panel.return_basis == "real" and (
+        signal_frame is None
+        or not signal_frame.index.equals(frame.index)
+        or not signal_frame.columns.equals(frame.columns)
+    ):
+        raise AnalyticsError("Real portfolio controls require aligned nominal signal returns.")
+    values = frame.to_numpy()
+    signal_values = values if signal_frame is None else signal_frame.to_numpy()
     base = np.array([user_weights.get(a, 0) for a in frame.columns])
     hedge = np.array([panel.control_config["hedge_weights"].get(a, 0) for a in frame.columns])
     rf = panel.risk_free_returns
@@ -118,16 +128,28 @@ def _control_inputs(panel, user_weights, indices=None):
         rf = np.full(len(frame), (1 + rate) ** (1 / 12) - 1)
     if indices is not None:
         rf = rf[indices]
-    return values, base, hedge, rf, list(frame.columns)
+        sampled = values[indices]
+        signal_values = sampled if signal_values is values else signal_values[indices]
+        values = sampled
+    return values, signal_values, base, hedge, rf, list(frame.columns)
 
 
 def compare_controls(
-    panel, user_weights, indices=None, *, record_history=True, policy=None, include_wealth=False
+    panel,
+    user_weights,
+    indices=None,
+    *,
+    record_history=True,
+    policy=None,
+    include_wealth=False,
+    sampled_risk_free=None,
 ):
     if panel.control_config.get("mode", "none") == "none":
         return None
-    values, base, hedge, rf, assets = _control_inputs(panel, user_weights, indices)
-    settings = {**panel.simulation_options, "record_history": record_history, "policy": policy}
+    values, signal_values, base, hedge, rf, assets = _control_inputs(panel, user_weights, indices)
+    if sampled_risk_free is not None:
+        rf = sampled_risk_free
+    settings = {**panel.path_options(indices), "record_history": record_history, "policy": policy}
     if panel.control_config["mode"] == "downside_vol":
         params = panel.control_config["downside_vol"]
         provider = DownsideTarget(base, hedge, params["target_annual"], params["lookback_months"])
@@ -135,12 +157,16 @@ def compare_controls(
         params = panel.control_config["trend"]
         provider = TrendTarget(base, hedge, assets, params["asset_rules"], params["destination"])
     baseline = simulate_portfolio(values, base, rf, **settings)
-    controlled = simulate_portfolio(values, base, rf, target_provider=provider, **settings)
+    controlled = simulate_portfolio(
+        values, base, rf, target_provider=provider, signal_returns=signal_values, **settings
+    )
     if not record_history:
         keys = (
             "net",
             "gross",
             "total_commissions",
+            "total_capital_gains_tax",
+            "annualized_commissions",
             "trade_count",
             "annualized_turnover",
             "rebalancing_events",
@@ -151,6 +177,7 @@ def compare_controls(
     return {
         "assets": assets,
         "config": panel.control_config,
+        "signal_basis": "nominal",
         "baseline": baseline,
         "controlled": controlled,
         "interpretation": "Exposure scaling is not a guaranteed realized risk cap.",
@@ -201,9 +228,12 @@ def analyze_bootstrap_trend_sensitivity(panel, *, user_weights, _sample_indices)
     if not has_enabled_trend_rules(panel, user_weights):
         raise AnalyticsError("No positive-weight assets with SMA or Momentum enabled.")
     sample_indices = _sample_indices
+    fingerprint = hashlib.sha256()
+    for indices in sample_indices:
+        fingerprint.update(indices.astype("<i8").tobytes())
     trend = panel.control_config["trend"]
     rules = _enabled_trend_rules(trend["asset_rules"], user_weights)
-    values, base, hedge, _, assets = _control_inputs(panel, user_weights)
+    values, signal_values, base, hedge, _, assets = _control_inputs(panel, user_weights)
     asset_columns = {asset: assets.index(asset) for asset in rules}
     portfolios = {None: base}
     for asset, column in asset_columns.items():
@@ -217,8 +247,15 @@ def analyze_bootstrap_trend_sensitivity(panel, *, user_weights, _sample_indices)
     batch_size = max(1, min(64, 1_000_000 // (len(values) * len(TREND_LOOKBACKS) * len(assets))))
     for start in range(0, len(sample_indices), batch_size):
         stop = min(start + batch_size, len(sample_indices))
-        paths = values[sample_indices[start:stop]].transpose(1, 0, 2)
-        signals = _bootstrap_trend_signals(paths, assets, rules)
+        indices = sample_indices[start:stop]
+        paths = values[indices].transpose(1, 0, 2)
+        signal_paths = (
+            paths if signal_values is values else signal_values[indices].transpose(1, 0, 2)
+        )
+        signals = _bootstrap_trend_signals(signal_paths, assets, rules)
+        settings = panel.path_options(indices)
+        if "inflation_factors" in settings:
+            settings["inflation_factors"] = settings["inflation_factors"].T[..., None, None]
         for asset, weights in portfolios.items():
             included = (weights > 0) | (hedge > 0)
             active = signals[..., included]
@@ -229,7 +266,7 @@ def analyze_bootstrap_trend_sensitivity(panel, *, user_weights, _sample_indices)
                 paths[..., None, included],
                 weights[included],
                 targets,
-                **panel.simulation_options,
+                **settings,
             )
             results[asset][:, start:stop] = np.stack(metrics, axis=-1).transpose(1, 0, 2)
 
@@ -239,6 +276,7 @@ def analyze_bootstrap_trend_sensitivity(panel, *, user_weights, _sample_indices)
     return {
         "trend_sensitivity": {
             "iterations": len(sample_indices),
+            "validation_sample_fingerprint": fingerprint.hexdigest(),
             "commission_basis": "pretrade_nav",
             "portfolio": export(results[None]),
             "by_asset": {asset: export(results[asset]) for asset in rules},
@@ -248,7 +286,7 @@ def analyze_bootstrap_trend_sensitivity(panel, *, user_weights, _sample_indices)
 
 
 def _trend_sensitivity(panel, user_weights, configured_path):
-    values, base, hedge, rf, assets = _control_inputs(panel, user_weights)
+    values, signal_values, base, hedge, rf, assets = _control_inputs(panel, user_weights)
     trend = panel.control_config["trend"]
     rules = trend["asset_rules"]
     enabled_rules = _enabled_trend_rules(rules, user_weights)
@@ -272,8 +310,9 @@ def _trend_sensitivity(panel, user_weights, configured_path):
                 base,
                 rf,
                 target_provider=provider,
+                signal_returns=signal_values,
                 record_history=False,
-                **panel.simulation_options,
+                **panel.path_options(),
             )
         points.append({"lookback_months": lookback, "gross": path["gross"], "net": path["net"]})
     return points
@@ -285,18 +324,20 @@ def analyze_asset_trend_sensitivity(
     user_weights: dict[str, float],
     transaction_fee_rate: float,
     rebalancing_interval_months: int | None,
+    capital_gains_tax_rate: float = 0.0,
 ) -> dict:
     """Run a separate 100% allocation sweep for each enabled original asset."""
-    values, _, hedge, rf, assets = _control_inputs(panel, user_weights)
+    values, signal_values, _, hedge, rf, assets = _control_inputs(panel, user_weights)
     trend = panel.control_config["trend"]
     rules = _enabled_trend_rules(trend["asset_rules"], user_weights)
     if not rules:
         raise AnalyticsError("No positive-weight assets with SMA or Momentum enabled.")
-    settings = {
+    panel.simulation_options = {
         "transaction_fee_rate": transaction_fee_rate,
+        "capital_gains_tax_rate": capital_gains_tax_rate,
         "rebalancing_interval_months": rebalancing_interval_months,
-        "record_history": False,
     }
+    settings = {**panel.path_options(), "record_history": False}
     return {
         "by_asset": {
             asset: {
@@ -304,6 +345,7 @@ def analyze_asset_trend_sensitivity(
                 "indicator": rules[asset]["indicator"],
                 "points": _single_asset_sensitivity(
                     values,
+                    signal_values,
                     hedge,
                     rf,
                     assets,
@@ -321,10 +363,11 @@ def analyze_asset_trend_sensitivity(
 
 
 def _single_asset_sensitivity(
-    values, hedge, rf, assets, asset_id, indicator, destination, settings
+    values, signal_values, hedge, rf, assets, asset_id, indicator, destination, settings
 ):
     base = np.array([float(asset == asset_id) for asset in assets])
     included = (base > 0) | (hedge > 0)
+    signal_values = signal_values[:, included]
     values, base, hedge = values[:, included], base[included], hedge[included]
     assets = [asset for asset, keep in zip(assets, included, strict=True) if keep]
     points = []
@@ -341,6 +384,7 @@ def _single_asset_sensitivity(
             base,
             rf,
             target_provider=provider,
+            signal_returns=signal_values,
             **settings,
         )
         points.append(

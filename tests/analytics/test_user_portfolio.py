@@ -2,10 +2,25 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from app.analytics.constraints import numbered_groups, user_allocation
+from app.analytics.constraints import build_constraints, numbered_groups, user_allocation
 from app.analytics.frontier import analyze_frontier
 from app.analytics.models import AnalyticsError
+from app.analytics.optimizer import PortfolioOptimizer
 from app.schemas.frontier import AnalyticsRequest
+
+
+def test_max_return_at_user_risk_when_return_and_risk_share_a_corner():
+    mean = np.array([0.12, 0.035])
+    vol = np.array([0.12, 0.04])
+    covariance = np.outer(vol, vol) * np.array([[1, -0.2], [-0.2, 1]])
+    constraints = build_constraints(["growth", "defensive"])
+    result = PortfolioOptimizer(mean, covariance, constraints).max_return_at_user_risk([1, 0])
+
+    # The highest-return asset is itself feasible and exactly at the risk limit.
+    assert result.status == "optimal"
+    assert result.weights == pytest.approx([1, 0], abs=1e-7)
+    assert mean @ result.weights == pytest.approx(0.12)
+    assert np.sqrt(result.weights @ covariance @ result.weights) <= 0.12 + 1e-7
 
 
 def test_user_portfolio_uses_compounding_and_sample_historical_volatility(panel):

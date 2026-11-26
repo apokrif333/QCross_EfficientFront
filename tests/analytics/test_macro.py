@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.analytics.bootstrap import analyze_bootstrap, stationary_indices
+from app.analytics.bootstrap import analyze_bootstrap
 from app.analytics.cross_validation import analyze_cross_validation
 from app.analytics.frontier import analyze_frontier
 from app.analytics.models import ReturnPanel
@@ -191,9 +191,11 @@ def test_bootstrap_synchronizes_risk_free(panel, monkeypatch):
 
     monkeypatch.setattr(bootstrap, "differential_moments", spy)
     output = analyze_bootstrap(p, bootstrap_iterations=3)
-    rng = np.random.default_rng(42)
-    for values, rf in observed:
-        indices = stationary_indices(240, 12, rng)
-        np.testing.assert_array_equal(values, p.values[indices])
-        np.testing.assert_array_equal(rf, p.risk_free_returns[indices])
+    from app.analytics.splitting import bootstrap_folds
+
+    splits = bootstrap_folds(240, 4, "sample")
+    indices = [t for i in range(3) for t, _ in bootstrap.bootstrap_generation(splits, 12, 42, i)]
+    for (values, rf), train in zip(observed, indices, strict=True):
+        np.testing.assert_array_equal(values, p.values[train])
+        np.testing.assert_array_equal(rf, p.risk_free_returns[train])
     assert output["status"] == "complete"

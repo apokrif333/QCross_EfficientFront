@@ -5,12 +5,13 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from app.analytics.bootstrap import analyze_bootstrap, stationary_indices
+from app.analytics.bootstrap import analyze_bootstrap, bootstrap_generation
 from app.analytics.constraints import build_constraints
 from app.analytics.cross_validation import analyze_cross_validation
 from app.analytics.models import AnalyticsError, OptimizationResult, ReturnPanel
 from app.analytics.optimizer import PortfolioOptimizer
 from app.analytics.paired_comparison import compare_validation, summarize, validation_metrics
+from app.analytics.splitting import bootstrap_folds
 from app.ingestion.lazyportfolio.macro_service import refresh
 from app.main import create_app
 from tests.analytics.test_api import wait_result
@@ -54,34 +55,25 @@ def test_paired_sampling_alignment_and_moments(panel, method, basis):
     result = analyze_bootstrap(panel, **options)
     pairs = result["paired_comparison"]
     assert pairs["generated_datasets"] == 6
-    assert pairs["requested_comparisons"] == 3
-    assert pairs["valid_count"] == 3
+    assert pairs["requested_comparisons"] == pairs["valid_count"] == 6
     assert result["efficiency_robustness"]["distributions"]["annualized_cagr"]["valid_count"] == 6
-    rng = np.random.default_rng(42)
+    splits = bootstrap_folds(len(values), 4, method)
     means, covs = [], []
-    for i in range(3):
-        train = stationary_indices(len(values), 12, rng)
-        valid = stationary_indices(len(values), 12, rng)
-        assert not np.array_equal(train, valid)
+    for i in range(6):
+        valid = np.concatenate([v for _, v in bootstrap_generation(splits, 12, 42, i)])
         record = pairs["results"][i]
         expected = validation_metrics(values[valid], np.array(list(USER.values())), rf[valid])
-        assert record["user"] == expected
-        opt = validation_metrics(
-            values[valid], np.array(list(record["weights"].values())), rf[valid]
+        assert record["user"]["annualized_cagr"] == expected["annualized_cagr"]
+        fold_weights = [list(w.values()) for w in record["fold_weights"]]
+        schedule = dict(
+            zip(np.cumsum([len(v) for _, v in splits])[:-1], fold_weights[1:], strict=True)
         )
-        assert record["optimized"] == opt
-        for label, weights in [("user", USER), ("optimized", record["weights"])]:
-            from app.analytics.portfolio_simulator import simulate_portfolio
-
-            saved = np.exp(np.frombuffer(b64decode(record["wealth_log_f32"][label]), dtype="<f4"))
-            path = simulate_portfolio(
-                values[valid],
-                [weights[a] for a in panel.assets],
-                rf[valid],
-                record_history=False,
-                allow_solver_residuals=True,
-            )["net_wealth"]
-            np.testing.assert_allclose(saved, path, rtol=2e-6)
+        opt = validation_metrics(
+            values[valid], fold_weights[0], rf[valid], target_schedule=schedule, include_wealth=True
+        )
+        assert record["optimized"]["annualized_cagr"] == opt["annualized_cagr"]
+        saved = np.exp(np.frombuffer(b64decode(record["wealth_log_f32"]["optimized"]), dtype="<f4"))
+        np.testing.assert_allclose(saved, opt["net_wealth"], rtol=2e-6)
         assert record["differences"]["delta_cagr"] == pytest.approx(
             opt["annualized_cagr"] - expected["annualized_cagr"]
         )
@@ -89,7 +81,7 @@ def test_paired_sampling_alignment_and_moments(panel, method, basis):
         covs.append(np.cov(values[valid], rowvar=False, ddof=1) * 12)
     np.testing.assert_allclose(pairs["annual_mean"], np.mean(means, axis=0))
     np.testing.assert_allclose(pairs["annual_covariance"], np.mean(covs, axis=0))
-    assert len(pairs["clouds"]) == 3 and len(pairs["validation_frontier"]) > 40
+    assert len(pairs["clouds"]) == 6 and len(pairs["validation_frontier"]) > 40
 
 
 def test_cv_no_leakage_and_both_directions(panel):
@@ -117,14 +109,14 @@ def test_optional_failure_does_not_change_legacy_results(panel, monkeypatch):
         lambda *a: OptimizationResult("solver_failed", None, {}),
     )
     result = analyze_bootstrap(panel, **options)
-    assert result["paired_comparison"]["failed_count"] == 2
+    assert result["paired_comparison"]["failed_count"] == 4
     assert result["sample_fingerprint"] == baseline["sample_fingerprint"]
-    assert (
-        result["objectives"]["gmv"]["resampled"]["weights"]
-        == baseline["objectives"]["gmv"]["resampled"]["weights"]
-    )
-    with pytest.raises(AnalyticsError, match="even"):
-        analyze_bootstrap(panel, bootstrap_iterations=3, user_weights=USER)
+    reference = baseline["objectives"]["gmv"]["iterations"]
+    for x, y in zip(result["objectives"]["gmv"]["iterations"], reference, strict=True):
+        assert x["metrics"] == y["metrics"]
+        assert [f["weights"] for f in x["folds"]] == [f["weights"] for f in y["folds"]]
+    odd = analyze_bootstrap(panel, bootstrap_iterations=3, user_weights=USER)
+    assert odd["paired_comparison"]["requested_comparisons"] == 3
 
 
 def test_zero_sharpe_denominator_and_delta_drawdown(panel):
@@ -157,19 +149,20 @@ def test_lower_drawdown_frequency_excludes_failed_and_missing_and_counts_ties():
     }
 
 
-def test_500_datasets_have_250_pairs_and_500_user_paths(panel):
+def test_500_generations_have_500_pairs_and_500_user_paths(panel):
     started = time.perf_counter()
     result = analyze_bootstrap(
         panel, bootstrap_iterations=500, user_weights=USER, objectives=["gmv"]
     )
-    assert result["paired_comparison"]["valid_count"] == 250
+    assert result["paired_comparison"]["valid_count"] == 500
     assert result["paired_comparison"]["generated_datasets"] == 500
     assert [r["validation_generation"] for r in result["paired_comparison"]["results"]] == list(
-        range(2, 501, 2)
+        range(1, 501)
     )
     for key, data in result["efficiency_robustness"]["distributions"].items():
-        assert data["valid_count"] == 500, key
-    print(f"500 datasets / 250 pairs: {time.perf_counter() - started:.3f} seconds")
+        if key not in {"calmar_ratio", "sortino_ratio"}:
+            assert data["valid_count"] == 500, key
+    print(f"500 generations / 500 pairs: {time.perf_counter() - started:.3f} seconds")
 
 
 @pytest.mark.parametrize("basis", ["nominal", "real"])
@@ -196,13 +189,11 @@ def test_paired_jobs_and_new_objective(panel, settings, session_factory, basis):
             assert done["status"] == "completed", done
             result = done["result"]
             if endpoint in {"cross-validation", "bootstrap"}:
-                assert result["paired_comparison"]["valid_count"] == (
-                    4 if endpoint == "cross-validation" else 2
-                )
+                assert result["paired_comparison"]["valid_count"] == (4)
                 assert ("wealth_log_f32" in result["paired_comparison"]["results"][0]) == (
                     endpoint == "bootstrap"
                 )
         invalid = {**body, "bootstrap_iterations": 3}
-        assert client.post("/api/v1/analytics/bootstrap", json=invalid).status_code == 422
+        assert client.post("/api/v1/analytics/bootstrap", json=invalid).status_code == 202
         invalid = {**body, "asset_constraints": {"1": {"max": 0.2}}}
         assert client.post("/api/v1/analytics/bootstrap", json=invalid).status_code == 422

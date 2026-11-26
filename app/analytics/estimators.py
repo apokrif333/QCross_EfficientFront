@@ -113,19 +113,44 @@ def select_shrinkage(values: np.ndarray, folds: int = 4, target: str = "identity
         len(values), folds, min_train=MIN_COVARIANCE_TRAIN, min_validation=MIN_COVARIANCE_VALIDATION
     )
     grid = np.linspace(0, 1, 101)
-    totals = np.zeros(len(grid))
+    candidates = ("identity", "diagonal") if target == "auto" else (target,)
+    totals = np.zeros((len(candidates), len(grid)))
     for train, validation in splits:
         training = values[train]
-        for i, intensity in enumerate(grid):
-            matrix, _ = validate_covariance(linear_covariance(training, float(intensity), target))
-            totals[i] += len(validation) * gaussian_nll(
-                values[validation], training.mean(0), matrix
+        for j, candidate in enumerate(candidates):
+            if target != "auto":
+                for i, intensity in enumerate(grid):
+                    matrix, _ = validate_covariance(
+                        linear_covariance(training, float(intensity), candidate)
+                    )
+                    totals[j, i] += len(validation) * gaussian_nll(
+                        values[validation], training.mean(0), matrix
+                    )
+                continue
+            # The same Gaussian likelihood in the eigenbasis, evaluated for the whole grid.
+            sample = np.atleast_2d(np.cov(training, rowvar=False, ddof=1))
+            destination = linear_covariance(training, 1.0, candidate)
+            alpha = grid[:, None, None]
+            eigenvalues, vectors = np.linalg.eigh((1 - alpha) * sample + alpha * destination)
+            floor = np.maximum(eigenvalues[:, -1:] * 1e-10, 1e-14)
+            eigenvalues = np.maximum(eigenvalues, floor)
+            residuals = values[validation] - training.mean(0)
+            second_moment = residuals.T @ residuals / len(residuals)
+            projected = np.sum(vectors * (second_moment @ vectors), axis=-2)
+            totals[j] += (
+                0.5
+                * len(validation)
+                * (
+                    training.shape[1] * np.log(2 * np.pi)
+                    + np.log(eigenvalues).sum(axis=-1)
+                    + (projected / eigenvalues).sum(axis=-1)
+                )
             )
     # K=2 can leave a central unvalidated interval; average over validated rows only.
-    scores = totals / sum(len(validation) for _, validation in splits)
-    best = int(np.argmin(scores))
+    row, best = np.unravel_index(np.argmin(totals), totals.shape)
+    scores = totals[row] / sum(len(validation) for _, validation in splits)
     return {
-        "target": target,
+        "target": candidates[row],
         "intensity": float(grid[best]),
         "folds": folds,
         "criterion": "validation_gaussian_nll",

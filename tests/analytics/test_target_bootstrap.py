@@ -12,7 +12,7 @@ from app.analytics.frontier import analyze_frontier
 from app.analytics.models import AnalyticsError, OptimizationResult
 from app.analytics.optimizer import PortfolioOptimizer
 from app.analytics.references import real_returns
-from tests.analytics.test_portfolio_simulator import annual_returns
+from app.analytics.splitting import bootstrap_folds
 
 
 def test_target_is_minimum_and_gmv_is_valid():
@@ -39,112 +39,46 @@ def test_feasibility_respects_constraints_and_numerical_tolerance():
     assert bootstrap._target_solution(engine, 0.06 + 1e-6, 0.03).status == "target_infeasible"
 
 
-def test_default_thousand_target_iterations(panel):
-    result = bootstrap.analyze_bootstrap(panel, objectives=["target_return"], target_return=0.03)
-    output = result["objectives"]["target_return"]
-    assert result["status"] == "complete"
-    assert output["requested_iterations"] == len(output["iterations"]) == 1000
-    assert result["expected_block_length"] == 12 and result["random_seed"] == 42
-    assert output["successful_iterations"] + output["target_infeasible_iterations"] == 1000
-    assert output["target_feasibility_rate"] == output["successful_iterations"] / 1000
+def test_default_500_target_generations(panel, monkeypatch):
+    actual = bootstrap._validate_settings
+
+    def stop(iterations, block, seed):
+        assert (iterations, block, seed) == (500, 12, 42)
+        actual(iterations, block, seed)
+        raise AnalyticsError("checked defaults")
+
+    monkeypatch.setattr(bootstrap, "_validate_settings", stop)
+    with pytest.raises(AnalyticsError, match="checked defaults"):
+        bootstrap.analyze_bootstrap(panel, objectives=["target_return"], target_return=0.03)
 
 
-def test_original_solver_failure_suppresses_aggregate(panel, monkeypatch):
-    actual, calls = PortfolioOptimizer.maximum_return, 0
+def test_targets_are_conditional_on_all_folds_being_feasible(panel, monkeypatch):
+    original = bootstrap._target_solution
+    calls = iter(range(12))
 
-    def fail(self):
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            return OptimizationResult("solver_error", None, {})
-        return actual(self)
+    def one_infeasible(*args):
+        if next(calls) == 5:
+            return OptimizationResult("target_infeasible", None, {"target_feasible": False})
+        return original(*args)
 
-    monkeypatch.setattr(PortfolioOptimizer, "maximum_return", fail)
-    o = bootstrap.analyze_bootstrap(
+    monkeypatch.setattr(bootstrap, "_target_solution", one_infeasible)
+    result = bootstrap.analyze_bootstrap(
         panel, objectives=["target_return"], target_return=-0.2, bootstrap_iterations=3
     )["objectives"]["target_return"]
-    assert o["original"]["status"] == "solver_failed"
-    assert o["status"] == "incomplete" and o["target_feasibility_rate"] == 1
-    assert o["numerical_failure_iterations"] == 0  # all samples succeeded
-    assert o["resampled"] is o["stability"] is None
-
-
-@pytest.fixture
-def regime_panel(panel):
-    rng = np.random.default_rng(31)
-    panel.returns.iloc[:, 0] = rng.normal(0.002, 0.001, 240)
-    panel.returns.iloc[:, 1] = np.repeat([0.03, 0.05, -0.02], [60, 60, 120]) + rng.normal(
-        0, 0.004, 240
-    )
-    panel.returns.iloc[:, 2] = rng.normal(0.001, 0.002, 240)
-    return panel
-
-
-def controlled_samples(monkeypatch):
-    indices = [
-        np.tile(np.arange(60), 4),
-        np.tile(np.arange(60, 120), 4),
-        np.tile(np.arange(120, 240), 2),
-    ]
-    calls = iter(indices)
-    monkeypatch.setattr(bootstrap, "stationary_indices", lambda *args: next(calls))
-    return indices
-
-
-def test_conditional_statistics_and_original_target_shortfall(regime_panel, monkeypatch):
-    controlled_samples(monkeypatch)
-    result = bootstrap.analyze_bootstrap(
-        regime_panel, objectives=["target_return"], target_return=0.10, bootstrap_iterations=3
-    )
-    o = result["objectives"]["target_return"]
-    assert result["status"] == o["computational_status"] == "complete"
-    assert o["target_feasibility_rate"] == pytest.approx(2 / 3)
-    assert o["target_infeasible_iterations"] == 1
-    assert o["numerical_failure_iterations"] == o["failed_iterations"] == 0
-    assert o["successful_iterations"] == 2
-    assert [r["status"] for r in o["iterations"]] == ["optimal", "optimal", "target_infeasible"]
-    vectors = np.array([list(r["weights"].values()) for r in o["iterations"] if r["weights"]])
-    np.testing.assert_allclose(list(o["resampled"]["weights"].values()), vectors.mean(0))
-    for i, asset in enumerate(regime_panel.assets):
-        stats = o["stability"]["assets"][asset]
-        assert stats["p5"] == pytest.approx(np.quantile(vectors[:, i], 0.05))
-        assert stats["p95"] == pytest.approx(np.quantile(vectors[:, i], 0.95))
-        assert stats["median"] == pytest.approx(np.median(vectors[:, i]))
-    evaluation = o["resampled_target_evaluation"]
-    assert evaluation["expected_return"] == pytest.approx(
-        regime_panel.values.mean(0) * 12 @ vectors.mean(0)
-    )
-    assert not evaluation["meets_target"] and not evaluation["target_guaranteed"]
-    assert evaluation["target_shortfall"] == pytest.approx(0.10 - evaluation["expected_return"])
-    assert o["original_target_feasible"] is True
-
-
-@pytest.mark.parametrize("target,feasible", [(1.0, 0), (0.25, 2)])
-def test_original_infeasible_and_zero_feasible_samples(regime_panel, monkeypatch, target, feasible):
-    controlled_samples(monkeypatch)
-    result = bootstrap.analyze_bootstrap(
-        regime_panel, objectives=["target_return"], target_return=target, bootstrap_iterations=3
-    )
-    o = result["objectives"]["target_return"]
-    assert o["status"] == "complete" and o["original_target_feasible"] is False
-    assert o["original"]["status"] == "target_infeasible"
-    assert o["original"]["weights"] is None and o["original"]["metrics"] is None
-    assert o["target_feasible_iterations"] == feasible
-    assert o["target_feasibility_rate"] == pytest.approx(feasible / 3)
-    assert o["numerical_failure_iterations"] == 0
-    if feasible == 0:
-        assert o["resampled"] is o["stability"] is None
-    else:
-        assert o["resampled"] is not None
-        assert o["stability"]["allocation_distance"] is None
-        assert all(s["original"] is None for s in o["stability"]["assets"].values())
+    assert result["status"] == "complete"
+    assert result["target_feasibility_rate"] == pytest.approx(2 / 3)
+    assert result["target_infeasible_iterations"] == 1
+    assert result["successful_iterations"] == 2
+    assert result["iterations"][1]["metrics"] is None
+    assert result["distributions"]["annualized_cagr"]["valid_count"] == 2
+    assert result["resampled"] is None
 
 
 @pytest.mark.parametrize("failure", ["estimator", "solver", "feasibility_solver"])
 def test_technical_failures_suppress_target_averaging(panel, monkeypatch, failure):
     calls = 0
     if failure == "estimator":
-        actual = bootstrap._sample_estimate
+        actual = bootstrap._fit_bootstrap_fold
 
         def fail(*args):
             nonlocal calls
@@ -153,7 +87,7 @@ def test_technical_failures_suppress_target_averaging(panel, monkeypatch, failur
                 raise AnalyticsError("injected sample failure")
             return actual(*args)
 
-        monkeypatch.setattr(bootstrap, "_sample_estimate", fail)
+        monkeypatch.setattr(bootstrap, "_fit_bootstrap_fold", fail)
     else:
         method = "optimize" if failure == "solver" else "maximum_return"
         actual = getattr(PortfolioOptimizer, method)
@@ -161,7 +95,7 @@ def test_technical_failures_suppress_target_averaging(panel, monkeypatch, failur
         def fail(self, *args, **kwargs):
             nonlocal calls
             calls += 1
-            if calls == 2:  # original succeeds, first sample fails
+            if calls == 2:  # the second Fold of the first generation fails
                 return OptimizationResult("solver_error", None, {})
             return actual(self, *args, **kwargs)
 
@@ -199,30 +133,24 @@ def test_target_constraints_moments_and_shared_indices(panel, basis, method):
     assert result["status"] == "complete"
     assert result["sample_fingerprint"] == again["sample_fingerprint"]
     o = result["objectives"]["target_return"]
-    assert o["resampled"]["weights"] == again["objectives"]["target_return"]["resampled"]["weights"]
-    rng = np.random.default_rng(42)
-    for record in o["iterations"]:
-        indices = bootstrap.stationary_indices(240, 12, rng)
-        sample = p.values[indices]
-        if record["status"] == "target_infeasible":
-            rules = build_constraints(
-                p.assets, options["asset_constraints"], options["group_constraints"], p.groups
-            )
-            maximum = (
-                PortfolioOptimizer(sample.mean(0) * 12, np.eye(3), rules)
-                .maximum_return()
-                .require_weights()
-            )
-            assert sample.mean(0) * 12 @ maximum < 0.03 - 1e-7
-            continue
-        w = np.array(list(record["weights"].values()))
-        assert sample.mean(0) * 12 @ w >= 0.03 - 1e-7
-        assert w[0] <= 0.5 + 1e-7 and w[0] + w[2] <= 0.8 + 1e-7
-        diff = annual_returns(sample, w) - p.risk_free_returns[indices]
-        assert record["metrics"]["historical_sharpe_ratio"] == pytest.approx(
-            np.sqrt(12) * diff.mean() / diff.std(ddof=1)
+    reference = again["objectives"]["target_return"]["iterations"]
+    for x, y in zip(o["iterations"], reference, strict=True):
+        assert x["metrics"] == y["metrics"]
+        assert [f["weights"] for f in x["folds"]] == [f["weights"] for f in y["folds"]]
+    splits = bootstrap_folds(len(p.values), 4, method)
+    for i, record in enumerate(o["iterations"]):
+        draws = list(bootstrap.bootstrap_generation(splits, 12, 42, i))
+        for fold, (train, _) in zip(record["folds"], draws, strict=True):
+            if fold["weights"] is None:
+                assert fold["status"] == "target_infeasible"
+                continue
+            w = np.array(list(fold["weights"].values()))
+            assert p.values[train].mean(0) * 12 @ w >= 0.03 - 1e-7
+            assert w[0] <= 0.5 + 1e-7 and w[0] + w[2] <= 0.8 + 1e-7
+        assert (record["metrics"] is not None) == all(
+            fold["weights"] is not None for fold in record["folds"]
         )
-    assert result["conditional_bootstrap"] == (method == "cv_linear")
+    assert result["conditional_bootstrap"] is False
     assert result["covariance_method"] == method
 
 

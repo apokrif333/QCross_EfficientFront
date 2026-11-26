@@ -9,7 +9,7 @@ from pathlib import Path
 
 from app.analytics.models import ReturnPanel
 
-ENGINE_VERSION = "4.1.10"
+ENGINE_VERSION = "4.2.0"
 
 
 def reproducible(function):
@@ -19,10 +19,12 @@ def reproducible(function):
     def calculate(*args, **kwargs):
         result = function(*args, **kwargs)
         from app.analytics.portfolio_controls import attach_control_results
+        from app.analytics.splitting import BOOTSTRAP_METHODOLOGY
 
-        attach_control_results(
-            args[0] if args else kwargs["panel"], result, kwargs.get("user_weights")
-        )
+        if result.get("methodology") != BOOTSTRAP_METHODOLOGY:
+            attach_control_results(
+                args[0] if args else kwargs["panel"], result, kwargs.get("user_weights")
+            )
         if result.get("portfolio_control_samples") and result.get("portfolio_controls"):
             from app.analytics.control_cache import export_control_cache
 
@@ -41,6 +43,7 @@ def reproducible(function):
             "asset_parameters": result["covariance_parameters"],
             "differential_parameters": result["differential_covariance_parameters"],
             "sample_fingerprint": result.get("sample_fingerprint"),
+            "methodology": result.get("methodology"),
         }
         result["reproducibility"]["calculation_sha256"] = hashlib.sha256(
             json.dumps(identity, sort_keys=True, default=str).encode()
@@ -121,6 +124,8 @@ def panel_provenance(panel: ReturnPanel) -> dict:
                 ).encode()
             )
             reference_digest.update(panel.control_returns.to_numpy(dtype="<f8").tobytes())
+        if panel.control_signal_returns is not None:
+            reference_digest.update(panel.control_signal_returns.to_numpy(dtype="<f8").tobytes())
     return {
         "reference_panel_sha256": reference_digest.hexdigest(),
         "engine": engine_identity(),

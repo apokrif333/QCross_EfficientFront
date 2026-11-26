@@ -311,6 +311,7 @@ def attach_references(
         panel.returns = pd.DataFrame(
             real_returns(panel.values, inflation), index=months, columns=panel.assets
         )
+        panel.inflation_factors = 1 + inflation
         risk_free = real_returns(risk_free, inflation)
     panel.return_basis, panel.risk_free_source = return_basis, risk_free_source
     panel.reference_metadata = refs

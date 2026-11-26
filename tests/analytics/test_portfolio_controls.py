@@ -85,6 +85,80 @@ def test_trend_exit_reentry_and_month_boundary(indicator):
     assert path["events"][2]["control_state"]["entries"] == ["asset"]
 
 
+@pytest.mark.parametrize("indicator", ["momentum", "sma", "downside_vol"])
+def test_real_reporting_preserves_nominal_signals(panel, indicator):
+    from dataclasses import replace
+
+    from app.analytics.control_loader import transform_control_panel
+    from app.analytics.portfolio_controls import (
+        analyze_asset_trend_sensitivity,
+        analyze_bootstrap_trend_sensitivity,
+        attach_control_results,
+        compare_controls,
+    )
+
+    months = panel.returns.index
+    inflation = 0.02 + 0.002 * (np.arange(len(months)) % 2)
+    frame = panel.returns.assign(**{"1": 0.01, "2": 0.0})
+    trend = indicator != "downside_vol"
+    weights = {"1": 1.0}
+    settings = {"transaction_fee_rate": 0.001, "rebalancing_interval_months": 12}
+    nominal = replace(
+        panel,
+        returns=frame,
+        control_returns=frame,
+        control_config={
+            "mode": "trend" if trend else "downside_vol",
+            "hedge_weights": {"2": 1},
+            "downside_vol": {"target_annual": 0.005, "lookback_months": 3},
+            "trend": {
+                "destination": "hedge",
+                "asset_rules": {"1": {"indicator": indicator, "lookback_months": 3}},
+            },
+        },
+        simulation_options=settings,
+    )
+    real = replace(
+        nominal,
+        return_basis="real",
+        returns=(1 + frame).div(1 + inflation, axis=0) - 1,
+        reference_metadata={
+            "inflation_observations": [
+                [str(month), float(rate), "observed"]
+                for month, rate in zip(months, inflation, strict=True)
+            ]
+        },
+    )
+    transform_control_panel(real)
+    result = {}
+    attach_control_results(real, result, weights)
+    controlled = result["portfolio_controls"]
+    nominal_path = compare_controls(nominal, weights)["controlled"]
+    real_path = controlled["controlled"]
+    expected_monthly = (1 + np.asarray(nominal_path["net_returns"])) / (1 + inflation) - 1
+    assert controlled["signal_basis"] == "nominal"
+    assert nominal_path["signal_history"] == real_path["signal_history"]
+    assert nominal_path["rebalancing_events"] == real_path["rebalancing_events"] == 0
+    np.testing.assert_allclose(real_path["net_returns"], expected_monthly, atol=1e-14)
+    assert real_path["net"]["annualized_cagr"] < 0
+    assert nominal_path["net"]["annualized_cagr"] > 0
+
+    if trend:
+        period = 6
+        expected = real_path["net"]["annualized_cagr"]
+        assert controlled["sensitivity"]["points"][period - 1]["net"]["annualized_cagr"] == (
+            pytest.approx(expected)
+        )
+        asset = analyze_asset_trend_sensitivity(real, user_weights=weights, **settings)["by_asset"]
+        assert asset["1"]["points"][period - 1]["net"]["annualized_cagr"] == pytest.approx(expected)
+        sampled = np.roll(np.arange(len(months)), 1)
+        sweep = analyze_bootstrap_trend_sensitivity(
+            real, user_weights=weights, _sample_indices=[sampled]
+        )["trend_sensitivity"]
+        assert sweep["portfolio"][period - 1][0][0] == pytest.approx(expected)
+        assert sweep["by_asset"]["1"][period - 1][0][0] == pytest.approx(expected)
+
+
 @pytest.mark.parametrize(
     "destination,expected", [("remaining", [0, 1, 0]), ("hedge", [0.3, 0.4, 0.3])]
 )
@@ -169,7 +243,7 @@ def test_controls_preserve_optimizer_and_bootstrap_indices(panel):
     assert passive_pairs["annual_mean"] == managed_pairs["annual_mean"]
     assert passive_pairs["annual_covariance"] == managed_pairs["annual_covariance"]
     for i, pair in enumerate(managed_pairs["results"]):
-        sample = controlled["portfolio_control_samples"][2 * i + 1]
+        sample = controlled["portfolio_control_samples"][i]
         assert pair["user"]["annualized_cagr"] == sample["controlled"]["net"]["annualized_cagr"]
         assert (
             passive_pairs["results"][i]["user"]["annualized_cagr"]
@@ -219,15 +293,17 @@ def test_control_api_alignment_and_original_universe(
             assert done["status"] == "completed", done
             result = done["result"]
             assert result["assets"] == ["1", "2"]
+            assert result["reference_metadata"]["portfolio_controls"]["signal_basis"] == "nominal"
             if control_mode == "trend" and kind == "bootstrap":
                 assert done["bootstrap_trend_sensitivity_available"]
-                assert "sensitivity" not in result["portfolio_controls"]
+                assert "portfolio_controls" not in result
             elif control_mode == "trend":
                 assert [
                     p["lookback_months"]
                     for p in result["portfolio_controls"]["sensitivity"]["points"]
                 ] == list(range(1, 37))
-            assert result["portfolio_controls"]["assets"] == ["1", "2", "3", "99"]
+            if kind != "bootstrap":
+                assert result["portfolio_controls"]["assets"] == ["1", "2", "3", "99"]
             if kind == "bootstrap":
                 assert len(result["portfolio_control_samples"]) == 4
             if kind == "cross-validation":
@@ -275,7 +351,13 @@ def test_all_estimators_leave_model_moments_unchanged(panel, method, basis):
     options = dict(user_weights={"1": 0.6, "2": 0.4}, covariance_method=method, frontier_points=3)
     original = analyze_frontier(base, **options)
     controlled = analyze_frontier(
-        replace(base, control_config=config, control_returns=frame), **options
+        replace(
+            base,
+            control_config=config,
+            control_returns=frame,
+            control_signal_returns=panel.returns if basis == "real" else None,
+        ),
+        **options,
     )
     assert original["annual_covariance"] == controlled["annual_covariance"]
     assert original["gmv"]["weights"] == controlled["gmv"]["weights"]

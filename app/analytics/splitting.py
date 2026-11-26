@@ -11,6 +11,7 @@ import numpy as np
 from app.analytics.models import AnalyticsError
 
 CV_METHODOLOGY = "bidirectional_one_sided_block_kfold"
+BOOTSTRAP_METHODOLOGY = "bidirectional_block_cv_stationary_bootstrap_v1"
 SUPPORTED_FOLDS = tuple(range(2, 21, 2))
 MIN_PORTFOLIO_TRAIN = 120
 MIN_PORTFOLIO_VALIDATION = 60
@@ -142,4 +143,16 @@ def validate_cv_configuration(
                 )
             except AnalyticsError as exc:
                 raise AnalyticsError(f"Inner covariance CV in outer fold {number}: {exc}") from exc
+    return outer
+
+
+def bootstrap_folds(observations: int, folds: int, covariance_method: str) -> list:
+    outer = validate_cv_configuration(
+        observations, folds, portfolio=True, covariance_method=covariance_method
+    )
+    if not np.array_equal(np.concatenate([valid for _, valid in outer]), np.arange(observations)):
+        raise AnalyticsError(
+            f"Requested K={folds}: Bootstrap requires full Validation coverage "
+            f"(at least {2 * MIN_PORTFOLIO_TRAIN} observations for K=2)."
+        )
     return outer

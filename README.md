@@ -673,14 +673,11 @@ Nominal/Real basis. Results separate target feasibility from numerical failures
 and show allocation stability conditional on feasible samples. See
 [Target Return Bootstrap](docs/target-return-bootstrap.md).
 
-With explicit user weights, CV and Stationary Bootstrap compare your fixed
-allocation against maximum return at your estimated training risk. Bootstrap
-uses consecutive Train/Validation generations: 500 datasets produce 250 paired
-comparisons and 500 fixed-portfolio performance observations. Validation density
-clouds show individual realized outcomes and a separately labeled retrospective
-reference frontier. See [paired comparison](docs/paired-validation.md).
-Older distance-based and rolling results remain readable for compatibility;
-rolling analysis is no longer offered in the interface.
+With explicit user weights, CV and Stationary Bootstrap compare your allocation
+against maximum return at your estimated training risk. Stationary Bootstrap first
+splits the original panel into bidirectional folds, then resamples each side
+independently. Each of 500 generations produces one continuous concatenated Validation.
+See the [methodology and benchmark](docs/bidirectional-stationary-bootstrap.md).
 
 Fixed-portfolio Bootstrap distributions also include CAGR, arithmetic return,
 historical volatility, drawdown, BIL differential Sharpe and wealth from $1.

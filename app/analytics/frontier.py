@@ -20,12 +20,14 @@ def prepare(
     asset_constraints: dict | None = None,
     group_constraints: dict | None = None,
     transaction_fee_rate: float = 0.0,
+    capital_gains_tax_rate: float = 0.0,
     rebalancing_interval_months: int | None = 12,
 ) -> tuple:
     if panel.risk_free_source == "historical_bil" and panel.risk_free_returns is None:
         raise AnalyticsError("Historical BIL mode requires aligned monthly BIL observations.")
     panel.simulation_options = {
         "transaction_fee_rate": transaction_fee_rate,
+        "capital_gains_tax_rate": capital_gains_tax_rate,
         "rebalancing_interval_months": rebalancing_interval_months,
     }
     constraints = build_constraints(
@@ -52,6 +54,8 @@ def describe(
     mean: np.ndarray,
     covariance: np.ndarray,
     risk_free_rate: float,
+    *,
+    include_wealth_history: bool = False,
 ) -> dict:
     output = {
         "status": result.status,
@@ -69,12 +73,17 @@ def describe(
             risk_free_rate,
             risk_free_returns=panel.risk_free_returns,
             differential=panel.differential,
-            simulation_options=panel.simulation_options,
+            simulation_options=panel.path_options(),
+            history_months=panel.returns.index.astype(str).tolist()
+            if include_wealth_history
+            else None,
         )
     return output
 
 
-def data_diagnostics(panel: ReturnPanel, estimate, risk_free_rate: float = 0.03) -> dict:
+def data_diagnostics(
+    panel: ReturnPanel, estimate, risk_free_rate: float = 0.03, *, include_asset_portfolios=True
+) -> dict:
     correlation = correlation_diagnostics(panel.values, panel.assets)
     warnings = panel.warnings + correlation["warnings"]
     if estimate.diagnostics["nearly_singular"]:
@@ -110,6 +119,7 @@ def data_diagnostics(panel: ReturnPanel, estimate, risk_free_rate: float = 0.03)
                 risk_free_rate,
             )
             for asset, weights in zip(panel.assets, np.eye(len(panel.assets)), strict=True)
+            if include_asset_portfolios
         },
         "reproducibility": panel_provenance(panel),
         "allocation_groups": panel.groups,
@@ -161,13 +171,19 @@ def analyze_frontier(
             points.append(point)
     equal_weights = np.full(len(panel.assets), 1 / len(panel.assets))
     equal = describe(
-        OptimizationResult("reference", equal_weights, {}), panel, mean, covariance, risk_free_rate
+        OptimizationResult("reference", equal_weights, {}),
+        panel,
+        mean,
+        covariance,
+        risk_free_rate,
+        include_wealth_history=True,
     )
     equal["feasible"] = constraints.violation(equal_weights) <= 1e-7
     equal["label"] = (
         "Equal-weight benchmark" if equal["feasible"] else "Unconstrained equal-weight reference"
     )
     user = None
+    passive = panel.control_config.get("mode", "none") == "none"
     if allocation is not None:
         user = describe(
             OptimizationResult("reference", allocation, {}),
@@ -175,6 +191,7 @@ def analyze_frontier(
             mean,
             covariance,
             risk_free_rate,
+            include_wealth_history=passive,
         )
         user["feasible"] = constraints.violation(allocation) <= 1e-7
         user["diagnostics"]["constraint_violation"] = constraints.violation(allocation)
@@ -203,7 +220,14 @@ def analyze_frontier(
             else "Max Sharpe",
         },
         "maximum_return": describe(maximum, panel, mean, covariance, risk_free_rate),
-        "selected_portfolio": describe(selected, panel, mean, covariance, risk_free_rate),
+        "selected_portfolio": describe(
+            selected,
+            panel,
+            mean,
+            covariance,
+            risk_free_rate,
+            include_wealth_history=True,
+        ),
         "equal_weight": equal,
         "user_portfolio": user,
         "frontier": points,

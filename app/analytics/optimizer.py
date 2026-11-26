@@ -118,21 +118,35 @@ class PortfolioOptimizer:
                         "risk_budget_source": "controlled_training_path",
                     },
                 )
+        risk_limit = float(np.sqrt(max(0, limit)))
+        # Express the volatility bound directly as a second-order cone. The
+        # generic quadratic epigraph can lose feasibility precision at a
+        # maximum-return corner where the volatility bound is also tight.
+        risk_factor = np.linalg.cholesky(self.covariance).T
         problem = cp.Problem(
             cp.Maximize(self.mean @ self.weights),
-            self.rules + [cp.quad_form(self.weights, cp.psd_wrap(self.covariance)) <= limit],
+            self.rules + [cp.SOC(risk_limit, risk_factor @ self.weights)],
         )
         result = self._solve(problem, self.weights)
-        result.diagnostics["training_user_volatility"] = float(np.sqrt(max(0, limit)))
+        result.diagnostics["formulation"] = "volatility_second_order_cone"
+        result.diagnostics["training_user_volatility"] = risk_limit
         result.diagnostics["risk_budget_source"] = (
             "controlled_training_path"
             if training_volatility is not None
             else "fixed_weight_covariance"
         )
         result.diagnostics["risk_tolerance"] = 1e-7
-        if result.weights is not None:
-            risk = float(np.sqrt(max(0, result.weights @ self.covariance @ result.weights)))
-            if risk > np.sqrt(max(0, limit)) + 1e-7:
+        candidate = result.weights
+        if result.status == cp.OPTIMAL_INACCURATE and self.weights.value is not None:
+            candidate = np.asarray(self.weights.value).ravel()
+        if candidate is not None and np.isfinite(candidate).all():
+            risk = float(np.sqrt(max(0, candidate @ self.covariance @ candidate)))
+            result.diagnostics["candidate_volatility"] = risk
+            result.diagnostics["candidate_risk_excess"] = risk - risk_limit
+            result.diagnostics["candidate_constraint_violation"] = self.constraints.violation(
+                candidate
+            )
+            if result.weights is not None and risk > risk_limit + 1e-7:
                 return OptimizationResult("risk_violation", None, result.diagnostics)
         return result
 

@@ -33,6 +33,7 @@ class AnalyticsRequest(BaseModel):
     risk_free_source: Literal["historical_bil", "fixed_annual"] = "historical_bil"
     risk_free_rate: float = Field(default=0.03, gt=-1, le=1)
     transaction_fee_rate: float = Field(default=0.0, ge=0, lt=1)
+    capital_gains_tax_rate: float = Field(default=0.0, ge=0, le=1)
     rebalancing_interval_months: int | None = Field(default=12, ge=1, le=1200)
     objective: Objective = "gmv"
     target_return: float | None = Field(default=None, ge=-12, le=12)
@@ -48,7 +49,7 @@ class AnalyticsRequest(BaseModel):
     rolling_step_months: int = Field(default=12, ge=1, le=120)
     frontier_points: int = Field(default=51, ge=2, le=201)
     cv_folds: int = Field(default=4, strict=True, ge=2, le=20, multiple_of=2)
-    bootstrap_iterations: int = Field(default=1000, ge=1, le=2000)
+    bootstrap_iterations: int = Field(default=500, ge=1, le=2000)
     expected_block_length: float = Field(default=12, ge=3, le=24)
     random_seed: int = Field(default=42, ge=0, le=2**32 - 1)
     bootstrap_objectives: (
@@ -112,6 +113,7 @@ class AnalyticsRequest(BaseModel):
     def estimator_options(self) -> dict:
         return {
             "transaction_fee_rate": self.transaction_fee_rate,
+            "capital_gains_tax_rate": self.capital_gains_tax_rate,
             "rebalancing_interval_months": self.rebalancing_interval_months,
             "covariance_method": self.covariance_method,
             "shrinkage_target": self.shrinkage_target,
@@ -350,6 +352,7 @@ BootstrapTrendPoint = tuple[
 class BootstrapTrendSensitivity(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
     iterations: int = Field(gt=0)
+    validation_sample_fingerprint: str
     commission_basis: Literal["pretrade_nav"]
     portfolio: list[list[BootstrapTrendPoint]] = Field(min_length=36, max_length=36)
     by_asset: dict[str, list[list[BootstrapTrendPoint]]]

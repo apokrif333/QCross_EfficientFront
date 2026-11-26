@@ -66,6 +66,7 @@ def load_control_panel(session, panel, config):
         raise AnalyticsError("Original and hedge assets require 120 common months without gaps.")
     panel.returns = frame[panel.assets].copy()
     panel.control_returns = frame
+    panel.control_signal_returns = None
     panel.control_config, panel.control_metadata = config, metadata
     if len(frame) != original_months:
         panel.warnings.append(
@@ -78,10 +79,13 @@ def transform_control_panel(panel):
     if panel.control_returns is None:
         return
     if panel.return_basis == "real":
+        if panel.control_signal_returns is None:
+            panel.control_signal_returns = panel.control_returns
         rates = np.array([r[1] for r in panel.reference_metadata["inflation_observations"]])
-        panel.control_returns = (1 + panel.control_returns).div(1 + rates, axis=0) - 1
+        panel.control_returns = (1 + panel.control_signal_returns).div(1 + rates, axis=0) - 1
     panel.reference_metadata["portfolio_controls"] = {
         "config": panel.control_config,
+        "signal_basis": "nominal",
         "sources": panel.control_metadata,
         "matrix_sha256": hashlib.sha256(
             panel.control_returns.to_numpy(dtype="<f8").tobytes()

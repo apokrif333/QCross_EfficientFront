@@ -80,6 +80,6 @@ def test_original_and_samples_infeasible_are_completed_results(panel, settings, 
         target = finished["result"]["objectives"]["target_return"]
         assert target["target_feasibility_rate"] == 0
         assert target["status"] == "complete"
-        assert target["original_target_feasible"] is False
+        assert target["original_target_feasible"] is None
         assert target["target_infeasible_iterations"] == 3
         assert target["resampled"] is target["stability"] is None

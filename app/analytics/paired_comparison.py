@@ -5,7 +5,6 @@ from base64 import b64encode
 import numpy as np
 
 from app.analytics.bootstrap_metrics import fixed_portfolio_metrics
-from app.analytics.models import OptimizationResult
 from app.analytics.optimizer import PortfolioOptimizer
 
 METRICS = {
@@ -14,6 +13,15 @@ METRICS = {
     "volatility": "annualized_volatility",
     "sharpe": "historical_sharpe_ratio",
     "max_drawdown": "maximum_drawdown",
+}
+JOINED_METRICS = {
+    **METRICS,
+    "calmar": "calmar_ratio",
+    "sortino": "sortino_ratio",
+    "terminal_wealth": "terminal_wealth",
+    "commissions": "total_commissions",
+    "annualized_commissions": "annualized_commissions",
+    "turnover": "annualized_turnover",
 }
 
 
@@ -76,10 +84,10 @@ def compare_validation(
     return record
 
 
-def summarize(records):
+def summarize(records, *, metrics=METRICS):
     valid = [r for r in records if r.get("optimized") is not None]
     stats = {}
-    for name in METRICS:
+    for name in metrics:
         key = f"delta_{name}"
         data = np.array(
             [r["differences"][key] for r in valid if r["differences"].get(key) is not None]
@@ -88,6 +96,7 @@ def summarize(records):
             {
                 "mean": float(data.mean()),
                 "median": float(np.median(data)),
+                "standard_deviation": float(data.std()),
                 "p5": float(np.quantile(data, 0.05)),
                 "p95": float(np.quantile(data, 0.95)),
                 "minimum": float(data.min()),
@@ -129,152 +138,93 @@ def summarize(records):
     }
 
 
-class PairedBootstrap:
-    def __init__(self, assets, user, constraints, *, controls_enabled=False, **simulation_options):
-        self.controls_enabled = controls_enabled
-        self.simulation_options = simulation_options
-        self.assets, self.user, self.constraints = assets, user, constraints
-        self.records, self.clouds, self.means, self.covariances = [], [], [], []
-        self.trained = OptimizationResult("train_failed", None, {})
+def joined_validation_comparison(
+    iteration, values, assets, user, optimized, validation_hash, *, user_failure=None
+):
+    mean = values.mean(0) * 12
+    covariance = np.cov(values, rowvar=False, ddof=1) * 12
+    record = {
+        "pair": iteration + 1,
+        "validation_generation": iteration + 1,
+        "validation_sha256": validation_hash,
+        "status": optimized["status"] if user is not None else "control_failed",
+        "diagnostics": {"reason": user_failure or optimized.get("reason", "User simulation failed")}
+        if optimized["status"] != "optimal" or user is None
+        else {},
+        "fold_weights": [fold["weights"] for fold in optimized["folds"]],
+        "user": None,
+        "optimized": None,
+        "differences": {},
+    }
+    optimized_metrics = optimized["metrics"]
+    if optimized_metrics is not None:
+        wealth = optimized_metrics.pop("net_wealth", None)
+        if user is not None and wealth is not None:
+            record["wealth_log_f32"] = {"optimized": _encode_wealth(wealth)}
+    if user is None:
+        return record, None, mean, covariance
+    if "net_wealth" in user:
+        record.setdefault("wealth_log_f32", {})["user"] = _encode_wealth(user["net_wealth"])
 
-    def consume(self, iteration, values, risk_free, estimate, *, control_sample=None):
-        try:
-            self._consume(iteration, values, risk_free, estimate, control_sample)
-        except Exception as exc:
-            if iteration % 2 == 0:
-                self.trained = OptimizationResult("train_failed", None, {"reason": str(exc)})
-            else:
-                self.records.append(
-                    {
-                        "pair": iteration // 2 + 1,
-                        "validation_generation": iteration + 1,
-                        "status": "failed",
-                        "diagnostics": {"reason": str(exc)},
-                    }
-                )
-
-    def _consume(self, iteration, values, risk_free, estimate, control_sample):
-        user_metrics = None
-        if self.controls_enabled:
-            if not control_sample or "controlled" not in control_sample:
-                raise ValueError(
-                    "Controlled portfolio unavailable: "
-                    + (control_sample or {}).get("reason", "missing simulation")
-                )
-            path = control_sample["controlled"]
-            wealth = path.pop("net_wealth", None)
-            user_metrics = {
-                **path["net"],
-                **({"net_wealth": wealth} if wealth is not None else {}),
-                "gross_metrics": path["gross"],
-                "trading_costs": {
-                    k: path[k]
-                    for k in (
-                        "total_commissions",
-                        "trade_count",
-                        "rebalancing_events",
-                        "annualized_turnover",
-                    )
-                },
-            }
-        if iteration % 2 == 0:
-            self.trained = OptimizationResult("train_failed", None, {})
-            try:
-                if estimate is not None:
-                    self.trained = PortfolioOptimizer(
-                        values.mean(0) * 12, estimate.matrix * 12, self.constraints
-                    ).max_return_at_user_risk(
-                        self.user,
-                        training_volatility=user_metrics["annualized_volatility"]
-                        if user_metrics is not None
-                        else None,
-                    )
-            except Exception as exc:
-                self.trained = OptimizationResult("not_comparable", None, {"reason": str(exc)})
-            if estimate is not None:
-                self.trained.diagnostics.update(
-                    covariance_parameters=estimate.parameters,
-                    covariance_diagnostics=estimate.diagnostics,
-                )
-            return
-        mean, covariance = values.mean(0) * 12, np.cov(values, rowvar=False, ddof=1) * 12
-        self.means.append(mean)
-        self.covariances.append(covariance)
-        record = compare_validation(
-            values,
-            risk_free,
-            self.user,
-            self.trained,
-            self.assets,
-            user_metrics=user_metrics,
-            include_wealth=True,
-            **self.simulation_options,
-        )
-        record.update(
-            pair=iteration // 2 + 1,
-            train_generation=iteration,
-            validation_generation=iteration + 1,
-            user_portfolio_mode="controlled" if self.controls_enabled else "passive",
-        )
-        self.clouds.append(
-            {
-                "pair": iteration // 2 + 1,
-                "assets": {
-                    a: {
-                        "expected_return": float(mean[i]),
-                        "volatility": float(np.sqrt(max(0, covariance[i, i]))),
-                    }
-                    for i, a in enumerate(self.assets)
-                },
-                "user": {
-                    "expected_return": record["user"]["annualized_arithmetic_return"],
-                    "volatility": record["user"]["annualized_volatility"],
-                },
-                "optimized": {
-                    "expected_return": record["optimized"]["annualized_arithmetic_return"],
-                    "volatility": record["optimized"]["annualized_volatility"],
-                }
-                if record["optimized"]
-                else None,
-            }
-        )
-        self.records.append(record)
-
-    def result(self, observations):
-        result = {
-            **summarize(self.records),
-            "user_weights": dict(zip(self.assets, self.user.tolist(), strict=True)),
-            "analysis_version": "paired_validation_v3",
-            "user_portfolio_mode": "controlled" if self.controls_enabled else "passive",
-            "generated_datasets": len(self.records) * 2,
-            "horizon_months": observations,
-            "clouds": self.clouds,
-            "interpretation": (
-                "Conditional synthetic validation from the same empirical process; "
-                "not an independent future market test."
-            ),
+    def scalar_metrics(path):
+        return {
+            key: path.get(key, path.get("trading_costs", {}).get(key))
+            for key in JOINED_METRICS.values()
         }
-        points = []
-        try:
-            if self.means:
-                mean, cov = np.mean(self.means, axis=0), np.mean(self.covariances, axis=0)
-                engine = PortfolioOptimizer(mean, cov, self.constraints)
-                low, high = engine.gmv(), engine.maximum_return()
-                if low.weights is not None and high.weights is not None:
-                    for target in np.linspace(mean @ low.weights, mean @ high.weights, 51):
-                        fit = engine.target_return(float(target))
-                        if fit.weights is not None:
-                            points.append(
-                                {
-                                    "expected_return": float(mean @ fit.weights),
-                                    "volatility": float(
-                                        np.sqrt(max(0, fit.weights @ cov @ fit.weights))
-                                    ),
-                                }
-                            )
-                result.update(annual_mean=mean.tolist(), annual_covariance=cov.tolist())
-        except Exception as exc:
-            points = []
-            result["frontier_diagnostics"] = {"status": "failed", "reason": str(exc)}
-        result["validation_frontier"] = points
-        return result
+
+    def point(path):
+        return {
+            "expected_return": path["annualized_arithmetic_return"],
+            "volatility": path["annualized_volatility"],
+        }
+
+    record["user"] = scalar_metrics(user)
+    if optimized_metrics is not None:
+        record["optimized"] = scalar_metrics(optimized_metrics)
+        for name, metric in JOINED_METRICS.items():
+            a, b = record["optimized"][metric], record["user"][metric]
+            record["differences"][f"delta_{name}"] = (
+                a - b if a is not None and b is not None else None
+            )
+    cloud = {
+        "pair": iteration + 1,
+        "assets": {
+            asset: {
+                "expected_return": float(mean[i]),
+                "volatility": float(np.sqrt(max(0, covariance[i, i]))),
+            }
+            for i, asset in enumerate(assets)
+        },
+        "user": point(user),
+        "optimized": point(optimized_metrics) if optimized_metrics is not None else None,
+    }
+    return record, cloud, mean, covariance
+
+
+def validation_frontier(mean, covariance, constraints):
+    points = []
+    try:
+        engine = PortfolioOptimizer(mean, covariance, constraints)
+        low, high = engine.gmv(), engine.maximum_return()
+        if low.weights is not None and high.weights is not None:
+            for target in np.linspace(mean @ low.weights, mean @ high.weights, 51):
+                fit = engine.target_return(float(target))
+                if fit.weights is not None:
+                    points.append(
+                        {
+                            "expected_return": float(mean @ fit.weights),
+                            "volatility": float(
+                                np.sqrt(max(0, fit.weights @ covariance @ fit.weights))
+                            ),
+                        }
+                    )
+    except Exception as exc:  # Ex-post diagnostics are optional.
+        return {
+            "validation_frontier": [],
+            "frontier_diagnostics": {"status": "failed", "reason": str(exc)},
+        }
+    return {
+        "validation_frontier": points,
+        "annual_mean": mean.tolist(),
+        "annual_covariance": covariance.tolist(),
+    }

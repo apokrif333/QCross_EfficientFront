@@ -11,6 +11,16 @@ def historical_metrics(monthly: np.ndarray) -> dict:
     return {"historical_cagr": cagr, "historical_max_drawdown": float(-drawdown.min())}
 
 
+def _rolling_three_year_counts(wealth: list[float | None]) -> dict[str, int]:
+    values = np.asarray(wealth, dtype=float)
+    start, end = values[:-36], values[36:]
+    valid = np.isfinite(start) & np.isfinite(end) & (start > 0) & (end >= 0)
+    with np.errstate(divide="ignore", over="ignore"):
+        annualized = np.expm1((np.log(end[valid]) - np.log(start[valid])) / 3)
+    finite = annualized[np.isfinite(annualized)]
+    return {"positive": int(np.count_nonzero(finite > 0)), "total": int(finite.size)}
+
+
 def portfolio_metrics(
     weights: np.ndarray,
     values: np.ndarray,
@@ -21,6 +31,7 @@ def portfolio_metrics(
     risk_free_returns=None,
     differential=None,
     simulation_options=None,
+    history_months=None,
 ) -> dict:
     from app.analytics.portfolio_simulator import simulate_portfolio
 
@@ -73,11 +84,24 @@ def portfolio_metrics(
         "historical_sharpe_ratio": net["historical_sharpe_ratio"],
         "historical_arithmetic_return": net["annualized_arithmetic_return"],
         "terminal_wealth": net["terminal_wealth"],
+        "rolling_3y": _rolling_three_year_counts(simulation["net_wealth"]),
         "gross_historical_metrics": gross,
+        **(
+            {
+                "wealth_history": {
+                    "months": history_months,
+                    "net": simulation["net_wealth"],
+                    "gross": simulation["gross_wealth"],
+                }
+            }
+            if history_months is not None
+            else {}
+        ),
         "trading_costs": {
             k: simulation[k]
             for k in (
                 "total_commissions",
+                "total_capital_gains_tax",
                 "trade_count",
                 "rebalancing_events",
                 "annualized_turnover",

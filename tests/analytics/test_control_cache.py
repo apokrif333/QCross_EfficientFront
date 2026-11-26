@@ -1,9 +1,12 @@
 from copy import deepcopy
 from dataclasses import replace
 
+import numpy as np
 import pytest
 
-from app.analytics.bootstrap import analyze_bootstrap, analyze_resampled_frontier
+from app.analytics.bootstrap import analyze_resampled_frontier, stationary_indices
+from app.analytics.control_cache import export_control_cache, indices_hash
+from app.analytics.portfolio_controls import compare_controls
 from app.schemas.frontier import ResampledFrontierRequest
 from tests.analytics.test_controlled_bootstrap import USER, controlled_panel
 
@@ -11,8 +14,27 @@ from tests.analytics.test_controlled_bootstrap import USER, controlled_panel
 @pytest.fixture
 def stored(panel):
     p = controlled_panel(panel)
-    result = analyze_bootstrap(p, user_weights=USER, objectives=["gmv"], bootstrap_iterations=4)
-    return p, result["portfolio_control_cache"]
+    p.simulation_options["transaction_fee_rate"] = 0.0
+    rng = np.random.default_rng(42)
+    samples = []
+    for _ in range(4):
+        indices = stationary_indices(len(p.values), 12, rng)
+        samples.append(
+            {
+                **compare_controls(p, USER, indices, record_history=False),
+                "indices_sha256": indices_hash(indices),
+            }
+        )
+    return p, export_control_cache(
+        p,
+        USER,
+        {
+            "portfolio_control_samples": samples,
+            "portfolio_controls": compare_controls(p, USER),
+            "expected_block_length": 12,
+            "random_seed": 42,
+        },
+    )
 
 
 def run(panel, cache, count=4, **options):
@@ -43,7 +65,9 @@ def test_prefix_reuses_saved_paths_without_any_signal_calculation(stored, monkey
     assert result["user_sample_diagnostics"]["computed_samples"] == 0
 
 
-@pytest.mark.parametrize("change", ["seed", "block", "fee", "data", "hedge", "basis", "weights"])
+@pytest.mark.parametrize(
+    "change", ["seed", "block", "fee", "tax", "data", "hedge", "basis", "weights"]
+)
 def test_incompatible_data_or_settings_are_not_reused(stored, change):
     p, cache = stored
     options = {}
@@ -53,6 +77,8 @@ def test_incompatible_data_or_settings_are_not_reused(stored, change):
         options["expected_block_length"] = 6
     if change == "fee":
         options["transaction_fee_rate"] = 0.001
+    if change == "tax":
+        options["capital_gains_tax_rate"] = 0.10
     if change == "data":
         frame = p.returns.copy()
         frame.iloc[0, 0] += 0.01
@@ -62,7 +88,7 @@ def test_incompatible_data_or_settings_are_not_reused(stored, change):
         frame.iloc[0, -1] += 0.01
         p = replace(p, control_returns=frame)
     if change == "basis":
-        p = replace(p, return_basis="real")
+        p = controlled_panel(p, basis="real")
     if change == "weights":
         options["user_weights"] = {"1": 0.4, "2": 0.3, "3": 0.3}
     r = run(p, cache, **options)
@@ -101,7 +127,7 @@ def test_schema_accepts_portable_cache(stored):
     assert body.bootstrap_control_cache.model_dump() == cache
 
 
-def test_api_reuses_completed_bootstrap_in_resampled_job(panel, settings, session_factory):
+def test_api_keeps_resampled_frontier_scenarios_separate(panel, settings, session_factory):
     from fastapi.testclient import TestClient
 
     from app.ingestion.lazyportfolio.macro_service import refresh
@@ -130,20 +156,19 @@ def test_api_reuses_completed_bootstrap_in_resampled_job(panel, settings, sessio
         assert job.status_code == 202, job.text
         done = wait_result(client, job.json())
         assert done["status"] == "completed", done
-        cache = done["result"]["portfolio_control_cache"]
+        assert "portfolio_control_cache" not in done["result"]
         job = client.post(
             "/api/v1/analytics/resampled-frontier",
             json={
                 **body,
                 "bootstrap_iterations": 2,
-                "bootstrap_control_cache": cache,
             },
         )
         assert job.status_code == 202, job.text
         done = wait_result(client, job.json())
         assert done["status"] == "completed", done
-        assert done["result"]["user_sample_diagnostics"]["reused_samples"] == 2
-        assert done["result"]["user_sample_diagnostics"]["computed_samples"] == 0
+        assert done["result"]["user_sample_diagnostics"]["reused_samples"] == 0
+        assert done["result"]["user_sample_diagnostics"]["computed_samples"] == 2
         assert "bootstrap_control_cache" not in done["result"]["reproducibility"]["api_request"]
 
 

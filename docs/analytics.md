@@ -178,47 +178,22 @@ folds. Constraint-hit frequencies use absolute weight tolerance `1e-6`.
 
 Only [Politis and Romano's (1994) Stationary Bootstrap](https://doi.org/10.1080/01621459.1994.10476870)
 is implemented. Draw uniform starting indices and geometrically distributed block
-lengths with restart probability `p=1/L`. Circularly wrap at the last observation,
-concatenate blocks and truncate to exactly T rows. Resample whole monthly vectors
-jointly, never columns separately. L is 3–24 months (default 12); seed defaults to
-42. Given the same T, L, seed and iteration count, every estimator receives the
-same observations; a SHA-256 fingerprint of the sample indices confirms this.
+lengths with restart probability `p=1/L`. Wrap within the source interval and
+truncate to its length. Resample whole monthly vectors jointly.
 
-The default portfolio bootstrap runs 1,000 iterations for both GMV and Max Sharpe.
-Re-estimate means and covariance and optimize under the original constraints on
-every sample. `cv_linear` holds the original target and selected intensity fixed:
-this is explicitly a **conditional bootstrap**, excluding hyperparameter-selection
-uncertainty. Other estimators are fitted afresh, including Ledoit-Wolf intensity.
+Stationary Bootstrap first splits the actual history through bidirectional block
+CV, then resamples Train and Validation separately within each Fold. The defaults
+are 500 generations, 4 Fold, 12 months expected block length and seed 42. Means,
+covariance and all estimator parameters, including the CV-linear target and
+intensity, are fitted separately on each synthetic Train. The same index
+sequences are used across covariance methods and identified by a fingerprint.
 
-Keep all iteration records, including failed estimator/solver statuses, reasons,
-weights, numerical diagnostics and sample statistics. Require at least 95%
-successful iterations for GMV and Max Sharpe. Below that threshold return `incomplete`
-and withhold a misleading accepted resampled portfolio. Successful weight vectors
-are averaged and checked against all constraints. Original and resampled portfolios
-are both evaluated on the original full-sample estimates and history.
-
-Target Return Bootstrap checks the constrained maximum achievable expected return
-for every sample (annual-return tolerance `1e-7`). `target_infeasible` is an economic
-outcome and does not count as a technical failure or activate the 95% gate.
-`target_feasibility_rate` counts certified feasible samples divided by **all requested**
-samples; a later target-solver failure can still have certified feasibility. Failed
-feasibility/estimation leaves feasibility unknown and is counted separately.
-For Target Return, any technical sample failure or failure to compute the original
-solution suppresses the aggregate (`incomplete`); no partial aggregate is accepted.
-When computation succeeds, average weights and intervals use only successful,
-feasible samples. Zero feasible samples is a completed result with null resampled
-portfolio and stability. An infeasible original target has no original portfolio;
-feasible resamples may still have conditional statistics, with null original weights
-and allocation distance. Evaluate the average on original full-sample estimates and
-report its actual return, target shortfall/surplus and whether it meets the target.
-Do not project the average onto the target constraint. Feasibility across historical
-resamples is not the probability of future target returns.
-
-Asset statistics include original, mean, median, population standard deviation,
-P5/P95, minimum/maximum and constraint-hit frequencies (tolerance `1e-6`). Allocation
-distance is `0.5*sum(abs(w_bootstrap-w_original))`; report mean, median, P5/P95.
-These measure sensitivity to historical sampling and are **not guaranteed future
-return intervals**. Resampling does not imply superior future performance.
+Each generation contributes one chronological concatenation of Validation
+blocks, with a single continuous simulation over the full history length.
+Optimized weights change at Fold boundaries. Performance distributions use
+completed Validation paths with success counts per metric. Fold-level weights
+and target feasibility are reported as training diagnostics. See
+[methodology, failure policy and compatibility](bidirectional-stationary-bootstrap.md).
 
 Optional resampled frontier defaults to 250 samples and 51 shared risk-aversion
 parameters, logarithmically spaced from 10,000 to 0.001. For each fixed gamma solve
@@ -238,7 +213,7 @@ point uses per-sample moments and is identified separately on the chart.
 Resampled Frontier is independent of the global portfolio objective and target
 return. It accepts GMV, Max Sharpe and Target Return selections, including a null
 or unattainable target, without altering the shared risk-aversion curve. Target
-Return Bootstrap remains a separate conditional allocation analysis. Explicit
+Return Bootstrap remains a separate Train-constrained analysis. Explicit
 Bootstrap objective lists are sent unchanged by the frontend; defaults still
 select both GMV and Max Sharpe.
 
@@ -326,22 +301,17 @@ moments, CV directions and paired Bootstrap definitions retain their meanings.
 
 ## Controlled portfolios in paired Stationary Bootstrap
 
-When portfolio controls are enabled, each generated dataset runs a fresh sequential
-controlled simulation, with its own warm-up and the same sampled asset, hedge and BIL
-months. The odd-numbered Train simulation's net realized annual volatility supplies
-the optimizer's risk budget. Asset moments and conditional `cv_linear` parameters
-retain their existing definitions. The optimized allocation is frozen for the matching
-even-numbered Validation dataset, where it is compared against the user's controlled
-simulation. Controls apply to the user's portfolio; optimized allocations retain their
-existing rebalancing convention. Validation observations cannot influence Train fitting.
+When controls are enabled, the risk cap for Max Return at User Risk uses the net
+realized annual volatility of the controlled portfolio simulated on that Fold's
+synthetic Train. Each generation then simulates the controlled, passive and
+optimized portfolios over the same joined Validation. The controlled and passive
+paths keep their regular rebalancing schedule across Fold boundaries. The
+controlled strategy has one warm-up at the start of the joined path.
 
-The Validation user density cloud and paired differences use controlled net performance.
-User performance distributions use the controlled paths across **all** generations,
-including Train and Validation, with separate gross distributions. Passive paths remain
-available in `portfolio_control_samples[].baseline`. A failed controlled simulation
-fails that optional comparison explicitly; it never substitutes the passive portfolio.
-With controls disabled, comparisons and distributions retain passive semantics.
-Sampling indices, seeds, full-length horizons and pair counts are unchanged.
+The Validation density cloud and paired differences use net performance.
+Gross distributions are available separately. The passive path metrics are
+retained in `portfolio_control_samples[].baseline` for comparison against the
+controlled portfolio on matched Validation scenarios.
 
 ## Controlled portfolio markers on Resampled Frontier
 

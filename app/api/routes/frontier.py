@@ -15,6 +15,7 @@ from app.analytics.splitting import (
     MIN_COVARIANCE_VALIDATION,
     MIN_PORTFOLIO_TRAIN,
     MIN_PORTFOLIO_VALIDATION,
+    bootstrap_folds,
     eligible_folds,
     validate_cv_configuration,
 )
@@ -71,7 +72,9 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
                 raise AnalyticsError("My Portfolio requires explicit user_weights.")
             constraints.require_feasible(allocation)
         options["risk_free_rate"] = body.risk_free_rate
-        if kind not in {"rolling-efficiency", "rebalancing-optimization"}:
+        if kind == "bootstrap":
+            bootstrap_folds(len(panel.values), body.cv_folds, body.covariance_method)
+        elif kind not in {"rolling-efficiency", "rebalancing-optimization"}:
             validate_cv_configuration(
                 len(panel.values),
                 body.cv_folds,
@@ -101,6 +104,7 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
             )
         elif kind == "rolling-efficiency":
             options.pop("transaction_fee_rate", None)
+            options.pop("capital_gains_tax_rate", None)
             options.pop("rebalancing_interval_months", None)
             if user_allocation(panel.assets, body.user_weights) is None:
                 raise AnalyticsError("Rolling efficiency requires explicit user_weights.")
@@ -121,14 +125,6 @@ def _submit(body: AnalyticsRequest, request: Request, session: Session, kind: st
                 random_seed=body.random_seed,
             )
             if kind == "bootstrap":
-                if (
-                    body.user_weights
-                    and body.include_paired_comparison
-                    and body.bootstrap_iterations % 2
-                ):
-                    raise AnalyticsError(
-                        "Paired Bootstrap requires an even number of generated datasets."
-                    )
                 options["include_paired_comparison"] = body.include_paired_comparison
                 options["target_return"] = body.target_return
                 options["user_weights"] = body.user_weights
@@ -290,6 +286,7 @@ def asset_trend_sensitivity(
             {
                 "user_weights": body.user_weights,
                 "transaction_fee_rate": body.transaction_fee_rate,
+                "capital_gains_tax_rate": body.capital_gains_tax_rate,
                 "rebalancing_interval_months": body.rebalancing_interval_months,
                 "_api_request": body.model_dump(mode="json"),
             },

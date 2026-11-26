@@ -197,7 +197,7 @@ def analyze_cross_validation(
                     risk_free_rate,
                     risk_free_returns=training_rf,
                     differential=differential,
-                    simulation_options=panel.simulation_options,
+                    simulation_options=panel.path_options(training),
                 )
                 from app.analytics.portfolio_simulator import simulate_portfolio
 
@@ -212,7 +212,7 @@ def analyze_cross_validation(
                     validation_rf_path,
                     record_history=False,
                     allow_solver_residuals=True,
-                    **panel.simulation_options,
+                    **panel.path_options(validation),
                 )
                 realized = np.asarray(path["net_returns"])
                 realized_return = float(realized.mean() * 12)
@@ -232,6 +232,7 @@ def analyze_cross_validation(
                         k: path[k]
                         for k in (
                             "total_commissions",
+                            "total_capital_gains_tax",
                             "trade_count",
                             "rebalancing_events",
                             "annualized_turnover",
@@ -327,6 +328,7 @@ def analyze_cross_validation(
                             key: path[key]
                             for key in (
                                 "total_commissions",
+                                "total_capital_gains_tax",
                                 "trade_count",
                                 "rebalancing_events",
                                 "annualized_turnover",
@@ -340,7 +342,7 @@ def analyze_cross_validation(
                     trained,
                     panel.assets,
                     user_metrics=validation_user_metrics,
-                    **panel.simulation_options,
+                    **panel.path_options(validation),
                 )
                 fold["paired_comparison"].update(
                     fold=number,

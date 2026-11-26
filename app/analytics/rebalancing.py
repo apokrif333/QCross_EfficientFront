@@ -28,6 +28,7 @@ def analyze_rebalancing(
     *,
     user_weights,
     transaction_fee_rate=0.0,
+    capital_gains_tax_rate=0.0,
     risk_free_rate=0.03,
     asset_constraints=None,
     group_constraints=None,
@@ -41,6 +42,7 @@ def analyze_rebalancing(
     started = time.perf_counter()
     panel.simulation_options = {
         "transaction_fee_rate": transaction_fee_rate,
+        "capital_gains_tax_rate": capital_gains_tax_rate,
         "rebalancing_interval_months": options.get("rebalancing_interval_months", 12),
     }
     if panel.risk_free_source == "historical_bil" and panel.risk_free_returns is None:
@@ -75,7 +77,7 @@ def analyze_rebalancing(
     ]
     for strategy_id, label, policy, interval, threshold in policies:
         result = simulate_portfolio(
-            panel.values, weights, rf, policy=policy, transaction_fee_rate=transaction_fee_rate
+            panel.values, weights, rf, policy=policy, **panel.path_options()
         )
         for event in result["events"]:
             event["date"] = months[max(0, event["month_index"])]
@@ -111,10 +113,12 @@ def analyze_rebalancing(
         "months": months,
         "user_weights": dict(zip(panel.assets, weights.tolist(), strict=True)),
         "transaction_fee_rate": transaction_fee_rate,
+        "capital_gains_tax_rate": capital_gains_tax_rate,
         "strategies": strategies,
         "methodology": "historical_in_sample_rebalancing_comparison_v1",
         "simulation_settings": {
             "transaction_fee_rate": transaction_fee_rate,
+            "capital_gains_tax_rate": capital_gains_tax_rate,
             "baseline_months": 12,
         },
         "source_metadata": panel.metadata,

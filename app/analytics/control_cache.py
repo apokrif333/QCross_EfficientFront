@@ -11,7 +11,7 @@ def control_cache_key(panel, user_weights, expected_block_length, random_seed):
     identity = {
         "panel": panel_provenance(panel)["reference_panel_sha256"],
         "engine": engine_identity()["source_sha256"],
-        "simulation": panel.simulation_options,
+        "simulation": {"capital_gains_tax_rate": 0.0, **panel.simulation_options},
         "weights": user_weights,
         "block": expected_block_length,
         "seed": random_seed,

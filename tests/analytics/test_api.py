@@ -31,6 +31,7 @@ def test_real_process_api_roundtrip(endpoint, panel, settings, session_factory):
         "instrument_ids": [3, 1, 2],
         "frontier_points": 3,
         "bootstrap_iterations": 3,
+        "capital_gains_tax_rate": 0.10,
         "include_paired_comparison": False,
         "asset_constraints": {"1": {"max": 0.4}},
         "group_constraints": {"Equity": {"max": 1.0}, "Group 3": {"min": 0.1}},
@@ -51,12 +52,38 @@ def test_real_process_api_roundtrip(endpoint, panel, settings, session_factory):
         assert completed["result"]["execution_seconds"] > 0
         assert "period" in completed["result"] and "correlation" in completed["result"]
         assert completed["result"]["allocation_groups"]["Group 3"] == ["2"]
+        assert completed["result"]["simulation_settings"]["capital_gains_tax_rate"] == 0.10
         if endpoint == "frontier":
             user = completed["result"]["user_portfolio"]
             assert user["weights"]["1"] == 1.0
             assert not user["feasible"]
             assert user["metrics"]["gross_historical_metrics"]["annualized_cagr"] is not None
             assert user["metrics"]["trading_costs"]["total_commissions"] == 0
+            history = user["metrics"]["wealth_history"]
+            assert history["months"] == panel.returns.index.astype(str).tolist()
+            assert len(history["net"]) == len(history["months"]) + 1
+            assert history["net"][0] == 1
+            assert history["net"][-1] == pytest.approx(user["metrics"]["terminal_wealth"])
+            assert history["net"] == pytest.approx(history["gross"])
+            starts, ends = history["net"][:-36], history["net"][36:]
+            assert user["metrics"]["rolling_3y"] == {
+                "positive": sum(end > start for start, end in zip(starts, ends, strict=True)),
+                "total": len(ends),
+            }
+            for point in [
+                *completed["result"]["frontier"],
+                *completed["result"]["asset_portfolios"].values(),
+            ]:
+                assert point["metrics"]["rolling_3y"]["total"] == len(ends)
+            for key in ("selected_portfolio", "equal_weight"):
+                metrics = completed["result"][key]["metrics"]
+                assert metrics["wealth_history"]["months"] == history["months"]
+                assert metrics["wealth_history"]["net"][-1] == pytest.approx(
+                    metrics["terminal_wealth"]
+                )
+            assert completed["result"]["equal_weight"]["metrics"]["trading_costs"][
+                "total_capital_gains_tax"
+            ] > 0
         if endpoint == "bootstrap":
             robustness = completed["result"]["efficiency_robustness"]
             assert robustness["horizon"]["months"] == len(panel.values)
@@ -88,6 +115,7 @@ def test_bootstrap_trend_sensitivity_is_a_separate_job(panel, settings, session_
                 "bootstrap_iterations": 3,
                 "include_paired_comparison": False,
                 "transaction_fee_rate": fee_rate,
+                "capital_gains_tax_rate": 0.10,
                 "rebalancing_interval_months": 4,
                 "user_weights": {"1": 0.6, "2": 0.4},
                 "portfolio_controls": {
@@ -105,7 +133,7 @@ def test_bootstrap_trend_sensitivity_is_a_separate_job(panel, settings, session_
         assert bootstrap["status"] == "completed", bootstrap
         assert bootstrap["bootstrap_trend_sensitivity_available"]
         assert "trend_sensitivity" not in bootstrap["result"]
-        assert "sensitivity" not in bootstrap["result"]["portfolio_controls"]
+        assert "portfolio_controls" not in bootstrap["result"]
         assert (
             "_sample_indices"
             not in bootstrap["result"]["reproducibility"]["optimization_parameters"]
@@ -122,6 +150,10 @@ def test_bootstrap_trend_sensitivity_is_a_separate_job(panel, settings, session_
         value = sensitivity["result"]["trend_sensitivity"]
         assert value["iterations"] == 3
         assert value["commission_basis"] == "pretrade_nav"
+        assert (
+            value["validation_sample_fingerprint"]
+            == bootstrap["result"]["validation_sample_fingerprint"]
+        )
         assert set(value["by_asset"]) == {"1"}
         for series in [value["portfolio"], value["by_asset"]["1"]]:
             assert len(series) == 36
@@ -130,6 +162,7 @@ def test_bootstrap_trend_sensitivity_is_a_separate_job(panel, settings, session_
             value["portfolio"][11], bootstrap["result"]["portfolio_control_samples"], strict=True
         ):
             controlled = sample["controlled"]
+            assert controlled["total_capital_gains_tax"] > 0
             assert point == pytest.approx(
                 [
                     controlled[side][metric]
@@ -243,6 +276,27 @@ def test_api_capacity_and_timeout_are_bounded(panel, settings, session_factory):
         assert app.state.analytics_jobs.jobs[job["job_id"]].finished is not None
 
 
+def test_completed_jobs_make_room_for_new_calculations(panel, settings, session_factory):
+    seed_database(session_factory, panel)
+    settings.analytics_max_jobs = 1
+    settings.analytics_retention_seconds = 3600
+    with TestClient(create_app(settings)) as client:
+        body = {
+            "risk_free_source": "fixed_annual",
+            "instrument_ids": [1, 2],
+            "frontier_points": 3,
+        }
+        first = client.post("/api/v1/analytics/frontier", json=body)
+        assert first.status_code == 202
+        assert wait_result(client, first.json())["status"] == "completed"
+        assert client.get(first.json()["result_url"]).status_code == 200
+
+        second = client.post("/api/v1/analytics/frontier", json=body)
+        assert second.status_code == 202
+        assert client.get(first.json()["result_url"]).status_code == 404
+        assert wait_result(client, second.json())["status"] == "completed"
+
+
 def test_worker_error_is_retrievable(panel, settings, session_factory):
     panel.returns["2"] = panel.returns["1"]
     seed_database(session_factory, panel)
@@ -265,7 +319,7 @@ def test_request_finiteness_and_defaults():
 
     from app.schemas.frontier import ResampledFrontierRequest
 
-    assert AnalyticsRequest(instrument_ids=[1, 2]).bootstrap_iterations == 1000
+    assert AnalyticsRequest(instrument_ids=[1, 2]).bootstrap_iterations == 500
     assert AnalyticsRequest(instrument_ids=[1, 2]).cv_folds == 4
     for k in range(2, 21, 2):
         assert AnalyticsRequest(instrument_ids=[1, 2], cv_folds=k).cv_folds == k

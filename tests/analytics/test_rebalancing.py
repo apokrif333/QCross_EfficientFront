@@ -30,11 +30,16 @@ def test_all_thresholds_trigger_full_portfolio_after_month(threshold):
     assert path["events"][1]["trades"][0] < 0 < path["events"][1]["trades"][1]
 
 
-def test_twenty_strategies_and_cost_conservation(panel):
+@pytest.mark.parametrize("tax_rate", [0, 0.10])
+def test_twenty_strategies_and_cost_conservation(panel, tax_rate):
     result = analyze_rebalancing(
-        panel, user_weights={"1": 0.6, "2": 0.3, "3": 0.1}, transaction_fee_rate=0.002
+        panel,
+        user_weights={"1": 0.6, "2": 0.3, "3": 0.1},
+        transaction_fee_rate=0.002,
+        capital_gains_tax_rate=tax_rate,
     )
     assert len(result["strategies"]) == 21
+    assert any(s["total_capital_gains_tax"] > 0 for s in result["strategies"]) == bool(tax_rate)
     assert sum(s["annual_baseline"] for s in result["strategies"]) == 1
     assert (
         sorted(
@@ -55,7 +60,11 @@ def test_twenty_strategies_and_cost_conservation(panel):
             assert e["commissions"] == pytest.approx(
                 0.002 * sum(abs(t) for t in e["trades"].values())
             )
-        costs = {e["month_index"]: e["commissions"] for e in strategy["events"]}
+        taxes = {e["month_index"]: e.get("capital_gains_tax", 0) for e in strategy["events"]}
+        assert strategy["total_capital_gains_tax"] == pytest.approx(sum(taxes.values()))
+        costs = {
+            e["month_index"]: e["commissions"] + taxes[e["month_index"]] for e in strategy["events"]
+        }
         assert sum(strategy["positions"][0]) + costs[-1] == pytest.approx(1)
         assert strategy["events"][0]["turnover"] == pytest.approx(sum(strategy["positions"][0]))
         for month, row in enumerate(panel.values):
@@ -158,6 +167,7 @@ def test_async_rebalancing_job_ignores_global_objective_and_cv_history(
             return_basis=basis,
             risk_free_source="historical_bil",
             transaction_fee_rate=0.002,
+            capital_gains_tax_rate=0.10,
             objective="target_return",
             target_return=None,
             covariance_method="cv_linear",
@@ -170,6 +180,8 @@ def test_async_rebalancing_job_ignores_global_objective_and_cv_history(
         result = done["result"]
         assert len(result["strategies"]) == 21
         assert result["return_basis"] == basis
+        assert result["capital_gains_tax_rate"] == 0.10
+        assert any(s["total_capital_gains_tax"] > 0 for s in result["strategies"])
         assert result["reproducibility"]["api_request"]["transaction_fee_rate"] == 0.002
         invalid = {**body, "user_weights": None}
         assert (
@@ -177,6 +189,11 @@ def test_async_rebalancing_job_ignores_global_objective_and_cv_history(
             == 422
         )
         invalid = {**body, "transaction_fee_rate": -1}
+        assert (
+            client.post("/api/v1/analytics/rebalancing-optimization", json=invalid).status_code
+            == 422
+        )
+        invalid = {**body, "capital_gains_tax_rate": 1.01}
         assert (
             client.post("/api/v1/analytics/rebalancing-optimization", json=invalid).status_code
             == 422

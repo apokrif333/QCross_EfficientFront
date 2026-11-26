@@ -56,6 +56,18 @@ Allocation fractions and return/volatility fractions use decimals, not percentag
 
 ## Shared request
 
+`capital_gains_tax_rate` is a decimal fraction from 0 to 1 and defaults to 0
+for new requests and older snapshots. At each actual rebalancing or management
+trade, the simulator nets nominal realized gains and losses across the assets
+sold, deducts all commissions for that event, and taxes the positive balance.
+Partial sales use each asset's weighted-average purchase cost. Tax is paid
+from the portfolio together with fees. Unrealized gains, initial purchases and
+end-of-horizon holdings are not taxed, and unused losses are not carried to
+later events. Monthly total returns are treated as price gains. Real paths
+express cash outflows in the selected return basis while keeping the taxable
+gain nominal. Net includes fees and tax; Gross excludes both. Rolling
+efficiency continues to use model moments, without simulating trades.
+
 ```json
 {
   "instrument_ids": [1, 175, 243],
@@ -80,7 +92,7 @@ Allocation fractions and return/volatility fractions use decimals, not percentag
   },
   "frontier_points": 51,
   "cv_folds": 4,
-  "bootstrap_iterations": 1000,
+  "bootstrap_iterations": 500,
   "expected_block_length": 12,
   "random_seed": 42,
   "bootstrap_objectives": ["gmv", "max_sharpe"],
@@ -97,7 +109,7 @@ IDs through the existing instrument catalog in other databases.
 | currency | USD only; no conversion |
 | start_date/end_date | Optional; inclusive calendar months; reported history intersection |
 | covariance_method | sample, ledoit_wolf, nonlinear, cv_linear; default sample |
-| shrinkage_target | identity or diagonal; used for cv_linear |
+| shrinkage_target | identity or diagonal for fixed-target CV Linear operations. Stationary Bootstrap selects the target within each synthetic Train |
 | return_basis | nominal or real; default nominal; applies to every calculation |
 | risk_free_source | historical_bil or fixed_annual; new default historical_bil |
 | risk_free_rate | Manual fixed annual fraction; default 0.03 in fixed mode; finite in (-1,1] |
@@ -107,7 +119,7 @@ IDs through the existing instrument catalog in other databases.
 | group_constraints | Up to 30 explicit named min/max bounds in [0,1] |
 | frontier_points | 2–201; default 51 |
 | cv_folds | Even integers 2–20; default 4; portfolio folds 120/60 train/validation months, covariance folds 60/30 |
-| bootstrap_iterations | 1–2,000; default 1,000; resampled frontier 1–500, default 250 |
+| bootstrap_iterations | 1–2,000, including odd counts, default 500. Resampled Frontier 1–500, default 250 |
 | expected_block_length | 3–24 months; default 12 |
 | random_seed | Integer 0 through 2^32−1; default 42 |
 | bootstrap_objectives | Optional distinct list of gmv/max_sharpe/target_return (up to three) |
@@ -133,8 +145,11 @@ Expired/unknown jobs return HTTP 404.
 
 CV feasibility is operation-aware. `/cross-validation` checks every outer 120/60
 fold and, for `cv_linear`, every inner 60/30 fold before starting a worker.
-Other operations check full-sample covariance folds only when using `cv_linear`;
-sample/Ledoit-Wolf/nonlinear frontiers remain available with 120 common months.
+`/bootstrap` checks the same sizes and requires chronological Validation blocks
+covering the entire panel. Its CV Linear target and intensity are fitted within
+each synthetic Train. Other operations check full-sample covariance folds when
+using `cv_linear`. Sample, Ledoit-Wolf and Nonlinear frontiers remain available
+with 120 common months.
 Insufficient-history errors include requested K, actual T, required minimum,
 train/validation minima and eligible K. `/data-preview` reports separate
 `eligible_portfolio_folds` and `eligible_covariance_folds` for the aligned history.
@@ -192,14 +207,16 @@ diagnostics: {solver_status, solver, iterations, timing, constraint_violation, .
 |---|---|
 | Frontier | GMV, Max Sharpe, maximum return, selected objective, equal-weight feasibility/label, all target-return frontier portfolios |
 | CV | Original full-sample portfolio, training/validation periods with training segments, every fold's weights/metrics/estimator diagnostics, ensemble, stability |
-| Bootstrap | Results by objective, original/resampled portfolios, weight/displacement statistics, all iteration records, success/failure counts and reasons, conditional-bootstrap disclosure and sample fingerprint |
+| Bootstrap | Methodology and sample fingerprints, fold geometry and replay diagnostics, per-objective joined Validation distributions, fold weights and success counts |
 | Resampled frontier | Shared gamma values, averaged portfolios on original estimates, optional user portfolio on the original sample and its average return/volatility across successful samples, sample counts/failures, iteration solver/covariance diagnostics, conditional-bootstrap disclosure |
 
 ## Execution bounds
 
 Each FastAPI application owns a process-local runner. Default: two concurrent
 spawned processes, no waiting queue, 300-second deadlines, at most 32 retained
-jobs, one-hour retention. Numerical BLAS work is limited to one thread per worker.
+jobs, up to one hour of retention. At the storage limit, admitting a new job
+evicts the earliest finished job. HTTP 429 indicates that the concurrent job
+limit is reached. Numerical BLAS work is limited to one thread per worker.
 The lifespan monitor checks deadlines every 0.25 seconds and terminates timed-out
 workers; shutdown cleans up workers. Ordinary health/catalog requests stay available.
 No ingestion runs inside analytics workers.
@@ -265,14 +282,17 @@ With explicit `user_weights` and `include_efficiency_robustness=true`, `/bootstr
 adds the following to `efficiency_robustness`:
 
 - `horizon`: full selected panel `months`, `years`, `initial_wealth=1`,
-  `sample_length_policy=full_selected_return_panel`, `rebalancing=monthly_fixed_weights`.
+  `sample_length_policy=full_selected_return_panel`. The path follows the
+  requested rebalancing settings.
 - `results[].portfolio_metrics`: `annualized_cagr`, `annualized_arithmetic_return`,
-  `annualized_volatility`, `maximum_drawdown`, `historical_sharpe_ratio`, `terminal_wealth`.
-- `distributions`: the same six keys plus `return_shortfall` and `excess_volatility`.
-  Each includes `mean`, `median`, `p5`, `p95`, `minimum`, `maximum`, `valid_count`,
+  `annualized_volatility`, `maximum_drawdown`, `historical_sharpe_ratio`,
+  `terminal_wealth`, `calmar_ratio`, `sortino_ratio`, and trading costs.
+- `distributions`: portfolio metrics plus `return_shortfall` and `excess_volatility`.
+  Each includes `mean`, `median`, `standard_deviation`, `p5`, `p95`, `minimum`, `maximum`, `valid_count`,
   `unavailable_count`, `horizon_months`, `horizon_years`, `annualized`, and `units`.
 - `metric_conventions` and `distribution_interpretation` document volatility
-  ddof=0, differential Sharpe ddof=1, null handling and statistical interpretation.
+  and differential Sharpe sample standard deviations (ddof=1), null handling and
+  statistical interpretation.
 
 Returns, volatility, drawdown and efficiency distances are decimal fractions;
 Sharpe is dimensionless and terminal wealth is the value from $1 in the selected
@@ -280,8 +300,7 @@ Nominal/Real basis. Every distribution uses the full selected duration T/12 year
 Drawdown and terminal wealth are full-horizon metrics rather than annual rates.
 Per-metric counts disclose undefined Sharpe values and numerical overflow.
 Path statistics remain available when covariance estimation or an efficiency
-solver fails. The existing distance-summary fields remain present and now also
-include `minimum`. The sampling fingerprint and optimization objectives are unchanged.
+solver fails. The sampling fingerprints identify the versioned fold scenarios.
 
 ## Rebalancing simulation (engine 3.0)
 
@@ -303,7 +322,9 @@ Requests optionally accept typed `portfolio_controls` (`none`, `downside_vol`,
 is enabled. The optimizer uses net realized controlled Train volatility as its risk
 budget (`risk_budget_source = "controlled_training_path"`). Each pair's `user`,
 `differences` and Validation `clouds[].user` use the controlled Validation path.
-The optimizer's weights are selected on Train and frozen for Validation.
+Each Fold's weights come from its Train and remain the optimizer's target
+throughout that Fold's Validation. The engine simulates the joined Validation
+continuously.
 
 `efficiency_robustness.user_portfolio_mode` identifies whether the all-generation
 performance distributions describe the controlled or passive portfolio. Both gross
@@ -321,14 +342,12 @@ reasons and excluded frontier samples. Control failures do not change frontier s
 The shared-risk-aversion curve remains model-based. Legacy results without the mode
 field retain their existing passive markers; rerun to calculate controlled markers.
 
-Bootstrap responses include `portfolio_control_cache` when controls are active.
-Optionally pass this object as `bootstrap_control_cache` to `resampled-frontier`.
-The server verifies its data/settings key and per-generation index hashes before
-reuse. The cache is a calculation artifact and is omitted from the saved API request
-and optimization settings; Bootstrap snapshot results retain it. Resampled diagnostics
-include `cache_status`, `reused_samples`, and `computed_samples`. Incompatible or
-missing cache entries are computed normally. No resampling or curve methodology
-changes are involved.
+Stationary Bootstrap retains joined Validation indices for its separate Trend
+Sensitivity job. Resampled Frontier uses full-panel draws and keeps its existing
+curve construction. A legacy `bootstrap_control_cache` is eligible for reuse by
+Resampled Frontier only when the data, settings and draw hashes match.
+Resampled diagnostics include `cache_status`, `reused_samples`, and
+`computed_samples`. See [the methodology version and replay recipe](bidirectional-stationary-bootstrap.md).
 
 `POST /api/v1/analytics/rebalancing-optimization` requires
 `portfolio_controls.mode = "none"` (the default). Active `downside_vol` or `trend`

@@ -140,7 +140,7 @@ class AnalyticsJobs:
         with self.lock:
             self.refresh()
             running = sum(job.status == "running" for job in self.jobs.values())
-            if running >= self.workers or len(self.jobs) >= self.max_jobs:
+            if running >= min(self.workers, self.max_jobs):
                 raise JobCapacityError(
                     "Analytics capacity is full; retry after a running job finishes."
                 )
@@ -159,6 +159,14 @@ class AnalyticsJobs:
                 writer.close()
                 raise
             writer.close()
+            if len(self.jobs) >= self.max_jobs:
+                # At least one job has finished because running is below max_jobs.
+                _, oldest = min(
+                    (job.finished, key)
+                    for key, job in self.jobs.items()
+                    if job.finished is not None
+                )
+                del self.jobs[oldest]
             self.jobs[job_id] = job
             return self._read(job)
 

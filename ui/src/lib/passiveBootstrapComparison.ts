@@ -12,6 +12,12 @@ const METRICS = [
   ["delta_volatility", "annualized_volatility"],
   ["delta_sharpe", "historical_sharpe_ratio"],
   ["delta_max_drawdown", "maximum_drawdown"],
+  ["delta_calmar", "calmar_ratio"],
+  ["delta_sortino", "sortino_ratio"],
+  ["delta_terminal_wealth", "terminal_wealth"],
+  ["delta_commissions", "total_commissions"],
+  ["delta_annualized_commissions", "annualized_commissions"],
+  ["delta_turnover", "annualized_turnover"],
 ] as const;
 
 function finite(value: number | null | undefined): value is number {
@@ -46,9 +52,11 @@ export function comparePassiveBootstrap(
       if (activePoint && passivePoint)
         clouds.push({ active: activePoint, passive: passivePoint });
       const differences: Record<string, number> = {};
+      const activeMetrics = { ...sample.controlled, ...active };
+      const passiveMetrics = { ...sample.baseline, ...passive };
       for (const [delta, metric] of METRICS) {
-        const a = active[metric],
-          p = passive[metric];
+        const a = activeMetrics[metric],
+          p = passiveMetrics[metric];
         if (finite(a) && finite(p) && finite(p - a)) differences[delta] = p - a;
       }
       return { differences };
@@ -61,10 +69,14 @@ export function comparePassiveBootstrap(
         .filter(finite)
         .sort((a, b) => a - b);
       if (!values.length) return [key, null];
+      const mean = values.reduce((sum, v) => sum + v / values.length, 0);
       return [
         key,
         {
-          mean: values.reduce((sum, v) => sum + v / values.length, 0),
+          mean,
+          standard_deviation: Math.sqrt(
+            values.reduce((sum, v) => sum + (v - mean) ** 2 / values.length, 0),
+          ),
           median: linearQuantile(values, 0.5)!,
           p5: linearQuantile(values, 0.05)!,
           p95: linearQuantile(values, 0.95)!,

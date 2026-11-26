@@ -10,6 +10,8 @@ test("Bootstrap switches from Validation to a matched passive comparison for My 
   const result = JSON.parse(
     await readFile(resolve("public/demo/bootstrap.json"), "utf8"),
   );
+  result.methodology = "bidirectional_block_cv_stationary_bootstrap_v1";
+  result.cv_folds = 4;
   result.objectives.max_return_at_user_risk = result.objectives.gmv;
   result.portfolio_control_samples = Array.from({ length: 500 }, (_, i) => {
     const active = {
@@ -32,15 +34,16 @@ test("Bootstrap switches from Validation to a matched passive comparison for My 
     };
   });
   result.paired_comparison = {
-    valid_count: 250,
+    analysis_version: result.methodology,
+    valid_count: 500,
     failed_count: 0,
-    requested_comparisons: 250,
+    requested_comparisons: 500,
     generated_datasets: 500,
     horizon_months: 240,
     differences: {},
     win_frequencies: {},
     results: [],
-    clouds: Array.from({ length: 250 }, (_, i) => {
+    clouds: Array.from({ length: 500 }, (_, i) => {
       const x = 0.1 + 0.02 * Math.sin(i * 1.36),
         y = 0.08 + 0.03 * Math.cos(i * 0.96);
       return {
@@ -103,7 +106,7 @@ test("Bootstrap switches from Validation to a matched passive comparison for My 
       (t: any) => t.type === "histogram2dcontour" && t.visible === true,
     ),
   ).toHaveLength(2);
-  expect(info[0].count).toBe(250);
+  expect(info[0].count).toBe(500);
   expect(info[0].visible).toBe("legendonly");
   await plot.locator(".legendtoggle").first().click();
   await expect

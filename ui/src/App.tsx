@@ -37,6 +37,7 @@ import Settings from "./components/Settings";
 import AssetBuilder from "./components/AssetBuilder";
 import PortfolioControls from "./components/PortfolioControls";
 import ControlResults from "./components/ControlResults";
+import FrontierRollingReturns from "./components/FrontierRollingReturns";
 import {
   allocationError,
   requestFromRows,
@@ -134,14 +135,25 @@ export default function App() {
     >
   >({});
   const instruments = catalog?.instruments ?? [];
-  const periodKey = JSON.stringify([
-    request.instrument_ids,
-    request.start_date,
-    request.end_date,
-    request.return_basis,
-    request.risk_free_source,
-    request.risk_free_rate,
-  ]);
+  const periodKey = JSON.stringify({
+    instrument_ids: request.instrument_ids,
+    currency: "USD",
+    start_date: request.start_date,
+    end_date: request.end_date,
+    return_basis: request.return_basis ?? "nominal",
+    risk_free_source: request.risk_free_source ?? "fixed_annual",
+    risk_free_rate: request.risk_free_rate,
+    ...(tab === "Bootstrap" &&
+    !formError &&
+    request.user_weights &&
+    request.portfolio_controls &&
+    request.portfolio_controls.mode !== "none"
+      ? {
+          user_weights: request.user_weights,
+          portfolio_controls: request.portfolio_controls,
+        }
+      : {}),
+  });
   useEffect(() => {
     setPeriodInfo("");
     setCommonObservations(undefined);
@@ -153,15 +165,7 @@ export default function App() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            instrument_ids: request.instrument_ids,
-            currency: "USD",
-            return_basis: request.return_basis ?? "nominal",
-            risk_free_source: request.risk_free_source ?? "fixed_annual",
-            risk_free_rate: request.risk_free_rate,
-            start_date: request.start_date,
-            end_date: request.end_date,
-          }),
+          body: periodKey,
         },
         abort.signal,
       )
@@ -257,8 +261,13 @@ export default function App() {
             include_paired_comparison: true,
             rebalancing_interval_months: 12,
             transaction_fee_rate: 0,
+            capital_gains_tax_rate: 0,
             start_date: null,
             end_date: null,
+            bootstrap_iterations: DEFAULT_REQUEST.bootstrap_iterations,
+            expected_block_length: DEFAULT_REQUEST.expected_block_length,
+            cv_folds: DEFAULT_REQUEST.cv_folds,
+            random_seed: DEFAULT_REQUEST.random_seed,
             bootstrap_objectives: [
               "gmv",
               "max_sharpe",
@@ -292,15 +301,7 @@ export default function App() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            instrument_ids: request.instrument_ids,
-            currency: "USD",
-            return_basis: request.return_basis ?? "nominal",
-            risk_free_source: request.risk_free_source ?? "fixed_annual",
-            risk_free_rate: request.risk_free_rate,
-            start_date: request.start_date,
-            end_date: request.end_date,
-          }),
+          body: periodKey,
         },
       );
       setMessage(
@@ -422,6 +423,15 @@ export default function App() {
           setProgress,
           abort.signal,
         );
+        const fingerprint = (calculation.result as BootstrapResult)
+          .validation_sample_fingerprint;
+        if (
+          fingerprint &&
+          fingerprint !== trend_sensitivity.validation_sample_fingerprint
+        )
+          throw new Error(
+            "Сценарии Validation в Bootstrap и анализе чувствительности различаются.",
+          );
         setCalculations((current) =>
           current.map((record) =>
             record.id === calculation.id
@@ -537,6 +547,8 @@ export default function App() {
             include_paired_comparison:
               original.request.include_paired_comparison ?? false,
             transaction_fee_rate: original.request.transaction_fee_rate ?? 0,
+            capital_gains_tax_rate:
+              original.request.capital_gains_tax_rate ?? 0,
             rebalancing_interval_months:
               original.request.rebalancing_interval_months === undefined
                 ? 1
@@ -720,6 +732,7 @@ export default function App() {
                   : commonObservations
               }
               portfolioCV={tab === "Cross-validation"}
+              bootstrap={tab === "Bootstrap"}
             />
             {mode === "demo" && (
               <label className="demo-method">
@@ -817,6 +830,14 @@ export default function App() {
               <p className="warning">
                 INCOMPLETE: расчёт завершён частично. Такой результат не принят
                 как полный.
+              </p>
+            )}
+            {!!visible?.request.capital_gains_tax_rate && (
+              <p className="hint">
+                Налог на прирост капитала —{" "}
+                {visible.request.capital_gains_tax_rate * 100}%. Показатели Net
+                учитывают комиссии и налог, Gross показывает результат до обоих
+                списаний.
               </p>
             )}
             {tab === "Frontier" && frontier && (
@@ -1060,6 +1081,12 @@ export default function App() {
                 {number(visible.result.execution_seconds)} с ·{" "}
                 {visible.origin.toUpperCase()} · {visible.result.status}
               </p>
+              {tab === "Frontier" && frontier && (
+                <FrontierRollingReturns
+                  key={`rolling-returns-${frontier.id}`}
+                  result={frontier.result as FrontierResult}
+                />
+              )}
               <ControlResults
                 key={visible.id}
                 result={visible.result}

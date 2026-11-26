@@ -56,6 +56,10 @@ export function requestFromRows(
 ): ApiRequest {
   const selected = rows.filter((r) => r.instrumentId !== null),
     groups = [...new Set(selected.map((r) => r.group))];
+  const instrumentIds = selected.map((r) => r.instrumentId!);
+  const selectedIds = new Set(instrumentIds.map(String));
+  const controls = previous.portfolio_controls;
+  const trend = controls?.trend;
   const weights = Object.fromEntries(
     selected.map((r) => [
       String(r.instrumentId),
@@ -64,7 +68,21 @@ export function requestFromRows(
   );
   return {
     ...previous,
-    instrument_ids: selected.map((r) => r.instrumentId!),
+    instrument_ids: instrumentIds,
+    ...(controls &&
+      trend && {
+        portfolio_controls: {
+          ...controls,
+          trend: {
+            ...trend,
+            asset_rules: Object.fromEntries(
+              Object.entries(trend.asset_rules).filter(([id]) =>
+                selectedIds.has(id),
+              ),
+            ),
+          },
+        },
+      }),
     asset_constraints: Object.fromEntries(
       selected.map((r) => [
         String(r.instrumentId),

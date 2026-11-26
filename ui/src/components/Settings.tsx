@@ -2,7 +2,7 @@ import type { ApiRequest, Instrument } from "../types";
 import { METHODS } from "../types";
 import { commonHistory } from "../lib/display";
 import HelpField from "./HelpField";
-import { CV_FOLDS, minimumCVHistory } from "../lib/cv";
+import { CV_FOLDS, minimumBootstrapHistory, minimumCVHistory } from "../lib/cv";
 
 export default function Settings({
   value,
@@ -12,6 +12,7 @@ export default function Settings({
   onPreview,
   observations,
   portfolioCV = false,
+  bootstrap = false,
 }: {
   value: ApiRequest;
   instruments: Instrument[];
@@ -20,6 +21,7 @@ export default function Settings({
   onPreview: () => void;
   observations?: number;
   portfolioCV?: boolean;
+  bootstrap?: boolean;
 }) {
   const selected = instruments.filter((i) =>
       value.instrument_ids.includes(i.id),
@@ -133,9 +135,19 @@ export default function Settings({
             ))}
           </select>
         </HelpField>
+        {value.covariance_method === "cv_linear" && bootstrap && (
+          <p className="hint">
+            Цель и интенсивность shrinkage выбираются внутри синтетического
+            Train каждого Fold.
+          </p>
+        )}
         {value.covariance_method === "cv_linear" && (
           <HelpField
-            label="Цель shrinkage"
+            label={
+              bootstrap
+                ? "Цель shrinkage для Resampled Frontier"
+                : "Цель shrinkage"
+            }
             help="Матрица, к которой приближается выборочная ковариация. Scaled identity использует общую среднюю дисперсию; Diagonal сохраняет отдельные дисперсии активов. Интенсивность выбирается по проверочным данным."
           >
             <select
@@ -203,6 +215,21 @@ export default function Settings({
             step="any"
             value={(value.transaction_fee_rate ?? 0) * 100}
             onChange={(e) => set("transaction_fee_rate", +e.target.value / 100)}
+          />
+        </HelpField>
+        <HelpField
+          label="Налог на прирост капитала, %"
+          help="Начисляется на положительный итог реализованной прибыли и убытков по продажам за одну ребалансировку за вычетом её комиссий. Себестоимость частичных продаж считается по средней цене покупки."
+        >
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="any"
+            value={(value.capital_gains_tax_rate ?? 0) * 100}
+            onChange={(e) =>
+              set("capital_gains_tax_rate", +e.target.value / 100)
+            }
           />
         </HelpField>
         <div className="two">
@@ -287,9 +314,16 @@ export default function Settings({
             }}
           >
             {CV_FOLDS.map((k) => {
-              const required = minimumCVHistory(k, !portfolioCV);
+              const required = bootstrap
+                ? minimumBootstrapHistory(
+                    k,
+                    value.covariance_method === "cv_linear",
+                  )
+                : minimumCVHistory(k, !portfolioCV);
               const relevant =
-                portfolioCV || value.covariance_method === "cv_linear";
+                bootstrap ||
+                portfolioCV ||
+                value.covariance_method === "cv_linear";
               return (
                 <option
                   key={k}
@@ -311,7 +345,7 @@ export default function Settings({
           <div className="two">
             <HelpField
               label="Повторений"
-              help="Число Stationary Bootstrap выборок: по умолчанию 1000. Для целевой доходности проверяется достижимость в каждой выборке; иначе рассчитываются GMV и Max Sharpe. Для Resampled Frontier — до 500 повторений, по умолчанию 250."
+              help="По умолчанию 500 генераций. Каждая включает все CV-фолды и одну объединённую Validation. У Resampled Frontier отдельная методология."
             >
               <input
                 type="number"

@@ -149,12 +149,12 @@ test("all four Live jobs, four-method comparison and exact snapshot repeat throu
   ).toBeVisible();
   await page.getByRole("button", { name: "Bootstrap", exact: true }).click();
   await run();
-  await expect(page.getByText(/1000 \/ 1000 успешных/)).toBeVisible();
+  await expect(page.getByText(/500 \/ 500 успешных/)).toBeVisible();
   await page
     .locator("main .segmented")
     .getByRole("button", { name: "Max Sharpe", exact: true })
     .click();
-  await expect(page.getByText(/1000 \/ 1000 успешных/)).toBeVisible();
+  await expect(page.getByText(/500 \/ 500 успешных/)).toBeVisible();
   await page.getByLabel("Повторений", { exact: true }).fill("250");
   await page
     .getByRole("button", { name: "Рассчитать Resampled Frontier", exact: true })

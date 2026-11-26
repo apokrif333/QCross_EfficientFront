@@ -158,7 +158,7 @@ it("requests a new calculation for a legacy snapshot without paired values", () 
   expect(screen.getByText(/повторите Bootstrap/)).toBeVisible();
   expect(plots).not.toHaveBeenCalled();
 });
-it("requires explicit weights and even paired bootstrap generations", () => {
+it("requires explicit weights and accepts odd paired bootstrap generations", () => {
   const request = {
     ...saved().request,
     objective: "max_return_at_user_risk",
@@ -174,7 +174,7 @@ it("requires explicit weights and even paired bootstrap generations", () => {
       ...request,
       bootstrap_iterations: 5,
     }).success,
-  ).toBe(false);
+  ).toBe(true);
   expect(
     requestSchemaFor("bootstrap").safeParse({
       ...request,

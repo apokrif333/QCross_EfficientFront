@@ -5,13 +5,47 @@ import Settings from "../components/Settings";
 import { BootstrapView } from "../components/Results";
 import { DEFAULT_REQUEST, type BootstrapResult } from "../types";
 import { requestSchema } from "../lib/validation";
-import { createSnapshot, parseSnapshot } from "../lib/snapshot";
+import {
+  compareCalculations,
+  createSnapshot,
+  parseSnapshot,
+} from "../lib/snapshot";
+import { cvHistoryError } from "../lib/cv";
 import { saved, instruments } from "./fixtures";
 
 vi.mock("../components/Plot", () => ({
   default: () => <div data-testid="plot" />,
 }));
 afterEach(cleanup);
+
+it("loads both methodologies and separates comparison across versions", () => {
+  const old = saved("bootstrap", "bootstrap.json");
+  const current = structuredClone(old);
+  current.id = "joined";
+  const result = current.result as BootstrapResult;
+  result.methodology = "bidirectional_block_cv_stationary_bootstrap_v1";
+  result.cv_folds = 4;
+  const restored = parseSnapshot(
+    JSON.stringify(createSnapshot([old, current], instruments)),
+  );
+  const diff = compareCalculations(
+    restored.calculations[0],
+    restored.calculations[1],
+    0,
+    0,
+  );
+  expect(diff.warnings).toContain(
+    "Снимки используют разные методологии Bootstrap. Численные результаты напрямую несопоставимы.",
+  );
+  expect(diff.numericFields).toBe(0);
+  render(<BootstrapView result={result} instruments={instruments} />);
+  expect(screen.getByText(/4 Fold на генерацию/)).toBeVisible();
+  expect(screen.queryByText("Resampled Portfolio")).not.toBeInTheDocument();
+  const request = { ...DEFAULT_REQUEST, cv_folds: 2 };
+  expect(cvHistoryError(request, "cross-validation", 239)).toBeNull();
+  expect(cvHistoryError(request, "bootstrap", 239)).toMatch(/240/);
+  expect(cvHistoryError(request, "bootstrap", 240)).toBeNull();
+});
 
 function targetCalculation() {
   const c = saved("bootstrap", "bootstrap.json");

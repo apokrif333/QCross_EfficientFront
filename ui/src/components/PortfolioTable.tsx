@@ -10,10 +10,12 @@ export default function PortfolioTable({
   rows,
   instruments,
   onSelect,
+  historicalSharpeOnly = false,
 }: {
   rows: { label: string; portfolio: Portfolio }[];
   instruments: Instrument[];
   onSelect?: (p: Portfolio, label: string) => void;
+  historicalSharpeOnly?: boolean;
 }) {
   return (
     <div className="table-scroll">
@@ -29,8 +31,8 @@ export default function PortfolioTable({
                 : "Ожидаемая (арифм.)"}
             </th>
             <th>Волатильность</th>
-            <th>Estimated Sharpe</th>
-            <th>Historical Sharpe</th>
+            {!historicalSharpeOnly && <th>Estimated Sharpe</th>}
+            <th>{historicalSharpeOnly ? "Sharpe" : "Historical Sharpe"}</th>
             <th>Историческая CAGR</th>
             <th>Просадка</th>
             <th>Веса</th>
@@ -62,7 +64,9 @@ export default function PortfolioTable({
                   p.status === "historical_path" ? 3 : 2,
                 )}
               </td>
-              <td>{number(p.metrics?.sharpe_ratio)}</td>
+              {!historicalSharpeOnly && (
+                <td>{number(p.metrics?.sharpe_ratio)}</td>
+              )}
               <td>
                 {number(
                   p.metrics?.historical_sharpe_ratio,

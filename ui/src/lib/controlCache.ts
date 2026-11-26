@@ -14,6 +14,7 @@ export function reusableControlCache(
     "risk_free_rate",
     "portfolio_controls",
     "transaction_fee_rate",
+    "capital_gains_tax_rate",
     "rebalancing_interval_months",
     "user_weights",
     "expected_block_length",
@@ -23,7 +24,10 @@ export function reusableControlCache(
   for (const c of calculations) {
     if (c.kind !== "bootstrap") continue;
     const source = effectiveRequest(c.request);
-    const cache = (c.result as BootstrapResult).portfolio_control_cache;
+    const result = c.result as BootstrapResult;
+    if (result.methodology === "bidirectional_block_cv_stationary_bootstrap_v1")
+      continue;
+    const cache = result.portfolio_control_cache;
     if (cache && fields.every((k) => stable(source[k]) === stable(target[k])))
       return cache;
   }

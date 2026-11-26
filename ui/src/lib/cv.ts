@@ -4,6 +4,22 @@ export const CV_FOLDS = Array.from({ length: 10 }, (_, i) => 2 + 2 * i);
 export function minimumCVHistory(k: number, covariance = false): number {
   return k === 2 ? (covariance ? 90 : 180) : k * (covariance ? 30 : 60);
 }
+export function minimumBootstrapHistory(
+  k: number,
+  covariance: boolean,
+): number {
+  const outerMinimum = Math.max(240, k * 60);
+  if (!covariance) return outerMinimum;
+  const innerMinimum = minimumCVHistory(k, true);
+  // For even K the shortest one-sided Train is at one of the central folds.
+  let months = outerMinimum;
+  while (true) {
+    const cutoff =
+      Math.floor(k / 2) * Math.floor(months / k) + Math.min(k / 2, months % k);
+    if (Math.min(cutoff, months - cutoff) >= innerMinimum) return months;
+    months++;
+  }
+}
 export function cvHistoryError(
   request: ApiRequest,
   kind: Kind,
@@ -24,6 +40,12 @@ export function cvHistoryError(
     return null;
   }
   const covariance = request.covariance_method === "cv_linear";
+  if (kind === "bootstrap" && observations !== undefined) {
+    const required = minimumBootstrapHistory(k, covariance);
+    return observations >= required
+      ? null
+      : `Bootstrap K=${k}: доступно ${observations} мес., требуется минимум ${required} для полной Validation и допустимого Train.`;
+  }
   if (observations === undefined || (!portfolio && !covariance)) return null;
   const required = minimumCVHistory(k, !portfolio);
   if (observations >= required) return null;

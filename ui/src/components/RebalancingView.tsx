@@ -17,6 +17,7 @@ const columns = [
   ["maximum_drawdown", "Макс. просадка"],
   ["terminal_wealth", "Капитал из $1"],
   ["total_commissions", "Накопленные комиссии, % от начального капитала"],
+  ["total_capital_gains_tax", "Налог, % от начального капитала"],
   ["trade_count", "Сделки"],
   ["rebalancing_events", "Ребалансировки"],
   ["annualized_turnover", "Оборот в год"],
@@ -54,6 +55,10 @@ export default function RebalancingView({
   const [sort, setSort] = useState<SortKey>("annualized_cagr"),
     [descending, setDescending] = useState(true);
   const side = gross ? "gross" : "net";
+  const taxed = !!r.capital_gains_tax_rate;
+  const visibleColumns = columns.filter(
+    ([key]) => taxed || key !== "total_capital_gains_tax",
+  );
   const value = (s: RebalancingStrategy, key: SortKey): number | null =>
     key in s[side]
       ? s[side][key as keyof typeof s.net]
@@ -61,7 +66,8 @@ export default function RebalancingView({
   const format = (s: RebalancingStrategy, key: SortKey) => {
     const v = value(s, key);
     if (key === "terminal_wealth") return v == null ? "—" : `$${number(v, 4)}`;
-    if (key === "total_commissions") return percent(v, 4);
+    if (key === "total_commissions" || key === "total_capital_gains_tax")
+      return percent(v, 4);
     if (
       [
         "historical_sharpe_ratio",
@@ -153,14 +159,14 @@ export default function RebalancingView({
           className={!gross ? "active" : ""}
           onClick={() => setGross(false)}
         >
-          После комиссий
+          {taxed ? "После комиссий и налогов" : "После комиссий"}
         </button>
         <button
           aria-pressed={gross}
           className={gross ? "active" : ""}
           onClick={() => setGross(true)}
         >
-          До комиссий
+          {taxed ? "До комиссий и налогов" : "До комиссий"}
         </button>
       </div>
       <div className="table-scroll rebalancing-table">
@@ -168,7 +174,7 @@ export default function RebalancingView({
           <thead>
             <tr>
               <th>Стратегия</th>
-              {columns.map(([key, label]) => (
+              {visibleColumns.map(([key, label]) => (
                 <th
                   key={key}
                   aria-sort={
@@ -207,7 +213,7 @@ export default function RebalancingView({
                     {s.annual_baseline ? " · базовый" : ""}
                   </button>
                 </td>
-                {columns.map(([k]) => (
+                {visibleColumns.map(([k]) => (
                   <td key={k}>{format(s, k)}</td>
                 ))}
               </tr>

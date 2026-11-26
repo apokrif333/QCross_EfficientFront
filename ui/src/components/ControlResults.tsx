@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Plot from "./Plot";
+import PortfolioPathCharts from "./PortfolioPathCharts";
 import { number, percent, ticker, escapeHtml } from "../lib/display";
 import type {
   AssetTrendSensitivityResult,
@@ -53,6 +54,7 @@ const labels: Record<string, string> = {
   maximum_drawdown: "Максимальная просадка",
   terminal_wealth: "Капитал из $1",
   average_annual_commission: "Среднегодовые комиссии, % капитала",
+  total_capital_gains_tax: "Налог, % от начального капитала",
   trade_count: "Количество сделок",
   rebalancing_events: "Ребалансировки",
   annualized_turnover: "Оборот в год",
@@ -68,17 +70,6 @@ const metric = (key: string, v: number | null) =>
     : key === "terminal_wealth"
       ? `$${number(v, 4)}`
       : percent(v, 3);
-
-function drawdowns(wealth: (number | null)[]): (number | null)[] {
-  let peak = 0;
-  let missing = false;
-  return wealth.map((value) => {
-    if (value == null || !Number.isFinite(value) || value < 0) missing = true;
-    if (missing || value == null) return null;
-    peak = Math.max(peak, value);
-    return peak > 0 ? value / peak - 1 : null;
-  });
-}
 
 export default function ControlResults({
   result,
@@ -103,6 +94,7 @@ export default function ControlResults({
   const setGross = onGrossChange ?? setLocalGross;
   const c = result.portfolio_controls;
   if (!c) return null;
+  const taxed = !!result.simulation_settings?.capital_gains_tax_rate;
   const side = gross ? "gross" : "net";
   const name = (a: string) =>
     a === "BIL_REFERENCE" ? "BIL" : ticker(a, instruments);
@@ -142,7 +134,8 @@ export default function ControlResults({
           ? 1
           : Array.isArray(positions)
             ? positions.reduce((sum: number, value: number) => sum + value, 0) +
-              event.commissions
+              event.commissions +
+              (event.capital_gains_tax ?? 0)
             : 0;
       if (before > 0)
         years.set(
@@ -157,8 +150,15 @@ export default function ControlResults({
   return (
     <section className="subsection">
       <h3>Управление портфелем: исходный / управляемый</h3>
+      {c.signal_basis === "nominal" && (
+        <p className="hint">
+          Сигналы рассчитываются по доходностям до инфляции при любой базе
+          отчётности.
+        </p>
+      )}
       <button onClick={() => setGross(!gross)}>
         {gross ? "До комиссий" : "После комиссий"}
+        {taxed ? " и налогов" : ""}
       </button>
       <div className="table-scroll">
         <table>
@@ -179,6 +179,7 @@ export default function ControlResults({
             ))}
             {[
               "average_annual_commission",
+              ...(taxed ? ["total_capital_gains_tax"] : []),
               "trade_count",
               "rebalancing_events",
               "annualized_turnover",
@@ -205,27 +206,13 @@ export default function ControlResults({
         календарный год, затем среднее по годам выбранного периода, включая
         неполные годы и первоначальную покупку.
       </p>
-      <Plot
-        title="Капитал: исходный и управляемый"
-        data={["baseline", "controlled"].map((k) => ({
-          type: "scatter",
-          mode: "lines",
+      <PortfolioPathCharts
+        titleSuffix="исходный и управляемый"
+        months={c.months}
+        paths={["baseline", "controlled"].map((k) => ({
           name: k === "baseline" ? "Исходный" : "Управляемый",
-          x: [c.months[0], ...c.months],
-          y: c[k][`${side}_wealth`],
+          wealth: c[k][`${side}_wealth`],
         }))}
-      />
-      <Plot
-        title="Просадки: исходный и управляемый"
-        data={["baseline", "controlled"].map((k) => ({
-          type: "scatter",
-          mode: "lines",
-          name: k === "baseline" ? "Исходный" : "Управляемый",
-          x: [c.months[0], ...c.months],
-          y: drawdowns(c[k][`${side}_wealth`]),
-          hovertemplate: "%{fullData.name}<br>%{x}: %{y:.2%}<extra></extra>",
-        }))}
-        layout={{ yaxis: { title: { text: "Просадка" }, tickformat: ".0%" } }}
       />
       <Plot
         title="Управляемый портфель: фактические веса"

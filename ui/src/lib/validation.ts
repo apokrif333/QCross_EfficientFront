@@ -62,6 +62,7 @@ const requestFields = z.object({
   risk_free_source: z.enum(["historical_bil", "fixed_annual"]).optional(),
   risk_free_rate: n.gt(-1).max(1),
   transaction_fee_rate: n.min(0).lt(1).optional(),
+  capital_gains_tax_rate: n.min(0).max(1).optional(),
   rebalancing_interval_months: n.int().min(1).max(1200).nullable().optional(),
   objective: z.enum([
     "gmv",
@@ -156,20 +157,25 @@ export function requestSchemaFor(kind: Kind) {
       );
   if (kind === "resampled-frontier") return resampledRequestSchema;
   if (kind === "rolling-efficiency") return rollingRequestSchema;
-  if (kind === "bootstrap")
-    return requestSchema.refine(
-      (r) =>
-        !r.user_weights ||
-        r.include_paired_comparison === false ||
-        r.bootstrap_iterations % 2 === 0,
-      {
-        message: "Для парного Bootstrap нужно чётное число генераций",
-        path: ["bootstrap_iterations"],
-      },
-    );
   return requestSchema;
 }
 const metrics = z.object({
+  rolling_3y: z
+    .object({ positive: n.int().nonnegative(), total: n.int().nonnegative() })
+    .refine(({ positive, total }) => positive <= total)
+    .optional(),
+  wealth_history: z
+    .object({
+      months: z.array(z.string()).min(1),
+      net: z.array(n.nonnegative().nullable()),
+      gross: z.array(n.nonnegative().nullable()),
+    })
+    .refine(
+      ({ months, net, gross }) =>
+        net.length === months.length + 1 && gross.length === net.length,
+      "Wealth history must include initial capital and one value per month",
+    )
+    .optional(),
   expected_return: n,
   volatility: n,
   historical_volatility: n.optional(),
@@ -269,6 +275,7 @@ const bootstrapTrendSeries = z
 const bootstrapTrendSensitivity = z
   .object({
     iterations: n.int().min(1).max(2000),
+    validation_sample_fingerprint: hash.optional(),
     commission_basis: z.literal("pretrade_nav").optional(),
     portfolio: bootstrapTrendSeries,
     by_asset: z.record(z.string(), bootstrapTrendSeries),
@@ -488,6 +495,7 @@ const results = {
       user_weights: weights,
       months: z.array(z.string()),
       transaction_fee_rate: n.min(0).lt(1),
+      capital_gains_tax_rate: n.min(0).max(1).optional(),
       strategies: z
         .array(
           z
@@ -510,6 +518,7 @@ const results = {
                     triggering_assets: z.array(z.string()),
                     trades: weights,
                     commissions: n.nonnegative(),
+                    capital_gains_tax: n.nonnegative().optional(),
                     turnover: n.nonnegative(),
                   })
                   .passthrough(),

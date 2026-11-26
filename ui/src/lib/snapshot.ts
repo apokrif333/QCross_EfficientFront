@@ -1,4 +1,10 @@
-import type { ApiRequest, Calculation, Instrument, Snapshot } from "../types";
+import type {
+  ApiRequest,
+  BootstrapResult,
+  Calculation,
+  Instrument,
+  Snapshot,
+} from "../types";
 import { instrumentSchema, validateRecord } from "./validation";
 export function stable(value: unknown): string {
   const normalize = (item: unknown): unknown =>
@@ -17,6 +23,7 @@ export function effectiveRequest(request: ApiRequest): ApiRequest {
   return {
     ...request,
     transaction_fee_rate: request.transaction_fee_rate ?? 0,
+    capital_gains_tax_rate: request.capital_gains_tax_rate ?? 0,
     rebalancing_interval_months:
       request.rebalancing_interval_months === undefined
         ? 1
@@ -186,6 +193,18 @@ export function compareCalculations(
     warnings.push("Полные API-запросы отличаются.");
   if (before.kind !== after.kind)
     warnings.push("Сравниваются разные виды задания.");
+  if (
+    before.kind === "bootstrap" &&
+    after.kind === "bootstrap" &&
+    ((before.result as BootstrapResult).methodology ??
+      "stationary_bootstrap") !==
+      ((after.result as BootstrapResult).methodology ?? "stationary_bootstrap")
+  ) {
+    warnings.push(
+      "Снимки используют разные методологии Bootstrap. Численные результаты напрямую несопоставимы.",
+    );
+    return { differences, warnings, numericFields, maxAbsoluteDifference };
+  }
   // Provenance is compared explicitly above. Runtime and solver iteration counts
   // are observational diagnostics, not numerical portfolio reproducibility.
   const { reproducibility: _pa, ...a } = before.result;

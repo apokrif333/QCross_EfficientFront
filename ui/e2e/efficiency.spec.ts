@@ -139,6 +139,9 @@ for (const basis of ["nominal", "real"] as const) {
     const result = (await (await finished).json()).result;
     expect(result.return_basis).toBe(basis);
     expect(result.sample_length).toBe(240);
+    expect(result.methodology).toBe(
+      "bidirectional_block_cv_stationary_bootstrap_v1",
+    );
     const robustness = result.efficiency_robustness;
     expect(robustness.horizon.months).toBe(240);
     expect(robustness.results).toHaveLength(1000);
@@ -154,10 +157,9 @@ for (const basis of ["nominal", "real"] as const) {
     const table = page.getByRole("table", {
       name: "Распределения показателей фиксированного портфеля",
     });
-    await expect(table.getByRole("row")).toHaveCount(9);
     await expect(
       table.getByText("240 мес. (20.00 лет)", { exact: true }),
-    ).toHaveCount(8);
+    ).toHaveCount(11);
     await expect(
       page.getByText(/не являются калиброванными вероятностями/),
     ).toBeVisible();

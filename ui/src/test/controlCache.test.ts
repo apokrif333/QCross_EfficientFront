@@ -37,6 +37,7 @@ it("reuses saved Bootstrap control summaries after snapshot import", () => {
     { expected_block_length: 6 },
     { return_basis: "real" as const },
     { transaction_fee_rate: 0.01 },
+    { capital_gains_tax_rate: 0.1 },
     { user_weights: { "1": 1 } },
   ])
     expect(
@@ -48,7 +49,11 @@ it("reuses saved Bootstrap control summaries after snapshot import", () => {
 });
 
 it("sends the optional cache only with a Resampled Frontier request", async () => {
-  const body = { ...saved().request, bootstrap_iterations: 250 };
+  const body = {
+    ...saved().request,
+    bootstrap_iterations: 250,
+    capital_gains_tax_rate: 0.1,
+  };
   const fetch = vi
     .fn()
     .mockResolvedValueOnce(
@@ -78,4 +83,7 @@ it("sends the optional cache only with a Resampled Frontier request", async () =
   expect(
     JSON.parse(fetch.mock.calls[0][1].body).bootstrap_control_cache,
   ).toEqual(cache);
+  expect(JSON.parse(fetch.mock.calls[0][1].body).capital_gains_tax_rate).toBe(
+    0.1,
+  );
 });

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test("Live Real BIL calculation uses reference metadata and both Sharpe metrics", async ({
+test("Live Real BIL calculation uses reference metadata and shows one Sharpe", async ({
   page,
 }, testInfo) => {
   test.skip(
@@ -44,7 +44,7 @@ test("Live Real BIL calculation uses reference metadata and both Sharpe metrics"
     page.getByText(/Показан ранее полученный результат/),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("columnheader", { name: "Historical Sharpe", exact: true }),
+    page.getByRole("columnheader", { name: "Sharpe", exact: true }),
   ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("macro-real-bil-desktop.png"),

@@ -434,6 +434,13 @@ a {
   color: #224654;
   box-shadow: 0 1px 4px #1633441a;
 }
+.wealth-scale {
+  margin-top: 8px;
+}
+.wealth-scale .segmented button {
+  min-width: 0;
+  padding: 5px 9px;
+}
 .sensitivity-actions {
   display: flex;
   align-items: center;
@@ -886,6 +893,56 @@ td small {
   margin-top: 24px;
   padding-top: 10px;
   border-top: 1px solid #e1eaed;
+}
+.rolling-controls {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.rolling-returns .plot-wrap {
+  width: 100%;
+  margin-inline: 0;
+}
+.rolling-controls label {
+  margin: 0;
+}
+.rolling-controls input {
+  width: 7ch;
+}
+.rolling-summary {
+  padding: 14px;
+  border-radius: 6px;
+  background: #f5f7f8;
+}
+.rolling-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 135px), 1fr));
+  gap: 14px;
+  margin: 16px 0 0;
+}
+.rolling-stats dt {
+  font-size: 12px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #d5dfe2;
+}
+.rolling-stats dd {
+  margin: 6px 0 0;
+}
+.rolling-stats dd b {
+  font-size: 19px;
+  color: #214c5d;
+}
+.rolling-stats small {
+  display: block;
+  margin-top: 2px;
+}
+.rolling-occurrences {
+  display: flex;
+  height: 6px;
+  margin-bottom: 6px;
+  border-radius: 4px;
+  overflow: hidden;
 }
 .empty {
   padding: 65px 20px;

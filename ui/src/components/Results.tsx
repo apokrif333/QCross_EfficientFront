@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Data, PlotMouseEvent } from "plotly.js";
 import type {
   BootstrapResult,
+  BootstrapObjective,
   Calculation,
   CVResult,
   FrontierResult,
@@ -11,10 +12,12 @@ import type {
   EfficiencyDistance,
   EfficiencyDistribution,
   RollingEfficiencyResult,
+  SimulationStats,
 } from "../types";
 import { METHODS } from "../types";
 import { compatible } from "../lib/snapshot";
 import { comparePassiveBootstrap } from "../lib/passiveBootstrapComparison";
+import { threeYearReturnCounts } from "../lib/rollingReturns";
 import {
   displayedVolatility,
   escapeHtml as escape,
@@ -25,6 +28,7 @@ import {
 } from "../lib/display";
 import Plot from "./Plot";
 import PortfolioTable from "./PortfolioTable";
+import PortfolioPathCharts from "./PortfolioPathCharts";
 import PairedComparisonView from "./PairedComparisonView";
 import PairedDifferenceHistogram from "./PairedDifferenceHistogram";
 import BootstrapTrendSensitivity from "./BootstrapTrendSensitivity";
@@ -36,15 +40,18 @@ const AXES = {
     tickformat: ".1%",
   },
 };
-function hover(
-  p: Portfolio,
-  label: string,
-  instruments: Instrument[],
-  showEstimated = true,
-) {
+function hover(p: Portfolio, label: string, instruments: Instrument[]) {
   const m = p.metrics;
   const digits = p.status === "historical_path" ? 3 : 2;
-  return `<b>${escape(label)}</b><br>${p.status === "historical_path" ? "Историческая" : "Ожидаемая"} (арифм.) ${percent(m?.expected_return, digits)}<br>Историческая CAGR ${percent(m?.historical_cagr, digits)}<br>Волатильность ${percent(displayedVolatility(m), digits)}<br>Максимальная просадка (DD) ${percent(m?.historical_max_drawdown, digits)}${p.status === "historical_path" || !showEstimated ? "" : `<br>Estimated Sharpe ${number(m?.sharpe_ratio)}`}<br>Historical Sharpe ${number(m?.historical_sharpe_ratio, p.status === "historical_path" ? 4 : 3)}<br>${visibleWeights(
+  const rolling =
+    m?.rolling_3y ??
+    threeYearReturnCounts(m?.wealth_history?.months, m?.wealth_history?.net);
+  const positiveWindows = rolling?.total
+    ? `${rolling.positive} (${percent(rolling.positive / rolling.total)})`
+    : rolling
+      ? "Нет полных окон"
+      : "— (нужен пересчёт)";
+  return `<b>${escape(label)}</b><br>${p.status === "historical_path" ? "Историческая" : "Ожидаемая"} (арифм.) ${percent(m?.expected_return, digits)}<br>Историческая CAGR ${percent(m?.historical_cagr, digits)}<br>Волатильность ${percent(displayedVolatility(m), digits)}<br>Максимальная просадка (DD) ${percent(m?.historical_max_drawdown, digits)}<br>Sharpe ${number(m?.historical_sharpe_ratio, p.status === "historical_path" ? 4 : 3)}<br>Положительные (3 года): ${positiveWindows}<br>${visibleWeights(
     p.weights ?? {},
   )
     .map(([a, w]) => `${escape(ticker(a, instruments))}: ${percent(w)}`)
@@ -101,9 +108,22 @@ function formatEfficiencySummary(
     ? `mean ${(v.mean * 100).toFixed(2)} п.п.; median ${(v.median * 100).toFixed(2)}; P5-P95 ${(v.p5 * 100).toFixed(2)}-${(v.p95 * 100).toFixed(2)}; max ${(v.maximum * 100).toFixed(2)}`
     : "-";
 }
-function BootstrapPortfolioMetrics({ result }: { result: BootstrapResult }) {
+function BootstrapPortfolioMetrics({
+  result,
+  objective,
+  passive = false,
+}: {
+  result: BootstrapResult;
+  objective?: BootstrapObjective;
+  passive?: boolean;
+}) {
   const [gross, setGross] = useState(false);
-  const robustness = result.efficiency_robustness;
+  const robustness = passive
+    ? result.passive_portfolio_metrics
+    : (objective ?? result.efficiency_robustness);
+  const joined =
+    result.methodology === "bidirectional_block_cv_stationary_bootstrap_v1";
+  const taxed = !!result.simulation_settings?.capital_gains_tax_rate;
   if (!robustness?.distributions || !robustness.horizon) return null;
   const labels: Record<string, string> = {
     annualized_cagr: "CAGR, % годовых",
@@ -112,11 +132,28 @@ function BootstrapPortfolioMetrics({ result }: { result: BootstrapResult }) {
     maximum_drawdown: "Максимальная просадка за горизонт, %",
     historical_sharpe_ratio: "Исторический Sharpe",
     terminal_wealth: "Стоимость из $1 к концу горизонта",
+    calmar_ratio: "Calmar",
+    sortino_ratio: "Исторический Sortino",
+    total_commissions: "Всего комиссий на $1 начального капитала",
+    total_capital_gains_tax:
+      "Налог на прирост капитала на $1 начального капитала",
+    annualized_commissions: "Годовые комиссии относительно NAV перед сделкой",
+    annualized_turnover: "Годовой двусторонний оборот",
   };
   const format = (key: string, value: number | null) => {
     if (value == null) return "—";
-    if (key === "historical_sharpe_ratio") return number(value);
-    if (key === "terminal_wealth") return `$${number(value, 3)}`;
+    if (
+      ["historical_sharpe_ratio", "sortino_ratio", "calmar_ratio"].includes(key)
+    )
+      return number(value);
+    if (
+      [
+        "terminal_wealth",
+        "total_commissions",
+        "total_capital_gains_tax",
+      ].includes(key)
+    )
+      return `$${number(value, 3)}`;
     if (key === "return_shortfall" || key === "excess_volatility")
       return `${(value * 100).toFixed(2)} п.п.`;
     return percent(value);
@@ -124,17 +161,21 @@ function BootstrapPortfolioMetrics({ result }: { result: BootstrapResult }) {
   return (
     <section className="subsection">
       <h3>
-        {robustness.user_portfolio_mode === "controlled"
-          ? "Показатели портфеля под управлением"
-          : "Показатели фиксированного портфеля"}
+        {passive
+          ? "Показатели пассивного портфеля на объединённой Validation"
+          : objective
+            ? "Показатели оптимизатора на объединённой Validation"
+            : result.efficiency_robustness?.user_portfolio_mode === "controlled"
+              ? "Показатели портфеля под управлением"
+              : "Показатели фиксированного портфеля"}
       </h3>
       {robustness.gross_distributions && (
         <div className="segmented">
           <button aria-pressed={!gross} onClick={() => setGross(false)}>
-            После комиссий
+            {taxed ? "После комиссий и налогов" : "После комиссий"}
           </button>
           <button aria-pressed={gross} onClick={() => setGross(true)}>
-            До комиссий
+            {taxed ? "До комиссий и налогов" : "До комиссий"}
           </button>
         </div>
       )}
@@ -144,9 +185,12 @@ function BootstrapPortfolioMetrics({ result }: { result: BootstrapResult }) {
         {result.return_basis === "real" ? "Real" : "Nominal"} USD. Полная длина
         выбранной истории. Ребалансировка:{" "}
         {result.simulation_settings?.rebalancing_interval_months === null
-          ? "Buy & Hold"
+          ? objective
+            ? "при смене целевых весов Fold"
+            : "Buy & Hold"
           : `каждые ${result.simulation_settings?.rebalancing_interval_months ?? 1} мес.`}
-        . Показатели {gross ? "до" : "после"} комиссий.
+        . {objective && "На границах Fold применяются новые целевые веса. "}
+        Показатели {gross ? "до" : "после"} комиссий{taxed ? " и налогов" : ""}.
       </p>
       <p className="hint">
         P5/P95 описывают исторические бутстрап-сценарии и не являются
@@ -155,13 +199,20 @@ function BootstrapPortfolioMetrics({ result }: { result: BootstrapResult }) {
         показателя указано число доступных значений.
       </p>
       <div className="table-scroll">
-        <table aria-label="Распределения показателей фиксированного портфеля">
+        <table
+          aria-label={
+            objective
+              ? "Распределения показателей оптимизатора"
+              : "Распределения показателей фиксированного портфеля"
+          }
+        >
           <thead>
             <tr>
               <th>Показатель</th>
               <th>Горизонт</th>
               <th>Среднее</th>
               <th>Медиана</th>
+              {joined && <th>SD</th>}
               <th>P5</th>
               <th>P95</th>
               <th>Min</th>
@@ -177,7 +228,9 @@ function BootstrapPortfolioMetrics({ result }: { result: BootstrapResult }) {
             )
               .filter(
                 ([key]) =>
-                  key !== "return_shortfall" && key !== "excess_volatility",
+                  key !== "return_shortfall" &&
+                  key !== "excess_volatility" &&
+                  (taxed || key !== "total_capital_gains_tax"),
               )
               .map(([key, d]) => (
                 <tr key={key}>
@@ -189,13 +242,14 @@ function BootstrapPortfolioMetrics({ result }: { result: BootstrapResult }) {
                     [
                       "mean",
                       "median",
+                      ...(joined ? (["standard_deviation"] as const) : []),
                       "p5",
                       "p95",
                       "minimum",
                       "maximum",
                     ] as const
                   ).map((stat) => (
-                    <td key={stat}>{format(key, d[stat])}</td>
+                    <td key={stat}>{format(key, d[stat] ?? null)}</td>
                   ))}
                   <td>
                     {d.valid_count} / {d.valid_count + d.unavailable_count}
@@ -366,7 +420,7 @@ function assetTrace(
       },
       customdata: entries.map(([, p]) => p) as never,
       hovertemplate: entries.map(([id, p]) =>
-        hover(p, ticker(id, instruments), instruments, false),
+        hover(p, ticker(id, instruments), instruments),
       ),
     },
   ];
@@ -374,9 +428,11 @@ function assetTrace(
 export function PointDetail({
   selected,
   instruments,
+  historicalSharpeOnly = false,
 }: {
   selected: { label: string; portfolio: Portfolio } | null;
   instruments: Instrument[];
+  historicalSharpeOnly?: boolean;
 }) {
   if (!selected)
     return (
@@ -411,10 +467,20 @@ export function PointDetail({
           </b>
         </span>
         <span>
-          {p.status === "historical_path" || p.diagnostics.asset_id != null ? (
+          {historicalSharpeOnly ||
+          p.status === "historical_path" ||
+          p.diagnostics.asset_id != null ? (
             <>
-              Historical Sharpe
-              <b>{number(p.metrics?.historical_sharpe_ratio, 4)}</b>
+              {historicalSharpeOnly ? "Sharpe" : "Historical Sharpe"}
+              <b>
+                {number(
+                  p.metrics?.historical_sharpe_ratio,
+                  p.status === "historical_path" ||
+                    p.diagnostics.asset_id != null
+                    ? 4
+                    : 3,
+                )}
+              </b>
             </>
           ) : (
             <>
@@ -472,17 +538,26 @@ export function FrontierView({
     label: string;
     portfolio: Portfolio;
   } | null>(null);
+  const [gross, setGross] = useState(false);
   useEffect(() => setSelected(null), [controlGross]);
   const result = calculation.result as FrontierResult;
+  const wealthHistory = (result.user_portfolio ?? result.selected_portfolio)
+    .metrics?.wealth_history;
+  const historyLabel = result.user_portfolio
+    ? "ваш пассивный портфель"
+    : "пассивный портфель по выбранной цели";
   const control = (
     result as FrontierResult & {
       portfolio_controls?: {
-        baseline: { net: any; gross: any };
-        controlled: { net: any; gross: any };
+        baseline: { net: SimulationStats; gross: SimulationStats };
+        controlled: { net: SimulationStats; gross: SimulationStats };
       };
     }
   ).portfolio_controls;
-  const historicalPortfolio = (stats: any): Portfolio => ({
+  const historicalPortfolio = (
+    stats: SimulationStats,
+    wealth: (number | null)[] | undefined,
+  ): Portfolio => ({
     status: "historical_path",
     weights: null,
     diagnostics: {},
@@ -494,6 +569,7 @@ export function FrontierView({
       historical_sharpe_ratio: stats.historical_sharpe_ratio,
       historical_cagr: stats.annualized_cagr,
       historical_max_drawdown: stats.maximum_drawdown,
+      rolling_3y: threeYearReturnCounts(control?.months, wealth),
     },
   });
   const rows = useMemo(() => {
@@ -535,6 +611,7 @@ export function FrontierView({
               portfolio: {
                 ...historicalPortfolio(
                   control.baseline[controlGross ? "gross" : "net"],
+                  control.baseline.net_wealth,
                 ),
                 weights: result.user_portfolio?.weights ?? null,
               },
@@ -543,6 +620,7 @@ export function FrontierView({
               label: "Портфель (под управлением)",
               portfolio: historicalPortfolio(
                 control.controlled[controlGross ? "gross" : "net"],
+                control.controlled.net_wealth,
               ),
             },
           ]
@@ -660,14 +738,22 @@ export function FrontierView({
         <p className="hint">
           Точки пассивного и управляемого портфелей показывают историческую
           арифметическую доходность и фактическую волатильность{" "}
-          {controlGross ? "до" : "после"} комиссий. Кривая и остальные точки
-          основаны на модельных оценках.
+          {controlGross ? "до" : "после"} комиссий
+          {result.simulation_settings?.capital_gains_tax_rate
+            ? " и налогов."
+            : "."}{" "}
+          Кривая и остальные точки основаны на модельных оценках.
         </p>
       )}
-      <PointDetail selected={selected} instruments={instruments} />
+      <PointDetail
+        selected={selected}
+        instruments={instruments}
+        historicalSharpeOnly
+      />
       <PortfolioTable
         rows={rows}
         instruments={instruments}
+        historicalSharpeOnly
         onSelect={(portfolio, label) => setSelected({ portfolio, label })}
       />
       {compare && (
@@ -682,6 +768,26 @@ export function FrontierView({
         Ensemble и Resampled оценены на исходной полной выборке, а не независимо
         out-of-sample. Resampled Frontier — отдельная усреднённая кривая.
       </p>
+      {!compare && wealthHistory && (
+        <section className="subsection">
+          <button onClick={() => setGross(!gross)}>
+            {gross ? "До комиссий" : "После комиссий"}
+            {result.simulation_settings?.capital_gains_tax_rate
+              ? " и налогов"
+              : ""}
+          </button>
+          <PortfolioPathCharts
+            titleSuffix={historyLabel}
+            months={wealthHistory.months}
+            paths={[
+              {
+                name: result.user_portfolio ? "Ваш портфель" : "Выбранная цель",
+                wealth: gross ? wealthHistory.gross : wealthHistory.net,
+              },
+            ]}
+          />
+        </section>
+      )}
     </>
   );
 }
@@ -990,6 +1096,8 @@ export function BootstrapView({
     ],
   );
   const isTarget = o.target_return != null;
+  const joined =
+    r.methodology === "bidirectional_block_cv_stationary_bootstrap_v1";
   const assets = r.assets,
     stats = o.stability?.assets;
   const data = useMemo(() => {
@@ -1029,7 +1137,17 @@ export function BootstrapView({
           ({
             type: "histogram",
             name: ticker(a, instruments),
-            x: o.iterations.filter((b) => b.weights).map((b) => b.weights![a]),
+            x: o.iterations.flatMap((b) =>
+              joined
+                ? b.status === "optimal"
+                  ? (b.folds ?? []).flatMap((fold) =>
+                      fold.weights ? [fold.weights[a]] : [],
+                    )
+                  : []
+                : b.weights
+                  ? [b.weights[a]]
+                  : [],
+            ),
             opacity: 0.6,
             marker: {
               color: ["#256478", "#b98943", "#7b7099", "#579b7d"][i % 4],
@@ -1037,10 +1155,21 @@ export function BootstrapView({
             nbinsx: 30,
           }) as Data,
       ),
-    [assets, o, instruments],
+    [assets, o, instruments, joined],
   );
   return (
     <>
+      {joined ? (
+        <p className="hint">
+          {r.cv_folds} Fold на генерацию. Все показатели рассчитаны по полной
+          объединённой Validation.
+        </p>
+      ) : (
+        <p className="warning">
+          Предыдущая методология Stationary Bootstrap. Этот результат использует
+          ресэмплирование полной истории.
+        </p>
+      )}
       <div className="segmented">
         {Object.keys(r.objectives).map((key) => (
           <button
@@ -1089,6 +1218,10 @@ export function BootstrapView({
       />
       <PairedDifferenceHistogram value={comparison} />
       <BootstrapPortfolioMetrics result={r} />
+      {joined && showPassive && (
+        <BootstrapPortfolioMetrics result={r} passive />
+      )}
+      {joined && <BootstrapPortfolioMetrics result={r} objective={o} />}
       <BootstrapTrendSensitivity
         key={r.sample_fingerprint}
         value={r.trend_sensitivity}
@@ -1165,6 +1298,9 @@ export function BootstrapView({
         </details>
       )}
       <p className="hint">
+        {joined
+          ? "Веса ниже описывают обучения отдельных Fold для успешных генераций. "
+          : null}
         Геометрические блоки, совместная выборка месячных векторов, circular
         wrap. P5–P95 описывает чувствительность весов, а не будущую доходность.
         {r.conditional_bootstrap &&
@@ -1172,7 +1308,9 @@ export function BootstrapView({
       </p>
       {(!isTarget || stats) && (
         <Plot
-          title="Bootstrap веса и P5–P95"
+          title={
+            joined ? "Веса Train по Fold и P5–P95" : "Bootstrap веса и P5–P95"
+          }
           data={data}
           layout={{
             barmode: "group",
@@ -1248,7 +1386,11 @@ export function BootstrapView({
       )}
       {(!isTarget || stats) && (
         <Plot
-          title="Распределение bootstrap весов"
+          title={
+            joined
+              ? "Распределение весов Train по Fold"
+              : "Распределение bootstrap весов"
+          }
           data={distributions}
           layout={{
             barmode: "overlay",
@@ -1257,22 +1399,25 @@ export function BootstrapView({
           }}
         />
       )}
-      <PortfolioTable
-        rows={[
-          { label: "Original", portfolio: o.original },
-          ...(o.resampled
-            ? [{ label: "Resampled Portfolio", portfolio: o.resampled }]
-            : []),
-        ]}
-        instruments={instruments}
-      />
+      {!joined && (
+        <PortfolioTable
+          rows={[
+            { label: "Original", portfolio: o.original },
+            ...(o.resampled
+              ? [{ label: "Resampled Portfolio", portfolio: o.resampled }]
+              : []),
+          ]}
+          instruments={instruments}
+        />
+      )}
       {resampled && (
         <>
           <h3>Resampled Frontier</h3>
           <p className={resampled.status === "complete" ? "hint" : "warning"}>
             {resampled.successful_iterations} / {resampled.requested_iterations}{" "}
             успешных · {resampled.failed_iterations} ошибок · {resampled.status}
-            . Общие risk-aversion параметры; оценка по исходной выборке.
+            . Самостоятельный расчёт на выборках полной истории с общими
+            risk-aversion параметрами.
           </p>
           <ResampledView result={resampled} instruments={instruments} />
         </>

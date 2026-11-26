@@ -19,6 +19,7 @@ export interface ApiRequest {
   return_basis?: "nominal" | "real";
   risk_free_source?: "historical_bil" | "fixed_annual";
   transaction_fee_rate?: number;
+  capital_gains_tax_rate?: number;
   rebalancing_interval_months?: number | null;
   risk_free_rate: number;
   objective: "gmv" | "max_sharpe" | "target_return" | "max_return_at_user_risk";
@@ -96,13 +97,19 @@ export interface Catalog {
   instruments: Instrument[];
 }
 export interface Metrics {
+  rolling_3y?: { positive: number; total: number };
+  wealth_history?: {
+    months: string[];
+    net: (number | null)[];
+    gross: (number | null)[];
+  };
   expected_return: number;
   volatility: number;
   historical_volatility?: number;
   sharpe_ratio: number | null;
   historical_sharpe_ratio?: number | null;
   risk_free_mean_return?: number;
-  historical_cagr: number;
+  historical_cagr: number | null;
   historical_max_drawdown: number;
 }
 export interface Portfolio {
@@ -123,6 +130,7 @@ export interface Period {
 export interface BaseResult {
   simulation_settings?: {
     transaction_fee_rate: number;
+    capital_gains_tax_rate?: number;
     rebalancing_interval_months: number | null;
   };
   paired_comparison?: PairedComparison | null;
@@ -153,6 +161,11 @@ export interface BaseResult {
   reproducibility: Provenance;
 }
 export interface FrontierResult extends BaseResult {
+  portfolio_controls?: {
+    months: string[];
+    baseline: Pick<RebalancingStrategy, "net_wealth">;
+    controlled: Pick<RebalancingStrategy, "net_wealth">;
+  };
   user_portfolio?: Portfolio | null;
   frontier: Portfolio[];
   gmv: Portfolio;
@@ -255,6 +268,7 @@ export interface EfficiencyDistribution {
 export interface BootstrapMetricDistribution {
   mean: number | null;
   median: number | null;
+  standard_deviation?: number | null;
   p5: number | null;
   p95: number | null;
   minimum: number | null;
@@ -279,6 +293,9 @@ export interface WeightStats {
   upper_bound_frequency: number;
 }
 export interface BootstrapObjective {
+  horizon?: EfficiencyDistribution["horizon"];
+  distributions?: EfficiencyDistribution["distributions"];
+  gross_distributions?: EfficiencyDistribution["gross_distributions"];
   status: string;
   computational_status?: string | null;
   target_return?: number | null;
@@ -317,6 +334,11 @@ export interface BootstrapObjective {
     iteration: number;
     status: string;
     weights: Record<string, number> | null;
+    folds?: {
+      fold: number;
+      status: string;
+      weights: Record<string, number> | null;
+    }[];
     metrics?: Metrics;
     diagnostics?: Record<string, unknown>;
     reason?: string;
@@ -325,8 +347,15 @@ export interface BootstrapObjective {
   failures: unknown[];
 }
 export interface BootstrapResult extends BaseResult {
+  methodology?: string;
+  cv_folds?: number;
+  validation_sample_fingerprint?: string;
   portfolio_control_cache?: BootstrapControlCache;
   portfolio_control_samples?: BootstrapControlSample[];
+  passive_portfolio_metrics?: Pick<
+    EfficiencyDistribution,
+    "horizon" | "distributions" | "gross_distributions"
+  > | null;
   conditional_bootstrap: boolean;
   sample_fingerprint: string;
   objectives: Record<string, BootstrapObjective>;
@@ -335,8 +364,14 @@ export interface BootstrapResult extends BaseResult {
 }
 export interface BootstrapControlSample {
   status?: string;
-  baseline?: { net?: Partial<SimulationStats> };
-  controlled?: { net?: Partial<SimulationStats> };
+  baseline?: BootstrapControlPath;
+  controlled?: BootstrapControlPath;
+}
+interface BootstrapControlPath {
+  net?: Partial<SimulationStats> & { calmar_ratio?: number | null };
+  total_commissions?: number;
+  annualized_commissions?: number;
+  annualized_turnover?: number;
 }
 type BootstrapTrendMetrics = [
   cagr: number | null,
@@ -354,6 +389,7 @@ export type BootstrapTrendPoint =
 export type BootstrapTrendSeries = BootstrapTrendPoint[][];
 export interface BootstrapTrendSensitivity {
   iterations: number;
+  validation_sample_fingerprint?: string;
   commission_basis?: "pretrade_nav";
   portfolio: BootstrapTrendSeries;
   by_asset: Record<string, BootstrapTrendSeries>;
@@ -503,6 +539,7 @@ export const METHODS: {
 export const DEFAULT_REQUEST: ApiRequest = {
   rebalancing_interval_months: 12,
   transaction_fee_rate: 0,
+  capital_gains_tax_rate: 0,
   return_basis: "nominal",
   risk_free_source: "historical_bil",
   instrument_ids: [1, 175, 243],
@@ -518,7 +555,7 @@ export const DEFAULT_REQUEST: ApiRequest = {
   group_constraints: {},
   frontier_points: 51,
   cv_folds: 4,
-  bootstrap_iterations: 1000,
+  bootstrap_iterations: 500,
   expected_block_length: 12,
   random_seed: 42,
   bootstrap_objectives: ["gmv", "max_sharpe"],
@@ -529,6 +566,7 @@ export const DEFAULT_REQUEST: ApiRequest = {
 };
 
 export interface PairedComparison {
+  analysis_version?: string;
   user_portfolio_mode?: "passive" | "controlled";
   user_weights?: Record<string, number>;
   valid_count: number;
@@ -541,6 +579,7 @@ export interface PairedComparison {
     {
       mean: number;
       median: number;
+      standard_deviation?: number;
       p5: number;
       p95: number;
       minimum: number;
@@ -564,6 +603,7 @@ export interface PairedComparison {
     optimized?: Record<string, number | null> | null;
     differences?: Record<string, number | null>;
     weights?: Record<string, number> | null;
+    fold_weights?: (Record<string, number> | null)[];
     diagnostics?: Record<string, unknown>;
   }[];
   clouds?: {
@@ -639,6 +679,7 @@ export interface RebalancingStrategy {
   net_returns: number[];
   gross_returns: number[];
   total_commissions: number;
+  total_capital_gains_tax?: number;
   trade_count: number;
   rebalancing_events: number;
   annualized_turnover: number;
@@ -651,6 +692,7 @@ export interface RebalancingStrategy {
     triggering_assets: string[];
     trades: Record<string, number>;
     commissions: number;
+    capital_gains_tax?: number;
     turnover: number;
   }[];
 }
@@ -659,5 +701,6 @@ export interface RebalancingResult extends BaseResult {
   user_weights: Record<string, number>;
   months: string[];
   transaction_fee_rate: number;
+  capital_gains_tax_rate?: number;
   strategies: RebalancingStrategy[];
 }

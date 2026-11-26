@@ -11,6 +11,12 @@ const labels: Record<string, string> = {
   delta_volatility: "Δ годовой волатильности",
   delta_sharpe: "Δ Historical Sharpe",
   delta_max_drawdown: "Δ максимальной просадки",
+  delta_calmar: "Δ Calmar",
+  delta_sortino: "Δ Sortino",
+  delta_terminal_wealth: "Δ конечного капитала на $1",
+  delta_commissions: "Δ комиссий на $1",
+  delta_annualized_commissions: "Δ годовых комиссий",
+  delta_turnover: "Δ годового оборота",
 };
 const wins: Record<string, string> = {
   higher_cagr: "Выше CAGR",
@@ -104,6 +110,9 @@ export default function PairedComparisonView({
   }, [value, instruments]);
   if (!value) return null;
   const passive = "comparison_mode" in value;
+  const joined =
+    !passive &&
+    value.analysis_version === "bidirectional_block_cv_stationary_bootstrap_v1";
   const availableDrawdowns = passive
     ? []
     : value.results
@@ -127,7 +136,15 @@ export default function PairedComparisonView({
           },
         };
   const format = (key: string, v: number | null | undefined) =>
-    key === "delta_sharpe" ? number(v) : percent(v);
+    [
+      "delta_sharpe",
+      "delta_sortino",
+      "delta_calmar",
+      "delta_terminal_wealth",
+      "delta_commissions",
+    ].includes(key)
+      ? number(v)
+      : percent(v);
   return (
     <section className="subsection">
       <h3>
@@ -166,6 +183,8 @@ export default function PairedComparisonView({
                 последовательно заново.{" "}
               </>
             )}
+            {joined &&
+              "Каждая пара использует одну объединённую Validation. Веса оптимизатора меняются на границах Fold. "}
             Веса оптимизатора выбраны только на Train при риске вашего портфеля
             на Train. Δ = оптимизатор − ваш портфель. Для волатильности и
             просадки уменьшение — улучшение. Реализованный риск на Validation
@@ -201,24 +220,36 @@ export default function PairedComparisonView({
               </th>
               <th>Mean</th>
               <th>Median</th>
+              {(joined || passive) && <th>SD</th>}
               <th>P5–P95</th>
               <th>Min / Max</th>
+              {(joined || passive) && <th>Доступно</th>}
             </tr>
           </thead>
           <tbody>
-            {Object.entries(value.differences).map(([k, v]) => (
-              <tr key={k}>
-                <td>{labels[k] ?? k}</td>
-                <td>{format(k, v?.mean)}</td>
-                <td>{format(k, v?.median)}</td>
-                <td>
-                  {format(k, v?.p5)} — {format(k, v?.p95)}
-                </td>
-                <td>
-                  {format(k, v?.minimum)} / {format(k, v?.maximum)}
-                </td>
-              </tr>
-            ))}
+            {Object.entries(value.differences)
+              .filter(
+                ([key]) =>
+                  passive ||
+                  !["delta_terminal_wealth", "delta_commissions"].includes(key),
+              )
+              .map(([k, v]) => (
+                <tr key={k}>
+                  <td>{labels[k] ?? k}</td>
+                  <td>{format(k, v?.mean)}</td>
+                  <td>{format(k, v?.median)}</td>
+                  {(joined || passive) && (
+                    <td>{format(k, v?.standard_deviation)}</td>
+                  )}
+                  <td>
+                    {format(k, v?.p5)} — {format(k, v?.p95)}
+                  </td>
+                  <td>
+                    {format(k, v?.minimum)} / {format(k, v?.maximum)}
+                  </td>
+                  {(joined || passive) && <td>{v?.valid_count ?? 0}</td>}
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
@@ -240,11 +271,13 @@ export default function PairedComparisonView({
               "Каждое облако построено по одним и тем же генерациям Bootstrap."
             ) : (
               <>
-                Активы включаются нажатием на легенду. Оба набора синтетических
-                данных получены из одной исторической выборки. Частоты и
-                процентили не являются вероятностями будущих результатов.
-                Граница построена ретроспективно по средним эмпирическим
-                моментам Validation.
+                Активы включаются нажатием на легенду.{" "}
+                {joined
+                  ? "Train и Validation ресэмплируются из непересекающихся исторических интервалов внутри Fold."
+                  : "Оба набора синтетических данных получены из одной исторической выборки."}{" "}
+                Частоты и процентили не являются вероятностями будущих
+                результатов. Граница построена ретроспективно по средним
+                эмпирическим моментам Validation.
               </>
             )}
           </p>

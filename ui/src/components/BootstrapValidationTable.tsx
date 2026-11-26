@@ -86,6 +86,8 @@ export default function BootstrapValidationTable({
     },
   );
   const chartId = useId();
+  const joined =
+    value.analysis_version === "bidirectional_block_cv_stationary_bootstrap_v1";
   const userLabel =
     value.user_portfolio_mode === "controlled"
       ? "Ваш портфель под управлением"
@@ -198,10 +200,14 @@ export default function BootstrapValidationTable({
                     "Validation",
                     "Сортировать по номеру выборки",
                   )}
-                  {header(
-                    "weights",
-                    "Веса",
-                    "Сортировать по составу оптимизированного портфеля",
+                  {joined ? (
+                    <th scope="col">Целевые веса по Fold</th>
+                  ) : (
+                    header(
+                      "weights",
+                      "Веса",
+                      "Сортировать по составу оптимизированного портфеля",
+                    )
                   )}
                   {columns.map(([label, key]) =>
                     header(
@@ -235,7 +241,17 @@ export default function BootstrapValidationTable({
                             </small>
                           )}
                         </th>
-                        <td>Ваш Портфель / {allocation(row.weights)}</td>
+                        <td>
+                          {joined ? (
+                            row.fold_weights?.map((weights, i) => (
+                              <div key={i}>
+                                Fold {i + 1} · {allocation(weights)}
+                              </div>
+                            ))
+                          ) : (
+                            <>Ваш Портфель / {allocation(row.weights)}</>
+                          )}
+                        </td>
                         {columns.map(([label, key, format]) => (
                           <td key={label}>
                             {format(row.user?.[key])} /{" "}

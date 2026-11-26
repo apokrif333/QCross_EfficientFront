@@ -12,6 +12,7 @@ import ControlResults from "../components/ControlResults";
 import { DEFAULT_REQUEST, type ApiRequest } from "../types";
 import { instruments } from "./fixtures";
 import { requestSchemaFor } from "../lib/validation";
+import { requestFromRows, rowsFromRequest } from "../lib/allocations";
 
 const plots = vi.hoisted(() => vi.fn());
 vi.mock("../components/Plot", () => ({
@@ -24,6 +25,38 @@ afterEach(() => {
   cleanup();
   plots.mockClear();
 });
+
+it("removes trend rules for deleted and replaced assets while retaining hedge weights", () => {
+  const request: ApiRequest = {
+    ...DEFAULT_REQUEST,
+    instrument_ids: [1, 2, 3, 4],
+    user_weights: { "1": 1 },
+    portfolio_controls: {
+      mode: "trend",
+      hedge_weights: { "2": 1 },
+      trend: {
+        destination: "remaining",
+        asset_rules: {
+          "1": { indicator: "momentum", lookback_months: 8 },
+          "2": { indicator: "momentum", lookback_months: 24 },
+          "3": { indicator: "sma", lookback_months: 12 },
+          "4": { indicator: "sma", lookback_months: 9 },
+        },
+      },
+    },
+  };
+  const rows = rowsFromRequest(request);
+  rows.splice(1, 1);
+  rows[1].instrumentId = 5;
+  const updated = requestFromRows(rows, request);
+  expect(updated.instrument_ids).toEqual([1, 5, 4]);
+  expect(updated.portfolio_controls?.trend?.asset_rules).toEqual({
+    "1": { indicator: "momentum", lookback_months: 8 },
+    "4": { indicator: "sma", lookback_months: 9 },
+  });
+  expect(updated.portfolio_controls?.hedge_weights).toEqual({ "2": 1 });
+});
+
 it("offers indicators only for assets with positive portfolio weights and no sensitivity selector", () => {
   const [a, b, c] = instruments;
   const rule = { indicator: "sma" as const, lookback_months: 12 };

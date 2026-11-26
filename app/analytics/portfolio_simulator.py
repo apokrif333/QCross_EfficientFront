@@ -5,7 +5,39 @@ from typing import Protocol
 
 import numpy as np
 
-from app.analytics.models import AnalyticsError
+from app.analytics.models import TAX_METHODOLOGY, AnalyticsError
+
+COST_METRICS = (
+    "total_commissions",
+    "annualized_commissions",
+    "total_capital_gains_tax",
+    "annualized_capital_gains_tax",
+    "total_costs",
+    "annualized_total_costs",
+)
+TRADING_METRICS = (
+    *COST_METRICS,
+    "trade_count",
+    "rebalancing_events",
+    "annualized_turnover",
+    "execution_target_adjustment",
+    "unpaid_capital_gains_tax",
+)
+TARGET_PATH_METRICS = (
+    "net_cagr",
+    "net_drawdown",
+    "net_volatility",
+    "gross_cagr",
+    "gross_drawdown",
+    "gross_volatility",
+    "annualized_commissions",
+    "annualized_capital_gains_tax",
+    "annualized_total_costs",
+    "total_commissions",
+    "total_capital_gains_tax",
+    "total_costs",
+    "unpaid_capital_gains_tax",
+)
 
 
 @dataclass(frozen=True)
@@ -120,18 +152,30 @@ def execute_target(positions, target, wealth, fee_rate):
     return final, trades, float(fee_rate * np.abs(trades).sum())
 
 
-def _execute_taxable_target(positions, target, wealth, fee_rate, tax_rate, basis, executor):
-    """Settle the target, fees and tax together, using average cost per asset."""
+def _sale_fractions(positions, trades):
+    return np.divide(
+        np.maximum(-trades, 0), positions, out=np.zeros_like(positions), where=positions > 0
+    )
+
+
+def _average_cost_trade(positions, final, trades, basis, fee_rate):
+    sold_basis = _sale_fractions(positions, trades) * basis
+    gain = (np.maximum(-trades, 0) * (1 - fee_rate) - sold_basis).sum(axis=-1)
+    remaining = np.where(final > 0, basis - sold_basis, 0)
+    return gain, remaining + np.maximum(trades, 0) * (1 + fee_rate)
+
+
+def _execute_taxable_target(
+    positions, target, wealth, fee_rate, tax_rate, basis, annual_gain, executor=execute_target
+):
+    """Close a tax year and fund the liability with the same net trades as the target."""
     final, trades, fees = executor(positions, target, wealth, fee_rate)
+    sale_gains = positions * (1 - fee_rate) - basis
 
-    def fraction_of_position(amount):
-        return np.divide(amount, positions, out=np.zeros_like(positions), where=positions > 0)
+    def taxable_gain(trades):
+        return annual_gain + (_sale_fractions(positions, trades) * sale_gains).sum(axis=-1)
 
-    def taxable_gain(trades, fees):
-        sales = np.maximum(-trades, 0)
-        return (sales - fraction_of_position(sales) * basis).sum(axis=-1) - fees
-
-    taxable = taxable_gain(trades, fees) > 0
+    taxable = taxable_gain(trades) > 0
     if np.any(taxable):
         # Tax reduces investable wealth and can turn buys into sells. Between
         # those breakpoints, the cash equation with positive tax is linear.
@@ -147,7 +191,9 @@ def _execute_taxable_target(positions, target, wealth, fee_rate, tax_rate, basis
         def residual(wealth_after):
             trial = target * wealth_after - positions
             trial_fees = fee_rate * np.abs(trial).sum(axis=-1)
-            tax = tax_rate * taxable_gain(trial, trial_fees)
+            # A positive-tax solution is at or below the fee-only solution.
+            # The residual is linear between trade breakpoints on that branch.
+            tax = tax_rate * taxable_gain(trial)
             return wealth_after + np.expand_dims(trial_fees + tax, -1) - wealth
 
         lo = np.zeros(upper.shape, dtype=int)
@@ -162,13 +208,30 @@ def _execute_taxable_target(positions, target, wealth, fee_rate, tax_rate, basis
         left, right = residual(low), residual(high)
         fraction = np.divide(-left, right - left, out=np.zeros_like(left), where=right > left)
         settled = low + (high - low) * np.clip(fraction, 0, 1)
+        exhausted = residual(np.zeros_like(upper)) > 0
+        settled = np.where(exhausted, 0, settled)
         final = np.where(np.expand_dims(taxable, -1), target * settled, final)
         trades = final - positions
         fees = fee_rate * np.abs(trades).sum(axis=-1)
-    gain = np.maximum(taxable_gain(trades, fees), 0)
-    remaining_basis = fraction_of_position(np.minimum(positions, final)) * basis
-    basis = remaining_basis + np.maximum(trades, 0)
-    return final, trades, fees, tax_rate * gain, gain, basis
+    gain, basis = _average_cost_trade(positions, final, trades, basis, fee_rate)
+    taxable_gain_at_close = np.maximum(annual_gain + gain, 0)
+    liability = tax_rate * taxable_gain_at_close
+    available = np.maximum(0, np.asarray(wealth).reshape(liability.shape) - fees)
+    paid = np.where(final.sum(axis=-1) == 0, np.minimum(liability, available), liability)
+    return final, trades, fees, paid, gain, basis, liability - paid
+
+
+def _tax_calendar(length, tax_months, inflation_factors):
+    months = np.arange(length) % 12 + 1 if tax_months is None else np.asarray(tax_months)
+    if months.shape != (length,) or not np.isin(months, np.arange(1, 13)).all():
+        raise AnalyticsError("Tax calendar needs a calendar month (1–12) for each observation.")
+    closes = months == 12
+    closes[-1] = True
+    if inflation_factors is not None:
+        factors = np.asarray(inflation_factors)
+        if len(factors) != length or not np.isfinite(factors).all() or np.any(factors <= 0):
+            raise AnalyticsError("Tax inflation factors must be positive and match path months.")
+    return months, closes
 
 
 def _validate_tax_rate(rate):
@@ -230,6 +293,7 @@ def simulate_target_paths(
     transaction_fee_rate=0.0,
     capital_gains_tax_rate=0.0,
     inflation_factors=None,
+    tax_months=None,
     rebalancing_interval_months=12,
 ):
     """Run known end-of-month targets across scenarios, retaining only summary metrics.
@@ -237,6 +301,8 @@ def simulate_target_paths(
     Values and targets are month-major, with broadcast-compatible scenario dimensions
     between the month and asset axes. Targets depend only on observed asset returns.
     """
+    if not len(values):
+        raise AnalyticsError("Simulation needs at least one monthly observation.")
     policy = CalendarPolicy(rebalancing_interval_months)
     if not np.isfinite(transaction_fee_rate) or not 0 <= transaction_fee_rate < 1:
         raise AnalyticsError("transaction_fee_rate must be in [0,1).")
@@ -246,51 +312,103 @@ def simulate_target_paths(
         np.zeros_like(target), target, 1.0, transaction_fee_rate
     )
     initial_investment = positions.sum()
-    basis = positions.copy() if capital_gains_tax_rate else None
+    basis = (
+        np.broadcast_to(positions * (1 + transaction_fee_rate), targets.shape[1:]).copy()
+        if capital_gains_tax_rate
+        else None
+    )
     gross_positions = target.copy()
     fee_fractions = np.full(targets.shape[1:-1], initial_fee)
+    fees = fee_fractions.copy()
+    tax = np.zeros_like(fees)
+    tax_fractions = np.zeros_like(fees)
+    unpaid = np.zeros_like(fees)
+    annual_gain = np.zeros_like(fees) if basis is not None else None
+    if basis is not None:
+        _, tax_closes = _tax_calendar(len(values), tax_months, inflation_factors)
+        if inflation_factors is not None:
+            inflation_factors = np.asarray(inflation_factors, dtype=float)
+            if inflation_factors.ndim > 1 and inflation_factors.shape[-1] != 1:
+                raise AnalyticsError("Inflation must be shared by all assets within a path.")
     monthly = np.empty((*fee_fractions.shape, len(values)))
     gross_monthly = np.empty_like(monthly)
     previous_wealth = 1.0
     previous_gross_wealth = 1.0
     for month, (returns, desired) in enumerate(zip(values, targets, strict=True)):
         if basis is not None and inflation_factors is not None:
-            basis = basis / inflation_factors[month]
+            basis /= inflation_factors[month]
+            annual_gain /= np.reshape(
+                inflation_factors[month], np.shape(inflation_factors[month])[:-1]
+            )
         positions = positions * (1 + returns)
         gross_positions = gross_positions * (1 + returns)
         wealth = positions.sum(axis=-1, keepdims=True)
-        if month + 1 < len(values):
+        close = basis is not None and tax_closes[month]
+        if month + 1 < len(values) or close:
             actual = np.divide(positions, wealth, out=np.zeros_like(positions), where=wealth > 0)
-            signal = (
-                policy.scheduled(month + 1) | (np.max(np.abs(desired - target), axis=-1) > 1e-10)
-            ) & (wealth[..., 0] > 0)
-            trade = signal & (np.max(np.abs(actual - desired), axis=-1) > 1e-12)
-            if np.any(trade):
-                pretrade_wealth = np.broadcast_to(wealth, (*trade.shape, 1))[trade]
-                positions = np.broadcast_to(positions, desired.shape).copy()
-                if basis is None:
-                    positions[trade], _, cost = execute_target(
-                        positions[trade], desired[trade], pretrade_wealth, transaction_fee_rate
-                    )
-                else:
-                    basis = np.broadcast_to(basis, desired.shape).copy()
-                    positions[trade], _, cost, _, _, basis[trade] = _execute_taxable_target(
-                        positions[trade],
-                        desired[trade],
+            if month + 1 < len(values):
+                signal = (
+                    policy.scheduled(month + 1)
+                    | (np.max(np.abs(desired - target), axis=-1) > 1e-10)
+                ) & (wealth[..., 0] > 0)
+                trade = signal & (np.max(np.abs(actual - desired), axis=-1) > 1e-12)
+                target = np.where(signal[..., None], desired, target)
+            else:
+                trade = np.zeros(fees.shape, dtype=bool)
+            execution = (trade | (annual_gain > 0)) if close else trade
+            if np.any(execution):
+                pretrade_wealth = np.broadcast_to(wealth, (*trade.shape, 1))[execution]
+                execution_targets = (
+                    np.where(trade[..., None], desired, actual)[execution]
+                    if close
+                    else desired[execution]
+                )
+                if positions.shape != desired.shape:
+                    positions = np.broadcast_to(positions, desired.shape).copy()
+                old = positions[execution]
+                if close:
+                    final, _, cost, paid, _, basis[execution], shortfall = _execute_taxable_target(
+                        old,
+                        execution_targets,
                         pretrade_wealth,
                         transaction_fee_rate,
                         capital_gains_tax_rate,
-                        basis[trade],
-                        execute_target,
+                        basis[execution],
+                        annual_gain[execution],
                     )
-                fee_fractions[trade] += cost / pretrade_wealth[:, 0]
+                    tax[execution] += paid
+                    unpaid[execution] += shortfall
+                    nav = pretrade_wealth[:, 0]
+                    tax_fractions[execution] += np.divide(
+                        paid, nav, out=np.zeros_like(paid), where=nav > 0
+                    )
+                else:
+                    final, trades, cost = execute_target(
+                        old, execution_targets, pretrade_wealth, transaction_fee_rate
+                    )
+                    if basis is not None:
+                        gain, basis[execution] = _average_cost_trade(
+                            old, final, trades, basis[execution], transaction_fee_rate
+                        )
+                        annual_gain[execution] += gain
+                positions[execution] = final
+                fees[execution] += cost
+                nav = pretrade_wealth[:, 0]
+                fee_fractions[execution] += (
+                    np.divide(cost, nav, out=np.zeros_like(cost), where=nav > 0)
+                    if close
+                    else cost / nav
+                )
+                wealth = positions.sum(axis=-1, keepdims=True)
+            if np.any(trade):
                 # Apply the same executions to gross holdings without deducting costs.
-                gross_positions = np.broadcast_to(gross_positions, desired.shape).copy()
+                if gross_positions.shape != desired.shape:
+                    gross_positions = np.broadcast_to(gross_positions, desired.shape).copy()
                 gross_positions[trade] = desired[trade] * gross_positions[trade].sum(
                     axis=-1, keepdims=True
                 )
-                wealth = positions.sum(axis=-1, keepdims=True)
-            target = np.where(signal[..., None], desired, target)
+            if close:
+                annual_gain.fill(0)
         wealth = wealth[..., 0]
         if not np.isfinite(wealth).all():
             raise AnalyticsError("Portfolio wealth overflowed; shorten the selected horizon.")
@@ -312,6 +430,8 @@ def simulate_target_paths(
         previous_gross_wealth = gross_wealth
     cagr, volatility, drawdown, _ = _return_risk_statistics(monthly, initial_investment)
     gross_cagr, gross_volatility, gross_drawdown, _ = _return_risk_statistics(gross_monthly, 1.0)
+    annualized_fees = fee_fractions * (12 / len(values))
+    annualized_tax = tax_fractions * (12 / len(values))
     return (
         cagr,
         drawdown,
@@ -319,7 +439,13 @@ def simulate_target_paths(
         gross_cagr,
         gross_drawdown,
         gross_volatility,
-        fee_fractions * (12 / len(values)),
+        annualized_fees,
+        annualized_tax,
+        annualized_fees + annualized_tax,
+        fees,
+        tax,
+        fees + tax,
+        unpaid,
     )
 
 
@@ -347,6 +473,7 @@ def simulate_portfolio(
     transaction_fee_rate=0.0,
     capital_gains_tax_rate=0.0,
     inflation_factors=None,
+    tax_months=None,
     rebalancing_interval_months=12,
     target_provider=None,
     capital_destination=None,
@@ -397,6 +524,20 @@ def simulate_portfolio(
     if rf.shape != (n,) or not np.isfinite(rf).all():
         raise AnalyticsError("Risk-free months must match simulation months.")
     policy = policy if policy is not None else CalendarPolicy(rebalancing_interval_months)
+    tax_closes = None
+    if capital_gains_tax_rate:
+        calendar, tax_closes = _tax_calendar(n, tax_months, inflation_factors)
+        if inflation_factors is not None:
+            inflation_factors = np.asarray(inflation_factors, dtype=float)
+            if inflation_factors.shape != (n,):
+                raise AnalyticsError("Inflation must provide one factor per simulation month.")
+    initial_fee = transaction_fee_rate / (1 + transaction_fee_rate)
+    tax_details = {
+        "tax_methodology": TAX_METHODOLOGY,
+        "tax_year_close_months": np.flatnonzero(tax_closes).tolist()
+        if record_history and tax_closes is not None
+        else [],
+    }
     if (
         np.count_nonzero(target) == 1
         and not target_provider
@@ -426,9 +567,15 @@ def simulate_portfolio(
             "gross_returns": column.tolist(),
             "net_wealth": wealth_path(net_column),
             "gross_wealth": wealth_path(column),
-            "total_commissions": transaction_fee_rate / (1 + transaction_fee_rate),
+            "total_commissions": initial_fee,
             "total_capital_gains_tax": 0.0,
-            "annualized_commissions": transaction_fee_rate / (1 + transaction_fee_rate) * 12 / n,
+            "annualized_commissions": initial_fee * 12 / n,
+            "annualized_capital_gains_tax": 0.0,
+            "total_costs": initial_fee,
+            "annualized_total_costs": initial_fee * 12 / n,
+            "unpaid_capital_gains_tax": 0.0,
+            "tax_insolvent": False,
+            **tax_details,
             "initial_net_wealth": 1 / (1 + transaction_fee_rate),
             "trade_count": 1,
             "rebalancing_events": 0,
@@ -442,8 +589,8 @@ def simulate_portfolio(
             "target_history": [],
         }
     positions, initial_trades, fees = executor(np.zeros(assets), target, 1.0, transaction_fee_rate)
-    basis = positions.copy() if capital_gains_tax_rate else None
-    total_tax = 0.0
+    basis = positions * (1 + transaction_fee_rate) if capital_gains_tax_rate else None
+    annual_gain = total_tax = tax_fractions = unpaid_tax = 0.0
     fee_fractions = fees
     initial_investment = float(positions.sum())
     gross_positions = target.copy()
@@ -456,9 +603,20 @@ def simulate_portfolio(
         events.append(
             {
                 "month_index": -1,
+                "calendar_month": (int(calendar[0]) - 2) % 12 + 1
+                if tax_closes is not None
+                else None,
                 "kind": "initial_purchase",
                 "triggering_assets": [],
                 "trades": initial_trades.tolist(),
+                "reason": "initial_purchase",
+                "pretrade_nav": 1.0,
+                "posttrade_nav": initial_investment,
+                "purchases": float(initial_trades.sum()),
+                "sales": 0.0,
+                "realized_capital_gain": 0.0,
+                "annual_realized_gain": 0.0,
+                "cost_basis": basis.tolist() if basis is not None else None,
                 "commissions": fees,
                 "turnover": float(np.abs(initial_trades).sum()),
             }
@@ -466,7 +624,9 @@ def simulate_portfolio(
         position_history.append(positions.tolist())
     for month, returns in enumerate(values):
         if basis is not None and inflation_factors is not None:
+            # Express both carry balances in the current month's purchasing power.
             basis = basis / inflation_factors[month]
+            annual_gain /= inflation_factors[month]
         positions = positions * (1 + returns)
         gross_positions = gross_positions * (1 + returns)
         wealth = float(positions.sum())
@@ -491,61 +651,94 @@ def simulate_portfolio(
             signal = [] if signal is None else signal
         if record_history and target_provider and hasattr(target_provider, "diagnostics"):
             signal_history.append(dict(target_provider.diagnostics))
-        if signal_generator and signal_generator(state) and wealth > 0:
+        external_signal = signal_generator and signal_generator(state) and wealth > 0
+        if external_signal:
             signal = [] if signal is None else signal
         # No terminal rebalance: there is no following observation to invest in.
+        new_target = actual
+        rebalance = False
         if signal is not None and month + 1 < n:
             new_target = desired
             if capital_destination:
                 new_target = capital_destination(new_target, state)
             new_target = allocation(new_target, assets)
-            if np.max(np.abs(actual - new_target)) > 1e-12:
-                tax = taxable_gain = 0.0
-                if basis is None:
-                    positions, trades, cost = executor(
-                        positions, new_target, wealth, transaction_fee_rate
+            rebalance = np.max(np.abs(actual - new_target)) > 1e-12
+            target = new_target
+        close = tax_closes is not None and tax_closes[month]
+        if rebalance or (close and annual_gain > 0):
+            old = positions
+            tax = gain = unpaid = 0.0
+            if close:
+                positions, trades, cost, tax, gain, basis, unpaid = _execute_taxable_target(
+                    old,
+                    new_target if rebalance else actual,
+                    wealth,
+                    transaction_fee_rate,
+                    capital_gains_tax_rate,
+                    basis,
+                    annual_gain,
+                    executor,
+                )
+            else:
+                positions, trades, cost = executor(old, new_target, wealth, transaction_fee_rate)
+                if basis is not None:
+                    gain, basis = _average_cost_trade(
+                        old, positions, trades, basis, transaction_fee_rate
+                    )
+            annual_gain += gain
+            total_tax += float(tax)
+            unpaid_tax += float(unpaid)
+            ratio = float(np.abs(trades).sum()) / wealth if wealth > 0 else 0.0
+            turnover += ratio
+            fees += cost
+            if wealth > 0:
+                fee_fractions += cost / wealth
+                tax_fractions += tax / wealth
+            trade_count += int(np.count_nonzero(np.abs(trades) > wealth * 1e-12))
+            if rebalance:
+                gross_positions = new_target * gross_positions.sum()
+                event_count += 1
+            if record_history:
+                if rebalance:
+                    reason = (
+                        "fold_target_change"
+                        if scheduled is not None and dynamic_change
+                        else "control_change"
+                        if dynamic_change or external_signal
+                        else "threshold_rebalance"
+                        if isinstance(policy, ThresholdPolicy)
+                        else "calendar_rebalance"
                     )
                 else:
-                    positions, trades, cost, tax, taxable_gain, basis = _execute_taxable_target(
-                        positions,
-                        new_target,
-                        wealth,
-                        transaction_fee_rate,
-                        capital_gains_tax_rate,
-                        basis,
-                        executor,
-                    )
-                    total_tax += float(tax)
-                gross_positions = new_target * gross_positions.sum()
-                traded = float(np.abs(trades).sum())
-                ratio = traded / wealth
-                turnover += ratio
-                fees += cost
-                fee_fractions += cost / wealth
-                trade_count += int(np.count_nonzero(np.abs(trades) > wealth * 1e-12))
-                event_count += 1
-                if record_history:
-                    events.append(
-                        {
-                            "month_index": month,
-                            "kind": "rebalance",
-                            "triggering_assets": signal,
-                            "trades": trades.tolist(),
-                            "turnover": ratio,
-                            "commissions": cost,
-                            "capital_gains_tax": float(tax),
-                            "taxable_capital_gain": float(taxable_gain),
-                            "reason": (
-                                "fold_target_change"
-                                if scheduled is not None and dynamic_change
-                                else "control_change"
-                                if dynamic_change
-                                else "rebalancing_policy"
-                            ),
-                            "control_state": dict(getattr(target_provider, "diagnostics", {})),
-                        }
-                    )
-            target = new_target
+                    reason = "terminal_tax_settlement" if month + 1 == n else "tax_settlement"
+                events.append(
+                    {
+                        "month_index": month,
+                        "calendar_month": int(calendar[month]) if tax_closes is not None else None,
+                        "kind": "combined_rebalance_and_tax_settlement"
+                        if close and rebalance
+                        else reason,
+                        "reason": reason,
+                        "triggering_assets": signal if rebalance else [],
+                        "trades": trades.tolist(),
+                        "purchases": float(np.maximum(trades, 0).sum()),
+                        "sales": float(np.maximum(-trades, 0).sum()),
+                        "pretrade_nav": wealth,
+                        "posttrade_nav": float(positions.sum()),
+                        "turnover": ratio,
+                        "commissions": float(cost),
+                        "realized_capital_gain": float(gain),
+                        "annual_realized_gain": float(annual_gain),
+                        "taxable_capital_gain": float(max(0, annual_gain)) if close else None,
+                        "capital_gains_tax": float(tax),
+                        "unpaid_capital_gains_tax": float(unpaid),
+                        "tax_insolvent": bool(unpaid > 0),
+                        "cost_basis": basis.tolist() if basis is not None else None,
+                        "control_state": dict(getattr(target_provider, "diagnostics", {})),
+                    }
+                )
+        if close:
+            annual_gain = 0.0
         final, gross_final = float(positions.sum()), float(gross_positions.sum())
         if not np.isfinite(final) or not np.isfinite(gross_final):
             raise AnalyticsError("Portfolio wealth overflowed; shorten the selected horizon.")
@@ -557,6 +750,8 @@ def simulate_portfolio(
             history.append((positions / final if final > 0 else np.zeros(assets)).tolist())
             position_history.append(positions.tolist())
             targets.append(target.tolist())
+    annualized_fees = fee_fractions * (12 / n)
+    annualized_tax = float(tax_fractions) * (12 / n)
     return {
         "net": path_statistics(net, net_wealth, rf, initial_investment=initial_investment),
         "gross": path_statistics(gross, gross_wealth, rf),
@@ -572,7 +767,13 @@ def simulate_portfolio(
         "signal_history": signal_history,
         "total_commissions": fees,
         "total_capital_gains_tax": total_tax,
-        "annualized_commissions": fee_fractions * 12 / n,
+        "annualized_commissions": annualized_fees,
+        "annualized_capital_gains_tax": annualized_tax,
+        "total_costs": fees + total_tax,
+        "annualized_total_costs": annualized_fees + annualized_tax,
+        "unpaid_capital_gains_tax": unpaid_tax,
+        "tax_insolvent": unpaid_tax > 0,
+        **tax_details,
         "initial_net_wealth": initial_investment,
         "execution_target_adjustment": float(
             np.max(np.abs(target - requested))

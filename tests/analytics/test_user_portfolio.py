@@ -37,7 +37,11 @@ def test_user_portfolio_uses_compounding_and_sample_historical_volatility(panel)
         values.std(ddof=1) * np.sqrt(12)
     )
     assert user["metrics"]["volatility"] == pytest.approx(values.std(ddof=1) * np.sqrt(12))
-    assert result["asset_portfolios"]["1"]["metrics"] == user["metrics"]
+    history = user["metrics"]["wealth_history"]
+    assert history["net"][-1] == pytest.approx(user["metrics"]["terminal_wealth"])
+    assert result["asset_portfolios"]["1"]["metrics"] == {
+        k: v for k, v in user["metrics"].items() if k != "wealth_history"
+    }
     for column, asset in enumerate(panel.assets):
         reference = result["asset_portfolios"][asset]
         assert reference["weights"][asset] == 1

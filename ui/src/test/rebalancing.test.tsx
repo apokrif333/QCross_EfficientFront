@@ -113,11 +113,9 @@ it("plots all strategies with volatility on X and CAGR on Y", () => {
   expect(within(table).getAllByRole("row")).toHaveLength(22);
   const annual = result.strategies.find((s) => s.id === "calendar_12")!;
   const annualRow = screen.getByText(/Каждый год · базовый/).closest("tr")!;
-  expect(
-    within(annualRow).getByText(
-      `${(annual.total_commissions * 100).toFixed(4)}%`,
-    ),
-  ).toBeInTheDocument();
+  expect(within(annualRow).getAllByRole("cell")[8]).toHaveTextContent(
+    `${(annual.total_commissions * 100).toFixed(4)}%`,
+  );
   expect(screen.getByText(/Каждый год · базовый/).closest("tr")).toHaveClass(
     "annual-baseline",
   );

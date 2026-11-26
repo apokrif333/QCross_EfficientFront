@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ANNUAL_TAX_METHODOLOGY,
   compareCalculations,
   compatible,
   createSnapshot,
@@ -85,7 +86,26 @@ describe("full calculation snapshots", () => {
     const a = saved(),
       b = saved("frontier", "frontier-ledoit_wolf.json");
     expect(compatible(a, b)).toBe(true);
+    a.request.portfolio_controls = { mode: "none", hedge_weights: {} };
+    expect(compatible(a, b)).toBe(true);
     b.request.group_constraints.Equity.max = 0.5;
     expect(compatible(a, b)).toBe(false);
+  });
+  it("preserves older snapshots and makes tax methodology part of compatibility", () => {
+    const legacy = saved();
+    const annual = structuredClone(legacy);
+    annual.result.reproducibility.tax_methodology = ANNUAL_TAX_METHODOLOGY;
+    const restored = parseSnapshot(
+      JSON.stringify(createSnapshot([legacy, annual], instruments)),
+    );
+    expect(restored.calculations).toEqual([legacy, annual]);
+    expect(compatible(legacy, annual)).toBe(false);
+    const comparison = compareCalculations(legacy, annual, 1e-7, 1e-6);
+    expect(
+      comparison.warnings.some((warning) =>
+        warning.includes("методологии налога"),
+      ),
+    ).toBe(true);
+    expect(comparison.numericFields).toBe(0);
   });
 });

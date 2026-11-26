@@ -7,6 +7,7 @@ import pandas as pd
 CovarianceMethod = Literal["sample", "ledoit_wolf", "nonlinear", "cv_linear"]
 Objective = Literal["gmv", "max_sharpe", "target_return", "max_return_at_user_risk"]
 ShrinkageTarget = Literal["identity", "diagonal"]
+TAX_METHODOLOGY = "annual_net_realized_average_cost_v1"
 
 
 class AnalyticsError(ValueError):
@@ -59,18 +60,28 @@ class ReturnPanel:
         periods = pd.PeriodIndex(self.returns.index, freq="M")
         if not periods.equals(pd.period_range(periods[0], periods[-1], freq="M")):
             raise AnalyticsError("The aligned period contains missing or duplicate months.")
+        self._calendar_months = periods.month.to_numpy()
 
     @property
     def values(self) -> np.ndarray:
         return self.returns.to_numpy(dtype=float)
 
-    def path_options(self, indices=None) -> dict:
-        if not self.simulation_options.get("capital_gains_tax_rate") or self.return_basis != "real":
+    def path_options(self, indices=None, *, synthetic=False, calendar_start=0) -> dict:
+        if not self.simulation_options.get("capital_gains_tax_rate"):
             return self.simulation_options
-        if self.inflation_factors is None:
-            raise AnalyticsError("Real paths with capital gains tax require aligned inflation.")
-        factors = self.inflation_factors if indices is None else self.inflation_factors[indices]
-        return {**self.simulation_options, "inflation_factors": factors}
+        if synthetic:
+            length = len(self._calendar_months) if indices is None else np.shape(indices)[-1]
+            months = self._calendar_months[calendar_start : calendar_start + length]
+        else:
+            months = self._calendar_months if indices is None else self._calendar_months[indices]
+        settings = {**self.simulation_options, "tax_months": months}
+        if self.return_basis == "real":
+            if self.inflation_factors is None:
+                raise AnalyticsError("Real paths with capital gains tax require aligned inflation.")
+            settings["inflation_factors"] = (
+                self.inflation_factors if indices is None else self.inflation_factors[indices]
+            )
+        return settings
 
 
 @dataclass

@@ -159,9 +159,11 @@ for (const basis of ["nominal", "real"] as const) {
     });
     await expect(
       table.getByText("240 мес. (20.00 лет)", { exact: true }),
-    ).toHaveCount(11);
+    ).toHaveCount(13);
     await expect(
-      page.getByText(/не являются калиброванными вероятностями/),
+      table
+        .locator("../..")
+        .getByText(/не являются калиброванными вероятностями/),
     ).toBeVisible();
     await expect(page.getByRole("alert")).toHaveCount(0);
   });

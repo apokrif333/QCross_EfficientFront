@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { number, percent } from "../lib/display";
 import { linearQuantile } from "../lib/statistics";
+import { annualCostHint } from "../lib/tradingCosts";
 import type { BootstrapTrendSeries } from "../types";
 
 const METRICS = [
@@ -10,6 +11,8 @@ const METRICS = [
   ["p95Drawdown", "P95 макс. просадки"],
   ["calmar", "Медианный Calmar"],
   ["commissions", "Среднегодовые комиссии"],
+  ["tax", "Годовой налог на прирост капитала"],
+  ["costs", "Совокупные годовые издержки"],
   ["higherCagr", "Выше CAGR эталона"],
   ["higherCagrLowerDrawdown", "Выше CAGR и ниже просадка"],
 ] as const;
@@ -19,6 +22,7 @@ const COLUMNS = [
   ["pareto", "Парето"],
 ] as const;
 type Column = (typeof COLUMNS)[number][0];
+const COSTS = ["commissions", "tax", "costs"] as const;
 
 function quantile(sorted: number[], q: number) {
   return { value: linearQuantile(sorted, q), count: sorted.length };
@@ -41,6 +45,10 @@ export function summarizeBootstrapTrend(
       calmars: number[] = [];
     let fees = 0,
       feeCount = 0,
+      tax = 0,
+      taxCount = 0,
+      costs = 0,
+      costCount = 0,
       cagrWins = 0,
       cagrPairs = 0,
       jointWins = 0,
@@ -58,6 +66,14 @@ export function summarizeBootstrapTrend(
       if (commission != null) {
         fees += commission;
         feeCount++;
+      }
+      if (point[7] != null) {
+        tax += point[7];
+        taxCount++;
+      }
+      if (point[8] != null) {
+        costs += point[8];
+        costCount++;
       }
       const refCagr = reference[draw]?.[offset],
         refDrawdown = reference[draw]?.[offset + 1];
@@ -82,6 +98,8 @@ export function summarizeBootstrapTrend(
       p95Drawdown: quantile(drawdowns, 0.95),
       calmar: quantile(calmars, 0.5),
       commissions: mean(fees, feeCount),
+      tax: mean(tax, taxCount),
+      costs: mean(costs, costCount),
       higherCagr: mean(cagrWins, cagrPairs),
       higherCagrLowerDrawdown: mean(jointWins, jointPairs),
     };
@@ -140,6 +158,12 @@ export default function BootstrapTrendComparison({
   );
   const legacyCommissions =
     !commissionBasis && summary.some((row) => row.commissions.count > 0);
+  const hidden = (column: Column) =>
+    COSTS.some((key) => key === column) &&
+    (gross ||
+      !summary.some((row) =>
+        COSTS.some((key) => key === column && row[key].count > 0),
+      ));
   const rows = [...summary].sort((a, b) => {
     const x = sortValue(a, sort.column),
       y = sortValue(b, sort.column);
@@ -159,43 +183,45 @@ export default function BootstrapTrendComparison({
         >
           <thead>
             <tr>
-              {COLUMNS.map(([column, label]) => (
-                <th
-                  key={column}
-                  scope="col"
-                  aria-sort={
-                    sort.column === column
-                      ? sort.descending
-                        ? "descending"
-                        : "ascending"
-                      : undefined
-                  }
-                >
-                  <button
-                    className="table-sort"
-                    type="button"
-                    onClick={() =>
-                      setSort((current) => ({
-                        column,
-                        descending:
-                          current.column === column
-                            ? !current.descending
-                            : column !== "period",
-                      }))
+              {COLUMNS.filter(([column]) => !hidden(column)).map(
+                ([column, label]) => (
+                  <th
+                    key={column}
+                    scope="col"
+                    aria-sort={
+                      sort.column === column
+                        ? sort.descending
+                          ? "descending"
+                          : "ascending"
+                        : undefined
                     }
                   >
-                    {column === "commissions" && legacyCommissions
-                      ? "Комиссии за год / начальный капитал"
-                      : label}
-                    {sort.column === column && (
-                      <span aria-hidden="true">
-                        {" "}
-                        {sort.descending ? "↓" : "↑"}
-                      </span>
-                    )}
-                  </button>
-                </th>
-              ))}
+                    <button
+                      className="table-sort"
+                      type="button"
+                      onClick={() =>
+                        setSort((current) => ({
+                          column,
+                          descending:
+                            current.column === column
+                              ? !current.descending
+                              : column !== "period",
+                        }))
+                      }
+                    >
+                      {column === "commissions" && legacyCommissions
+                        ? "Комиссии за год / начальный капитал"
+                        : label}
+                      {sort.column === column && (
+                        <span aria-hidden="true">
+                          {" "}
+                          {sort.descending ? "↓" : "↑"}
+                        </span>
+                      )}
+                    </button>
+                  </th>
+                ),
+              )}
             </tr>
           </thead>
           <tbody>
@@ -214,19 +240,21 @@ export default function BootstrapTrendComparison({
                     {row.period} мес.
                   </button>
                 </th>
-                {METRICS.map(([metric]) => {
-                  const { value, count } = row[metric];
-                  return (
-                    <td key={metric}>
-                      {metric === "calmar"
-                        ? number(value)
-                        : percent(value, metric === "commissions" ? 4 : 2)}
-                      <small>
-                        {count} / {iterations}
-                      </small>
-                    </td>
-                  );
-                })}
+                {METRICS.filter(([metric]) => !hidden(metric)).map(
+                  ([metric]) => {
+                    const { value, count } = row[metric];
+                    return (
+                      <td key={metric}>
+                        {metric === "calmar"
+                          ? number(value)
+                          : percent(value, metric === "commissions" ? 4 : 2)}
+                        <small>
+                          {count} / {iterations}
+                        </small>
+                      </td>
+                    );
+                  },
+                )}
                 <td>
                   {row.pareto == null ? (
                     "—"
@@ -245,8 +273,7 @@ export default function BootstrapTrendComparison({
         Под значением указано число доступных генераций или пар.
         {legacyCommissions &&
           " В этом сохранённом расчёте комиссии за весь период поделены на начальный капитал и число лет."}
-        {commissionBasis === "pretrade_nav" &&
-          " Каждая комиссия делится на стоимость портфеля перед сделкой. Эти доли суммируются и приводятся к году. Комиссии одинаковы в Net и Gross."}
+        {commissionBasis === "pretrade_nav" && !gross && ` ${annualCostHint}`}
       </p>
     </>
   );

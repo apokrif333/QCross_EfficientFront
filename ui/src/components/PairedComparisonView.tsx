@@ -16,6 +16,10 @@ const labels: Record<string, string> = {
   delta_terminal_wealth: "Δ конечного капитала на $1",
   delta_commissions: "Δ комиссий на $1",
   delta_annualized_commissions: "Δ годовых комиссий",
+  delta_capital_gains_tax: "Δ уплаченного налога на $1",
+  delta_annualized_capital_gains_tax: "Δ годового налога",
+  delta_total_costs: "Δ совокупных издержек на $1",
+  delta_annualized_total_costs: "Δ совокупных годовых издержек",
   delta_turnover: "Δ годового оборота",
 };
 const wins: Record<string, string> = {
@@ -23,6 +27,7 @@ const wins: Record<string, string> = {
   higher_sharpe: "Выше Sharpe",
   lower_volatility: "Ниже волатильность",
   lower_drawdown: "Ниже просадки",
+  lower_annualized_total_costs: "Ниже годовые издержки",
   higher_cagr_no_higher_volatility: "Выше CAGR при не большей волатильности",
 };
 export default function PairedComparisonView({
@@ -142,6 +147,8 @@ export default function PairedComparisonView({
       "delta_calmar",
       "delta_terminal_wealth",
       "delta_commissions",
+      "delta_capital_gains_tax",
+      "delta_total_costs",
     ].includes(key)
       ? number(v)
       : percent(v);
@@ -192,6 +199,10 @@ export default function PairedComparisonView({
           </>
         )}
       </p>
+      <p className="hint">
+        Для комиссий и налога отрицательная разница означает преимущество
+        первого портфеля в формуле Δ. Издержки относятся к Net.
+      </p>
       <p>
         {value.generated_datasets != null
           ? `${value.generated_datasets} генераций · ${value.requested_comparisons} пар · горизонт каждой генерации ${value.horizon_months} мес. · `
@@ -227,29 +238,23 @@ export default function PairedComparisonView({
             </tr>
           </thead>
           <tbody>
-            {Object.entries(value.differences)
-              .filter(
-                ([key]) =>
-                  passive ||
-                  !["delta_terminal_wealth", "delta_commissions"].includes(key),
-              )
-              .map(([k, v]) => (
-                <tr key={k}>
-                  <td>{labels[k] ?? k}</td>
-                  <td>{format(k, v?.mean)}</td>
-                  <td>{format(k, v?.median)}</td>
-                  {(joined || passive) && (
-                    <td>{format(k, v?.standard_deviation)}</td>
-                  )}
-                  <td>
-                    {format(k, v?.p5)} — {format(k, v?.p95)}
-                  </td>
-                  <td>
-                    {format(k, v?.minimum)} / {format(k, v?.maximum)}
-                  </td>
-                  {(joined || passive) && <td>{v?.valid_count ?? 0}</td>}
-                </tr>
-              ))}
+            {Object.entries(value.differences).map(([k, v]) => (
+              <tr key={k}>
+                <td>{labels[k] ?? k}</td>
+                <td>{format(k, v?.mean)}</td>
+                <td>{format(k, v?.median)}</td>
+                {(joined || passive) && (
+                  <td>{format(k, v?.standard_deviation)}</td>
+                )}
+                <td>
+                  {format(k, v?.p5)} — {format(k, v?.p95)}
+                </td>
+                <td>
+                  {format(k, v?.minimum)} / {format(k, v?.maximum)}
+                </td>
+                {(joined || passive) && <td>{v?.valid_count ?? 0}</td>}
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

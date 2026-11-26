@@ -4,8 +4,14 @@ import hashlib
 
 import numpy as np
 
-from app.analytics.models import AnalyticsError
-from app.analytics.portfolio_simulator import simulate_portfolio, simulate_target_paths
+from app.analytics.models import TAX_METHODOLOGY, AnalyticsError
+from app.analytics.portfolio_simulator import (
+    COST_METRICS,
+    TARGET_PATH_METRICS,
+    TRADING_METRICS,
+    simulate_portfolio,
+    simulate_target_paths,
+)
 from app.analytics.provenance import panel_provenance
 
 TREND_LOOKBACKS = range(1, 37)
@@ -143,13 +149,19 @@ def compare_controls(
     policy=None,
     include_wealth=False,
     sampled_risk_free=None,
+    synthetic=False,
+    calendar_start=0,
 ):
     if panel.control_config.get("mode", "none") == "none":
         return None
     values, signal_values, base, hedge, rf, assets = _control_inputs(panel, user_weights, indices)
     if sampled_risk_free is not None:
         rf = sampled_risk_free
-    settings = {**panel.path_options(indices), "record_history": record_history, "policy": policy}
+    settings = {
+        **panel.path_options(indices, synthetic=synthetic, calendar_start=calendar_start),
+        "record_history": record_history,
+        "policy": policy,
+    }
     if panel.control_config["mode"] == "downside_vol":
         params = panel.control_config["downside_vol"]
         provider = DownsideTarget(base, hedge, params["target_annual"], params["lookback_months"])
@@ -161,16 +173,7 @@ def compare_controls(
         values, base, rf, target_provider=provider, signal_returns=signal_values, **settings
     )
     if not record_history:
-        keys = (
-            "net",
-            "gross",
-            "total_commissions",
-            "total_capital_gains_tax",
-            "annualized_commissions",
-            "trade_count",
-            "annualized_turnover",
-            "rebalancing_events",
-        )
+        keys = ("net", "gross", "tax_insolvent", *TRADING_METRICS)
         baseline = {k: baseline[k] for k in keys}
         controlled_keys = (*keys, "net_wealth") if include_wealth else keys
         controlled = {k: controlled[k] for k in controlled_keys}
@@ -241,7 +244,8 @@ def analyze_bootstrap_trend_sensitivity(panel, *, user_weights, _sample_indices)
         weights[column] = 1
         portfolios[asset] = weights
     results = {
-        asset: np.empty((len(TREND_LOOKBACKS), len(sample_indices), 7)) for asset in portfolios
+        asset: np.empty((len(TREND_LOOKBACKS), len(sample_indices), len(TARGET_PATH_METRICS)))
+        for asset in portfolios
     }
     # Bound the temporary target arrays even for long histories.
     batch_size = max(1, min(64, 1_000_000 // (len(values) * len(TREND_LOOKBACKS) * len(assets))))
@@ -253,7 +257,7 @@ def analyze_bootstrap_trend_sensitivity(panel, *, user_weights, _sample_indices)
             paths if signal_values is values else signal_values[indices].transpose(1, 0, 2)
         )
         signals = _bootstrap_trend_signals(signal_paths, assets, rules)
-        settings = panel.path_options(indices)
+        settings = panel.path_options(indices, synthetic=True)
         if "inflation_factors" in settings:
             settings["inflation_factors"] = settings["inflation_factors"].T[..., None, None]
         for asset, weights in portfolios.items():
@@ -278,6 +282,8 @@ def analyze_bootstrap_trend_sensitivity(panel, *, user_weights, _sample_indices)
             "iterations": len(sample_indices),
             "validation_sample_fingerprint": fingerprint.hexdigest(),
             "commission_basis": "pretrade_nav",
+            "tax_methodology": TAX_METHODOLOGY,
+            "metric_order": TARGET_PATH_METRICS,
             "portfolio": export(results[None]),
             "by_asset": {asset: export(results[asset]) for asset in rules},
         },
@@ -314,7 +320,14 @@ def _trend_sensitivity(panel, user_weights, configured_path):
                 record_history=False,
                 **panel.path_options(),
             )
-        points.append({"lookback_months": lookback, "gross": path["gross"], "net": path["net"]})
+        points.append(
+            {
+                "lookback_months": lookback,
+                "gross": path["gross"],
+                "net": path["net"],
+                "trading_costs": {k: path[k] for k in COST_METRICS},
+            }
+        )
     return points
 
 
@@ -390,6 +403,7 @@ def _single_asset_sensitivity(
         points.append(
             {
                 "lookback_months": lookback,
+                "trading_costs": {k: path[k] for k in COST_METRICS},
                 **{
                     side: {
                         metric: path[side][metric]

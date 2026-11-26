@@ -1,13 +1,18 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { reusableControlCache } from "../lib/controlCache";
 import { runJob } from "../lib/api";
-import { createSnapshot, parseSnapshot } from "../lib/snapshot";
+import {
+  ANNUAL_TAX_METHODOLOGY,
+  createSnapshot,
+  parseSnapshot,
+} from "../lib/snapshot";
 import type { BootstrapControlCache, BootstrapResult } from "../types";
 import { instruments, saved } from "./fixtures";
 
 afterEach(() => vi.unstubAllGlobals());
 const cache: BootstrapControlCache = {
   version: 1,
+  tax_methodology: ANNUAL_TAX_METHODOLOGY,
   key: "a".repeat(64),
   original: {},
   samples: [
@@ -32,6 +37,13 @@ it("reuses saved Bootstrap control summaries after snapshot import", () => {
       restored.calculations,
     ),
   ).toEqual(cache);
+  const restoredCache = (restored.calculations[0].result as BootstrapResult)
+    .portfolio_control_cache!;
+  delete restoredCache.tax_methodology;
+  expect(
+    reusableControlCache(calculation.request, restored.calculations),
+  ).toBeUndefined();
+  restoredCache.tax_methodology = ANNUAL_TAX_METHODOLOGY;
   for (const changed of [
     { random_seed: 123 },
     { expected_block_length: 6 },

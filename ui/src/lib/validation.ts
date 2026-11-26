@@ -202,6 +202,7 @@ const period = z
   .passthrough();
 const provenance = z
   .object({
+    tax_methodology: z.string().optional(),
     engine: z.object({
       name: z.string(),
       version: z.string(),
@@ -244,6 +245,7 @@ const assetTrendSensitivity = z.record(
           lookback_months: n.int().min(1).max(36),
           gross: trendSensitivityStats,
           net: trendSensitivityStats,
+          trading_costs: z.record(z.string(), n.nonnegative()).optional(),
         }),
       )
       .length(36)
@@ -265,6 +267,17 @@ const bootstrapTrendSeries = z
         z.tuple([
           ...bootstrapTrendMetrics,
           ...bootstrapTrendMetrics,
+          n.nonnegative().nullable(), // Annualized commissions
+          n.nonnegative().nullable(), // Annualized tax
+          n.nonnegative().nullable(), // Annualized costs
+          n.nonnegative().nullable(), // Total commissions
+          n.nonnegative().nullable(), // Total tax
+          n.nonnegative().nullable(), // Total costs
+          n.nonnegative().nullable(), // Unpaid tax
+        ]),
+        z.tuple([
+          ...bootstrapTrendMetrics,
+          ...bootstrapTrendMetrics,
           n.nonnegative().nullable(),
         ]),
         z.tuple(bootstrapTrendMetrics),
@@ -277,6 +290,8 @@ const bootstrapTrendSensitivity = z
     iterations: n.int().min(1).max(2000),
     validation_sample_fingerprint: hash.optional(),
     commission_basis: z.literal("pretrade_nav").optional(),
+    tax_methodology: z.string().optional(),
+    metric_order: z.array(z.string()).length(13).optional(),
     portfolio: bootstrapTrendSeries,
     by_asset: z.record(z.string(), bootstrapTrendSeries),
   })
@@ -296,7 +311,11 @@ const efficiencyDistance = z
     portfolio_metrics: z
       .record(
         z.string(),
-        z.union([n.nullable(), z.record(z.string(), n.nullable())]),
+        z.union([
+          n.nullable(),
+          z.boolean(),
+          z.record(z.string(), n.nullable()),
+        ]),
       )
       .optional(),
   })
@@ -784,6 +803,13 @@ export function validateRecord(value: unknown): void {
   checkWeights(r);
   if (record.kind === "bootstrap") {
     const b = results.bootstrap.parse(record.result);
+    if (
+      b.trend_sensitivity &&
+      b.trend_sensitivity.tax_methodology !== b.reproducibility.tax_methodology
+    )
+      throw new Error(
+        "Методологии налога в Bootstrap и анализе чувствительности различаются.",
+      );
     for (const o of Object.values(b.objectives))
       if (
         o.stability &&

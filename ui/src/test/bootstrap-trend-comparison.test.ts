@@ -12,7 +12,21 @@ it("uses matched draws, per-draw Calmar and metric-specific sample counts", () =
       [0.4, 0.4, null],
     ],
     [
-      [0.15, 0.15, null, 0.25, 0.1, null, 0.001],
+      [
+        0.15,
+        0.15,
+        null,
+        0.25,
+        0.1,
+        null,
+        0.001,
+        0.002,
+        0.003,
+        0.01,
+        0.02,
+        0.03,
+        0,
+      ],
       [0.1, 0.3, null, 0.21, 0.2, null, 0.002],
       [0.35, 0.3, null, 0.41, 0.2, null, 0.003],
       [0.5, 0.2, null, 0.55, 0.15, null, null],
@@ -30,6 +44,9 @@ it("uses matched draws, per-draw Calmar and metric-specific sample counts", () =
   expect(candidate.calmar.value).toBeCloseTo((1 + 0.35 / 0.3) / 2);
   expect(candidate.calmar.count).toBe(4);
   expect(candidate.commissions).toEqual({ value: 0.002, count: 3 });
+  expect(candidate.tax).toEqual({ value: 0.002, count: 1 });
+  expect(candidate.costs).toEqual({ value: 0.003, count: 1 });
+  expect(reference.tax).toEqual({ value: null, count: 0 });
   expect(candidate.higherCagr).toEqual({ value: 2 / 3, count: 3 });
   expect(candidate.higherCagrLowerDrawdown).toEqual({ value: 1 / 2, count: 2 });
   expect(reference.higherCagr).toEqual({ value: 0, count: 4 });

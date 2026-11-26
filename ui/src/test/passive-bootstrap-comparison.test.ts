@@ -6,6 +6,8 @@ it("subtracts active metrics from passive metrics within each draw and excludes 
   const samples: BootstrapControlSample[] = [
     {
       controlled: {
+        annualized_capital_gains_tax: 0.004,
+        annualized_total_costs: 0.006,
         net: {
           annualized_cagr: 0.05,
           annualized_volatility: 0.2,
@@ -14,6 +16,8 @@ it("subtracts active metrics from passive metrics within each draw and excludes 
         },
       },
       baseline: {
+        annualized_capital_gains_tax: 0.001,
+        annualized_total_costs: 0.002,
         net: {
           annualized_cagr: 0.1,
           annualized_volatility: 0.15,
@@ -55,6 +59,16 @@ it("subtracts active metrics from passive metrics within each draw and excludes 
   expect(comparison.differences.delta_cagr?.valid_count).toBe(2);
   expect(comparison.differences.delta_cagr?.median).toBeCloseTo(-0.025);
   expect(comparison.differences.delta_cagr?.p5).toBeCloseTo(-0.0925);
+  expect(
+    comparison.differences.delta_annualized_capital_gains_tax?.mean,
+  ).toBeCloseTo(-0.003);
+  expect(comparison.differences.delta_annualized_total_costs?.valid_count).toBe(
+    1,
+  );
+  expect(comparison.win_frequencies.lower_annualized_total_costs).toEqual({
+    fraction: 1,
+    denominator: 1,
+  });
   expect(comparison.win_frequencies.higher_cagr).toEqual({
     fraction: 0.5,
     denominator: 2,

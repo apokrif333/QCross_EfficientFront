@@ -17,6 +17,11 @@ import type {
 import { METHODS } from "../types";
 import { compatible } from "../lib/snapshot";
 import { comparePassiveBootstrap } from "../lib/passiveBootstrapComparison";
+import {
+  annualCostHint,
+  annualCostKeys,
+  costLabels,
+} from "../lib/tradingCosts";
 import { threeYearReturnCounts } from "../lib/rollingReturns";
 import {
   displayedVolatility,
@@ -134,10 +139,7 @@ function BootstrapPortfolioMetrics({
     terminal_wealth: "Стоимость из $1 к концу горизонта",
     calmar_ratio: "Calmar",
     sortino_ratio: "Исторический Sortino",
-    total_commissions: "Всего комиссий на $1 начального капитала",
-    total_capital_gains_tax:
-      "Налог на прирост капитала на $1 начального капитала",
-    annualized_commissions: "Годовые комиссии относительно NAV перед сделкой",
+    ...costLabels,
     annualized_turnover: "Годовой двусторонний оборот",
   };
   const format = (key: string, value: number | null) => {
@@ -146,13 +148,7 @@ function BootstrapPortfolioMetrics({
       ["historical_sharpe_ratio", "sortino_ratio", "calmar_ratio"].includes(key)
     )
       return number(value);
-    if (
-      [
-        "terminal_wealth",
-        "total_commissions",
-        "total_capital_gains_tax",
-      ].includes(key)
-    )
+    if (key === "terminal_wealth" || key.startsWith("total_"))
       return `$${number(value, 3)}`;
     if (key === "return_shortfall" || key === "excess_volatility")
       return `${(value * 100).toFixed(2)} п.п.`;
@@ -230,7 +226,7 @@ function BootstrapPortfolioMetrics({
                 ([key]) =>
                   key !== "return_shortfall" &&
                   key !== "excess_volatility" &&
-                  (taxed || key !== "total_capital_gains_tax"),
+                  (taxed || !key.includes("capital_gains_tax")),
               )
               .map(([key, d]) => (
                 <tr key={key}>
@@ -259,6 +255,15 @@ function BootstrapPortfolioMetrics({
           </tbody>
         </table>
       </div>
+      {!gross && robustness.distributions.annualized_total_costs && (
+        <p className="hint">{annualCostHint}</p>
+      )}
+      {!gross && !!robustness.tax_insolvent_count && (
+        <p className="warning">
+          Сценарии с непогашенным налогом включены в статистику (
+          {robustness.tax_insolvent_count}).
+        </p>
+      )}
     </section>
   );
 }
@@ -805,6 +810,9 @@ export function CVView({
     )
       ? r.efficiency_robustness
       : null;
+  const validationCosts = annualCostKeys.filter((key) =>
+    r.folds.some((f) => f.validation_metrics?.trading_costs?.[key] != null),
+  );
   const data = useMemo(
     () =>
       r.assets.map(
@@ -963,6 +971,9 @@ export function CVView({
               <th>Train CAGR / historical vol</th>
               <th>Validation CAGR / historical vol</th>
               <th>Historical Validation Sharpe</th>
+              {validationCosts.map((key) => (
+                <th key={key}>{costLabels[key]} · Validation Net</th>
+              ))}
               {(userEfficiency || r.paired_comparison) && (
                 <th>
                   {r.paired_comparison?.user_portfolio_mode === "controlled"
@@ -1032,6 +1043,22 @@ export function CVView({
                     {percent(f.validation_metrics?.realized_annual_volatility)}
                   </td>
                   <td>{number(f.validation_metrics?.realized_sharpe_ratio)}</td>
+                  {validationCosts.map((key) => (
+                    <td key={key}>
+                      {percent(f.validation_metrics?.trading_costs?.[key], 4)}
+                      {key === "annualized_total_costs" &&
+                        f.validation_metrics?.tax_insolvent && (
+                          <small>
+                            Непогашенный налог: $
+                            {number(
+                              f.validation_metrics.trading_costs
+                                ?.unpaid_capital_gains_tax,
+                              4,
+                            )}
+                          </small>
+                        )}
+                    </td>
+                  ))}
                   {(userEfficiency || r.paired_comparison) && (
                     <td>
                       {paired?.user ? (

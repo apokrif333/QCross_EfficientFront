@@ -21,6 +21,10 @@ JOINED_METRICS = {
     "terminal_wealth": "terminal_wealth",
     "commissions": "total_commissions",
     "annualized_commissions": "annualized_commissions",
+    "capital_gains_tax": "total_capital_gains_tax",
+    "annualized_capital_gains_tax": "annualized_capital_gains_tax",
+    "total_costs": "total_costs",
+    "annualized_total_costs": "annualized_total_costs",
     "turnover": "annualized_turnover",
 }
 
@@ -35,6 +39,7 @@ def _encode_wealth(wealth):
     values = np.asarray(wealth, dtype=float)
     logs = np.full(values.shape, np.nan)
     np.log(values, out=logs, where=(values > 0) & np.isfinite(values))
+    logs[values == 0] = -np.inf
     return b64encode(logs.astype("<f4").tobytes()).decode("ascii")
 
 
@@ -76,12 +81,15 @@ def compare_validation(
             record["optimized"].pop("net_wealth")
         )
     record["differences"] = {
-        f"delta_{name}": record["optimized"][key] - record["user"][key]
-        if record["optimized"][key] is not None and record["user"][key] is not None
-        else None
-        for name, key in METRICS.items()
+        f"delta_{name}": None if a is None or b is None else a - b
+        for name, key in JOINED_METRICS.items()
+        for a, b in [(_metric(record["optimized"], key), _metric(record["user"], key))]
     }
     return record
+
+
+def _metric(path, key):
+    return path.get(key, path.get("trading_costs", {}).get(key))
 
 
 def summarize(records, *, metrics=METRICS):
@@ -112,6 +120,11 @@ def summarize(records, *, metrics=METRICS):
         ("higher_sharpe", ["delta_sharpe"], lambda d: d["delta_sharpe"] > 0),
         ("lower_volatility", ["delta_volatility"], lambda d: d["delta_volatility"] < 0),
         ("lower_drawdown", ["delta_max_drawdown"], lambda d: d["delta_max_drawdown"] < 0),
+        (
+            "lower_annualized_total_costs",
+            ["delta_annualized_total_costs"],
+            lambda d: d["delta_annualized_total_costs"] < 0,
+        ),
         (
             "higher_cagr_no_higher_volatility",
             ["delta_cagr", "delta_volatility"],
@@ -168,8 +181,8 @@ def joined_validation_comparison(
 
     def scalar_metrics(path):
         return {
-            key: path.get(key, path.get("trading_costs", {}).get(key))
-            for key in JOINED_METRICS.values()
+            **{key: _metric(path, key) for key in JOINED_METRICS.values()},
+            "unpaid_capital_gains_tax": _metric(path, "unpaid_capital_gains_tax"),
         }
 
     def point(path):
@@ -179,6 +192,10 @@ def joined_validation_comparison(
         }
 
     record["user"] = scalar_metrics(user)
+    record["tax_insolvent"] = {
+        "user": user.get("tax_insolvent"),
+        "optimized": optimized_metrics.get("tax_insolvent") if optimized_metrics else None,
+    }
     if optimized_metrics is not None:
         record["optimized"] = scalar_metrics(optimized_metrics)
         for name, metric in JOINED_METRICS.items():

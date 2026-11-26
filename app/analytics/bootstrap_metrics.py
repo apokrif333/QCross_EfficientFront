@@ -2,6 +2,8 @@
 
 import numpy as np
 
+from app.analytics.portfolio_simulator import COST_METRICS, TRADING_METRICS, simulate_portfolio
+
 PORTFOLIO_METRICS = (
     "annualized_cagr",
     "annualized_arithmetic_return",
@@ -11,9 +13,7 @@ PORTFOLIO_METRICS = (
     "terminal_wealth",
     "calmar_ratio",
     "sortino_ratio",
-    "total_commissions",
-    "total_capital_gains_tax",
-    "annualized_commissions",
+    *COST_METRICS,
     "annualized_turnover",
 )
 
@@ -21,8 +21,6 @@ PORTFOLIO_METRICS = (
 def fixed_portfolio_metrics(
     values, weights, risk_free_returns, *, include_wealth=False, **simulation_options
 ) -> dict:
-    from app.analytics.portfolio_simulator import simulate_portfolio
-
     simulation = simulate_portfolio(
         values,
         weights,
@@ -39,19 +37,8 @@ def simulation_metrics(simulation, *, include_wealth=False):
         **simulation["net"],
         **({"net_wealth": simulation["net_wealth"]} if include_wealth else {}),
         "gross_metrics": simulation["gross"],
-        "trading_costs": {
-            k: simulation[k]
-            for k in (
-                "total_commissions",
-                "total_capital_gains_tax",
-                "annualized_commissions",
-                "trade_count",
-                "rebalancing_events",
-                "annualized_turnover",
-                "execution_target_adjustment",
-            )
-            if k in simulation
-        },
+        "trading_costs": {k: simulation[k] for k in TRADING_METRICS if k in simulation},
+        "tax_insolvent": simulation.get("tax_insolvent", False),
     }
 
 
@@ -92,12 +79,15 @@ def summarize_bootstrap_portfolio(records: list[dict], months: int, *, include_g
             or distance
             or key == "historical_sharpe_ratio",
             "units": "wealth_from_one_usd"
-            if key in {"terminal_wealth", "total_commissions", "total_capital_gains_tax"}
+            if key == "terminal_wealth" or key.startswith("total_")
             else "dimensionless"
             if key in {"historical_sharpe_ratio", "calmar_ratio", "sortino_ratio"}
             else "decimal_fraction",
         }
     output = {
+        "tax_insolvent_count": sum(
+            bool(r.get("portfolio_metrics", {}).get("tax_insolvent")) for r in records
+        ),
         "horizon": {
             "months": months,
             "years": months / 12,
@@ -129,10 +119,9 @@ def summarize_bootstrap_portfolio(records: list[dict], months: int, *, include_g
                 "distributions"
             ].items()
             if k in PORTFOLIO_METRICS
-            and k not in {
-                "total_commissions",
-                "total_capital_gains_tax",
-                "annualized_commissions",
+            and k
+            not in {
+                *COST_METRICS,
                 "annualized_turnover",
             }
         }

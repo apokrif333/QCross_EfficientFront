@@ -84,7 +84,7 @@ def test_continuous_scheduled_path_matches_independent_cash_accounting():
     )
     np.testing.assert_allclose(path["net_wealth"], expected, rtol=1e-12)
     np.testing.assert_allclose(path["positions"][2], [0, after_switch], rtol=1e-12, atol=1e-14)
-    assert [event["kind"] for event in path["events"]] == ["initial_purchase", "rebalance"]
+    assert [event["kind"] for event in path["events"]] == ["initial_purchase", "fold_target_change"]
     assert path["events"][1]["reason"] == "fold_target_change"
     assert path["execution_target_adjustment"] == 0
     assert path["total_commissions"] == pytest.approx(1 - invested + before_switch - after_switch)

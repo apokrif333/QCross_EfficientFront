@@ -23,6 +23,7 @@ import {
 } from "./lib/api";
 import { reusableControlCache } from "./lib/controlCache";
 import {
+  ANNUAL_TAX_METHODOLOGY,
   compareCalculations,
   compatible,
   effectiveRequest,
@@ -432,6 +433,13 @@ export default function App() {
           throw new Error(
             "Сценарии Validation в Bootstrap и анализе чувствительности различаются.",
           );
+        if (
+          trend_sensitivity.tax_methodology !==
+          calculation.result.reproducibility.tax_methodology
+        )
+          throw new Error(
+            "Методологии налога в Bootstrap и анализе чувствительности различаются. Повторите Bootstrap.",
+          );
         setCalculations((current) =>
           current.map((record) =>
             record.id === calculation.id
@@ -832,6 +840,16 @@ export default function App() {
                 как полный.
               </p>
             )}
+            {visible &&
+              visible.kind !== "rolling-efficiency" &&
+              visible.result.reproducibility.tax_methodology !==
+                ANNUAL_TAX_METHODOLOGY && (
+                <p className="warning">
+                  Сохранённый расчёт использует прежнюю методологию
+                  налогообложения. Новые показатели издержек в этом результате
+                  недоступны.
+                </p>
+              )}
             {!!visible?.request.capital_gains_tax_rate && (
               <p className="hint">
                 Налог на прирост капитала —{" "}

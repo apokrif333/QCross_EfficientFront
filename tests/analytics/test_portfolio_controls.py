@@ -430,6 +430,7 @@ def test_sensitivity_applies_common_period_to_all_enabled_assets(panel):
     from dataclasses import replace
 
     from app.analytics.portfolio_controls import attach_control_results, compare_controls
+    from app.analytics.portfolio_simulator import COST_METRICS
 
     config = {
         "mode": "trend",
@@ -466,5 +467,6 @@ def test_sensitivity_applies_common_period_to_all_enabled_assets(panel):
             "lookback_months": period,
             "gross": expected["gross"],
             "net": expected["net"],
+            "trading_costs": {key: expected[key] for key in COST_METRICS},
         }
     assert controls["config"]["trend"]["asset_rules"] == config["trend"]["asset_rules"]

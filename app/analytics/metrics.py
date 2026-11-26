@@ -33,7 +33,7 @@ def portfolio_metrics(
     simulation_options=None,
     history_months=None,
 ) -> dict:
-    from app.analytics.portfolio_simulator import simulate_portfolio
+    from app.analytics.portfolio_simulator import TRADING_METRICS, simulate_portfolio
 
     rf = (
         risk_free_returns
@@ -84,6 +84,7 @@ def portfolio_metrics(
         "historical_sharpe_ratio": net["historical_sharpe_ratio"],
         "historical_arithmetic_return": net["annualized_arithmetic_return"],
         "terminal_wealth": net["terminal_wealth"],
+        "tax_insolvent": simulation["tax_insolvent"],
         "rolling_3y": _rolling_three_year_counts(simulation["net_wealth"]),
         "gross_historical_metrics": gross,
         **(
@@ -97,17 +98,7 @@ def portfolio_metrics(
             if history_months is not None
             else {}
         ),
-        "trading_costs": {
-            k: simulation[k]
-            for k in (
-                "total_commissions",
-                "total_capital_gains_tax",
-                "trade_count",
-                "rebalancing_events",
-                "annualized_turnover",
-                "execution_target_adjustment",
-            )
-        },
+        "trading_costs": {k: simulation[k] for k in TRADING_METRICS},
     }
 
 

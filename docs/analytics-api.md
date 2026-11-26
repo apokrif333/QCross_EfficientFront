@@ -56,17 +56,25 @@ Allocation fractions and return/volatility fractions use decimals, not percentag
 
 ## Shared request
 
-`capital_gains_tax_rate` is a decimal fraction from 0 to 1 and defaults to 0
-for new requests and older snapshots. At each actual rebalancing or management
-trade, the simulator nets nominal realized gains and losses across the assets
-sold, deducts all commissions for that event, and taxes the positive balance.
-Partial sales use each asset's weighted-average purchase cost. Tax is paid
-from the portfolio together with fees. Unrealized gains, initial purchases and
-end-of-horizon holdings are not taxed, and unused losses are not carried to
-later events. Monthly total returns are treated as price gains. Real paths
-express cash outflows in the selected return basis while keeping the taxable
-gain nominal. Net includes fees and tax; Gross excludes both. Rolling
-efficiency continues to use model moments, without simulating trades.
+`capital_gains_tax_rate` is a decimal fraction from 0 to 1 and defaults to 0.
+The tax model nets nominal realized profits and losses for each historical or
+synthetic calendar year. Buy fees enter average cost and sale fees reduce sale
+proceeds. Positive balances are settled from the portfolio at year-end and at
+the final observation. Remaining holdings are carried at their existing basis.
+Losses expire at the close of each year. Monthly total returns represent gains
+in accumulating funds. Net includes fees and paid tax. Gross excludes both.
+Rolling efficiency continues to use model moments without simulating trades.
+
+The response identifies `annual_net_realized_average_cost_v1` in
+`reproducibility.tax_methodology`. Cash cost totals are in units of the selected
+return basis per initial dollar. Annualized costs are pretrade NAV fractions
+scaled by `12 / months`. The six cost keys are `total_commissions`,
+`annualized_commissions`, `total_capital_gains_tax`,
+`annualized_capital_gains_tax`, `total_costs`, and `annualized_total_costs`.
+`tax_insolvent` and `unpaid_capital_gains_tax` disclose any unpaid balance.
+Bootstrap trend results identify their fixed metric order in `metric_order`
+and carry the original Validation fingerprint and tax methodology. See
+[portfolio simulation](rebalancing-engine.md) for event and calendar conventions.
 
 ```json
 {

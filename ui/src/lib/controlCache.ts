@@ -1,5 +1,5 @@
 import type { ApiRequest, BootstrapResult, Calculation } from "../types";
-import { effectiveRequest, stable } from "./snapshot";
+import { ANNUAL_TAX_METHODOLOGY, effectiveRequest, stable } from "./snapshot";
 
 export function reusableControlCache(
   body: ApiRequest,
@@ -28,7 +28,10 @@ export function reusableControlCache(
     if (result.methodology === "bidirectional_block_cv_stationary_bootstrap_v1")
       continue;
     const cache = result.portfolio_control_cache;
-    if (cache && fields.every((k) => stable(source[k]) === stable(target[k])))
+    if (
+      cache?.tax_methodology === ANNUAL_TAX_METHODOLOGY &&
+      fields.every((k) => stable(source[k]) === stable(target[k]))
+    )
       return cache;
   }
   return undefined;

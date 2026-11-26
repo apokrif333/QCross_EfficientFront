@@ -7,9 +7,9 @@ from importlib.metadata import version
 from inspect import signature
 from pathlib import Path
 
-from app.analytics.models import ReturnPanel
+from app.analytics.models import TAX_METHODOLOGY, ReturnPanel
 
-ENGINE_VERSION = "4.2.0"
+ENGINE_VERSION = "4.3.0"
 
 
 def reproducible(function):
@@ -111,6 +111,8 @@ def panel_provenance(panel: ReturnPanel) -> dict:
     )
     if panel.risk_free_returns is not None:
         reference_digest.update(panel.risk_free_returns.astype("<f8").tobytes())
+    if panel.inflation_factors is not None:
+        reference_digest.update(panel.inflation_factors.astype("<f8").tobytes())
     if panel.control_config.get("mode", "none") != "none":
         reference_digest.update(json.dumps(panel.control_config, sort_keys=True).encode())
         if panel.control_returns is not None:
@@ -127,6 +129,7 @@ def panel_provenance(panel: ReturnPanel) -> dict:
         if panel.control_signal_returns is not None:
             reference_digest.update(panel.control_signal_returns.to_numpy(dtype="<f8").tobytes())
     return {
+        "tax_methodology": TAX_METHODOLOGY,
         "reference_panel_sha256": reference_digest.hexdigest(),
         "engine": engine_identity(),
         "returns_matrix_sha256": digest.hexdigest(),

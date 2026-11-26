@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 
+from app.analytics.bootstrap_metrics import simulation_metrics
 from app.analytics.constraints import user_allocation
 from app.analytics.efficiency_distance import efficiency_distance, summarize_distances
 from app.analytics.estimators import estimate_covariance
@@ -11,8 +12,9 @@ from app.analytics.frontier import data_diagnostics, describe, prepare
 from app.analytics.metrics import portfolio_metrics
 from app.analytics.models import AnalyticsError, OptimizationResult, ReturnPanel
 from app.analytics.optimizer import PortfolioOptimizer
-from app.analytics.paired_comparison import compare_validation, summarize
+from app.analytics.paired_comparison import JOINED_METRICS, compare_validation, summarize
 from app.analytics.portfolio_controls import compare_controls
+from app.analytics.portfolio_simulator import TRADING_METRICS
 from app.analytics.provenance import reproducible
 from app.analytics.references import differential_moments
 from app.analytics.splitting import (
@@ -228,16 +230,8 @@ def analyze_cross_validation(
                     "historical_cagr": path["net"]["annualized_cagr"],
                     "historical_max_drawdown": path["net"]["maximum_drawdown"],
                     "gross_metrics": path["gross"],
-                    "trading_costs": {
-                        k: path[k]
-                        for k in (
-                            "total_commissions",
-                            "total_capital_gains_tax",
-                            "trade_count",
-                            "rebalancing_events",
-                            "annualized_turnover",
-                        )
-                    },
+                    "trading_costs": {k: path[k] for k in TRADING_METRICS},
+                    "tax_insolvent": path["tax_insolvent"],
                     "historical_sharpe_ratio": None,
                 }
                 validation_rf = (
@@ -321,20 +315,7 @@ def analyze_cross_validation(
                     comparison = compare_controls(panel, user_weights, validation)
                     fold["portfolio_controls"] = comparison
                     path = comparison["controlled"]
-                    validation_user_metrics = {
-                        **path["net"],
-                        "gross_metrics": path["gross"],
-                        "trading_costs": {
-                            key: path[key]
-                            for key in (
-                                "total_commissions",
-                                "total_capital_gains_tax",
-                                "trade_count",
-                                "rebalancing_events",
-                                "annualized_turnover",
-                            )
-                        },
-                    }
+                    validation_user_metrics = simulation_metrics(path)
                 fold["paired_comparison"] = compare_validation(
                     validation_values,
                     rf,
@@ -374,7 +355,8 @@ def analyze_cross_validation(
     paired_summary = None
     if fixed_user_weights is not None and include_paired_comparison:
         paired_summary = summarize(
-            [f["paired_comparison"] for f in fold_results if "paired_comparison" in f]
+            [f["paired_comparison"] for f in fold_results if "paired_comparison" in f],
+            metrics=JOINED_METRICS,
         )
         paired_summary.update(
             user_portfolio_mode="controlled" if controls_enabled else "passive",

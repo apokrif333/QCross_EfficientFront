@@ -17,6 +17,10 @@ const METRICS = [
   ["delta_terminal_wealth", "terminal_wealth"],
   ["delta_commissions", "total_commissions"],
   ["delta_annualized_commissions", "annualized_commissions"],
+  ["delta_capital_gains_tax", "total_capital_gains_tax"],
+  ["delta_annualized_capital_gains_tax", "annualized_capital_gains_tax"],
+  ["delta_total_costs", "total_costs"],
+  ["delta_annualized_total_costs", "annualized_total_costs"],
   ["delta_turnover", "annualized_turnover"],
 ] as const;
 
@@ -119,6 +123,10 @@ export function comparePassiveBootstrap(
       lower_drawdown: frequency(
         ["delta_max_drawdown"],
         (drawdown) => drawdown < 0,
+      ),
+      lower_annualized_total_costs: frequency(
+        ["delta_annualized_total_costs"],
+        (cost) => cost < 0,
       ),
       higher_cagr_no_higher_volatility: frequency(
         ["delta_cagr", "delta_volatility"],

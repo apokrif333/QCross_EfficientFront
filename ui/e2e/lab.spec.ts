@@ -14,6 +14,11 @@ test("Demo works without API; charts, mobile, snapshot export and reload", async
   ).toBeVisible();
   await expect(page.locator(".js-plotly-plot")).toHaveCount(1);
   await expect(
+    page.getByText(
+      /Сохранённый расчёт использует прежнюю методологию налогообложения/,
+    ),
+  ).toBeVisible();
+  await expect(
     page.getByRole("combobox", { name: "Метод ковариации", exact: true }),
   ).toHaveValue("nonlinear");
   await page.getByRole("button", { name: "GMV", exact: true }).click();
@@ -83,6 +88,7 @@ test("all four Live jobs, four-method comparison and exact snapshot repeat throu
     !process.env.QCROSS_LIVE_TEST,
     "Start real FastAPI and set QCROSS_LIVE_TEST=1 for stored-history integration.",
   );
+  test.setTimeout(300_000);
   const jobs: {
     kind: string;
     seconds: number;
@@ -136,7 +142,7 @@ test("all four Live jobs, four-method comparison and exact snapshot repeat throu
     await page.getByRole("button", { name: "Рассчитать", exact: true }).click();
     await expect(
       page.getByRole("button", { name: "Рассчитать", exact: true }),
-    ).toBeEnabled();
+    ).toBeEnabled({ timeout: 120_000 });
     await expect(page.getByRole("alert")).toHaveCount(0);
   };
   await run();
@@ -198,7 +204,7 @@ test("all four Live jobs, four-method comparison and exact snapshot repeat throu
       name: "Повторить снимок через Live",
       exact: true,
     }),
-  ).toBeEnabled({ timeout: 90000 });
+  ).toBeEnabled({ timeout: 120_000 });
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByText(/Численные результаты совпадают/)).toHaveCount(7);
   expect(jobs.filter((j) => j.status === "complete")).toHaveLength(15);

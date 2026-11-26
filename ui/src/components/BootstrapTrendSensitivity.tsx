@@ -134,7 +134,7 @@ export default function BootstrapTrendSensitivity({
   const [selectedGross, setGross] = useState(false);
   const [benchmark, setBenchmark] = useState(DEFAULT_PERIOD);
   const [visible, setVisible] = useState(() => new Set([DEFAULT_PERIOD]));
-  const hasGross = value?.portfolio[0]?.[0]?.length === 7;
+  const hasGross = (value?.portfolio[0]?.[0]?.length ?? 0) >= 7;
   const gross = hasGross && selectedGross;
   const scopes = ["", ...Object.keys(value?.by_asset ?? {})];
   const selectedAsset = value?.by_asset[asset] ? asset : "";

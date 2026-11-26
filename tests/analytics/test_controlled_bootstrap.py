@@ -20,14 +20,23 @@ def test_selected_my_portfolio_objective_uses_controlled_sample_risk(panel):
         bootstrap_iterations=4,
         user_weights=USER,
         objectives=["max_return_at_user_risk"],
+        capital_gains_tax_rate=0.1,
+        transaction_fee_rate=0.002,
     )
     objective = result["objectives"]["max_return_at_user_risk"]
     assert objective["original"]["weights"] is None
     splits = bootstrap_folds(len(p.values), 4, "sample")
     for iteration, row in enumerate(objective["iterations"]):
         draws = list(bootstrap_generation(splits, 12, 42, iteration))
-        for fold, (train, _) in zip(row["folds"], draws, strict=True):
-            expected = compare_controls(p, USER, train, record_history=False)["controlled"]["net"]
+        for fold, (train, _), (source_train, _) in zip(row["folds"], draws, splits, strict=True):
+            expected = compare_controls(
+                p,
+                USER,
+                train,
+                record_history=False,
+                synthetic=True,
+                calendar_start=int(source_train[0]),
+            )["controlled"]["net"]
             assert (
                 fold["diagnostics"]["training_user_volatility"] == expected["annualized_volatility"]
             )
@@ -38,9 +47,11 @@ def controlled_panel(panel, mode="downside_vol", basis="nominal"):
     frame = panel.returns.copy()
     rf = np.full(len(frame), 0.001)
     signal_returns = None
+    inflation_factors = None
     if basis == "real":
         signal_returns = frame.assign(hedge=rf)
         inflation = 0.002 + 0.001 * np.sin(np.arange(len(frame)))
+        inflation_factors = 1 + inflation
         frame.iloc[:, :] = (1 + frame.values) / (1 + inflation[:, None]) - 1
         rf = (1 + rf) / (1 + inflation) - 1
     hedge = frame.copy()
@@ -52,6 +63,7 @@ def controlled_panel(panel, mode="downside_vol", basis="nominal"):
         return_basis=basis,
         control_returns=hedge,
         control_signal_returns=signal_returns,
+        inflation_factors=inflation_factors,
         simulation_options={"transaction_fee_rate": 0.002, "rebalancing_interval_months": 12},
         control_config={
             "mode": mode,
@@ -216,6 +228,7 @@ def test_trend_sensitivity_reuses_every_draw_with_portfolio_and_single_asset_rul
         user_weights=USER,
         include_paired_comparison=False,
         transaction_fee_rate=fee_rate,
+        capital_gains_tax_rate=0.10,
         rebalancing_interval_months=interval,
         _sample_indices=retained,
     )
@@ -229,7 +242,7 @@ def test_trend_sensitivity_reuses_every_draw_with_portfolio_and_single_asset_rul
     assert sweep["iterations"] == len(samples)
     assert set(sweep["by_asset"]) == {"1", "2"}
     for asset, series in [(None, sweep["portfolio"]), *sweep["by_asset"].items()]:
-        assert np.shape(series) == (36, len(samples), 7)
+        assert np.shape(series) == (36, len(samples), 13)
         weights = USER if asset is None else {asset: 1.0}
         for month, actual in enumerate(series, 1):
             rules = {
@@ -242,18 +255,15 @@ def test_trend_sensitivity_reuses_every_draw_with_portfolio_and_single_asset_rul
             )
             expected = []
             for indices in samples:
-                controlled = compare_controls(varied, weights, indices, record_history=False)[
-                    "controlled"
-                ]
+                controlled = compare_controls(
+                    varied, weights, indices, record_history=False, synthetic=True
+                )["controlled"]
                 expected.append(
                     [
                         controlled[side][k]
                         for side in ("net", "gross")
                         for k in ("annualized_cagr", "maximum_drawdown", "annualized_volatility")
                     ]
-                    + [
-                        fee_rate * controlled["annualized_turnover"]
-                        + fee_rate / (1 + fee_rate) * 12 / len(indices)
-                    ]
+                    + [controlled[key] for key in sweep["metric_order"][6:]]
                 )
             np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)

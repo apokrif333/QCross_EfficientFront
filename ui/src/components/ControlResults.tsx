@@ -2,6 +2,12 @@ import { useState } from "react";
 import Plot from "./Plot";
 import PortfolioPathCharts from "./PortfolioPathCharts";
 import { number, percent, ticker, escapeHtml } from "../lib/display";
+import {
+  costLabels,
+  annualCostKeys,
+  annualCostHint,
+  eventLabels,
+} from "../lib/tradingCosts";
 import type {
   AssetTrendSensitivityResult,
   Instrument,
@@ -54,7 +60,7 @@ const labels: Record<string, string> = {
   maximum_drawdown: "Максимальная просадка",
   terminal_wealth: "Капитал из $1",
   average_annual_commission: "Среднегодовые комиссии, % капитала",
-  total_capital_gains_tax: "Налог, % от начального капитала",
+  ...costLabels,
   trade_count: "Количество сделок",
   rebalancing_events: "Ребалансировки",
   annualized_turnover: "Оборот в год",
@@ -69,7 +75,11 @@ const metric = (key: string, v: number | null) =>
     ? number(v, key.includes("count") || key === "rebalancing_events" ? 0 : 3)
     : key === "terminal_wealth"
       ? `$${number(v, 4)}`
-      : percent(v, 3);
+      : key.startsWith("total_")
+        ? v == null
+          ? "—"
+          : `$${number(v, 4)}`
+        : percent(v, key in costLabels ? 4 : 3);
 
 export default function ControlResults({
   result,
@@ -96,6 +106,13 @@ export default function ControlResults({
   if (!c) return null;
   const taxed = !!result.simulation_settings?.capital_gains_tax_rate;
   const side = gross ? "gross" : "net";
+  const annualized = c.baseline.annualized_commissions != null;
+  const costKeys = Object.keys(costLabels).filter(
+    (key) =>
+      key !== "unpaid_capital_gains_tax" &&
+      c.baseline[key] != null &&
+      (taxed || !key.includes("capital_gains_tax")),
+  );
   const name = (a: string) =>
     a === "BIL_REFERENCE" ? "BIL" : ticker(a, instruments);
   const portfolioSensitivity: TrendSensitivityPoint[] =
@@ -178,8 +195,12 @@ export default function ControlResults({
               </tr>
             ))}
             {[
-              "average_annual_commission",
-              ...(taxed ? ["total_capital_gains_tax"] : []),
+              ...(!gross
+                ? [
+                    ...(!annualized ? ["average_annual_commission"] : []),
+                    ...costKeys,
+                  ]
+                : []),
               "trade_count",
               "rebalancing_events",
               "annualized_turnover",
@@ -201,11 +222,21 @@ export default function ControlResults({
           </tbody>
         </table>
       </div>
-      <p className="hint">
-        Среднегодовые комиссии: сумма долей капитала перед каждой сделкой за
-        календарный год, затем среднее по годам выбранного периода, включая
-        неполные годы и первоначальную покупку.
-      </p>
+      {!gross && annualized && <p className="hint">{annualCostHint}</p>}
+      {!gross && (c.baseline.tax_insolvent || c.controlled.tax_insolvent) && (
+        <p className="warning">
+          Непогашенный налог на $1 начального капитала · исходный{" "}
+          {number(c.baseline.unpaid_capital_gains_tax, 4)}, управляемый{" "}
+          {number(c.controlled.unpaid_capital_gains_tax, 4)}.
+        </p>
+      )}
+      {!gross && !annualized && (
+        <p className="hint">
+          Среднегодовые комиссии: сумма долей капитала перед каждой сделкой за
+          календарный год, затем среднее по годам выбранного периода, включая
+          неполные годы и первоначальную покупку.
+        </p>
+      )}
       <PortfolioPathCharts
         titleSuffix="исходный и управляемый"
         months={c.months}
@@ -355,8 +386,18 @@ export default function ControlResults({
                 textposition: "top center",
                 cliponaxis: false,
                 marker: { color: "#0072b2", size: 8 },
+                customdata: sensitivity.map((p) =>
+                  gross || p.trading_costs?.annualized_total_costs == null
+                    ? ""
+                    : annualCostKeys
+                        .map(
+                          (key) =>
+                            `<br>${costLabels[key]}: ${percent(p.trading_costs?.[key], 4)}`,
+                        )
+                        .join(""),
+                ),
                 hovertemplate:
-                  "Период: %{text} мес.<br>Максимальная просадка: %{x:.2%}<br>CAGR: %{y:.2%}<extra></extra>",
+                  "Период: %{text} мес.<br>Максимальная просадка: %{x:.2%}<br>CAGR: %{y:.2%}%{customdata}<extra></extra>",
               },
               ...(regression
                 ? [
@@ -394,7 +435,7 @@ export default function ControlResults({
         </p>
       )}
       <details>
-        <summary>Сигналы и сделки</summary>
+        <summary>Сигналы и сделки Net</summary>
         <table>
           <tbody>
             {c.controlled.events.map((e: any, i: number) => (
@@ -405,11 +446,18 @@ export default function ControlResults({
                     : c.months[e.month_index]}
                 </td>
                 <td>
-                  {e.reason === "control_change"
-                    ? "Изменение управляющего сигнала"
-                    : e.reason === "rebalancing_policy"
-                      ? "Плановая ребалансировка"
-                      : "Начальная покупка"}
+                  {eventLabels[e.kind] ?? eventLabels[e.reason] ?? e.kind}
+                  {e.capital_gains_tax > 0 && (
+                    <small>
+                      Уплачено налога: ${number(e.capital_gains_tax, 5)}
+                    </small>
+                  )}
+                  {e.unpaid_capital_gains_tax > 0 && (
+                    <small>
+                      Непогашенный налог: $
+                      {number(e.unpaid_capital_gains_tax, 5)}
+                    </small>
+                  )}
                   <br />
                   {e.control_state?.entries?.length > 0 &&
                     `Вход: ${e.control_state.entries.map(name).join(", ")}`}

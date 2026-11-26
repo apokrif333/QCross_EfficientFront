@@ -134,6 +134,7 @@ class CachedControlSample(BaseModel):
 class BootstrapControlCache(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     version: Literal[1]
+    tax_methodology: str | None = None
     key: str = Field(pattern=r"^[a-f0-9]{64}$")
     original: dict[str, Any]
     samples: list[CachedControlSample] = Field(max_length=2000)
@@ -192,10 +193,26 @@ class AssetTrendSensitivityRequest(AnalyticsRequest):
         return self
 
 
+class TradingCostsRead(BaseModel):
+    model_config = ConfigDict(extra="allow", allow_inf_nan=False)
+    total_commissions: float | None = None
+    annualized_commissions: float | None = None
+    total_capital_gains_tax: float | None = None
+    annualized_capital_gains_tax: float | None = None
+    total_costs: float | None = None
+    annualized_total_costs: float | None = None
+    unpaid_capital_gains_tax: float | None = None
+    trade_count: int | None = None
+    rebalancing_events: int | None = None
+    annualized_turnover: float | None = None
+    execution_target_adjustment: float | None = None
+
+
 class PortfolioMetrics(BaseModel):
     model_config = ConfigDict(extra="allow", allow_inf_nan=False)
     gross_historical_metrics: dict[str, float | None] | None = None
-    trading_costs: dict[str, float | int] | None = None
+    trading_costs: TradingCostsRead | None = None
+    tax_insolvent: bool | None = None
     expected_return: float
     volatility: float
     historical_volatility: float
@@ -335,18 +352,8 @@ class BootstrapEfficiencyRead(BaseModel):
     distributions: dict[str, BootstrapMetricDistribution] | None = None
 
 
-# Per-generation summary ordered as net metrics, gross metrics, annualized commissions.
-# Each set of return/risk metrics is CAGR, maximum drawdown and annualized volatility.
-BootstrapTrendMetric = float | None
-BootstrapTrendPoint = tuple[
-    BootstrapTrendMetric,
-    BootstrapTrendMetric,
-    BootstrapTrendMetric,
-    BootstrapTrendMetric,
-    BootstrapTrendMetric,
-    BootstrapTrendMetric,
-    BootstrapTrendMetric,
-]
+# Net and Gross return/risk metrics, annualized and cumulative Net costs, unpaid tax.
+BootstrapTrendPoint = Annotated[list[float | None], Field(min_length=13, max_length=13)]
 
 
 class BootstrapTrendSensitivity(BaseModel):
@@ -354,6 +361,8 @@ class BootstrapTrendSensitivity(BaseModel):
     iterations: int = Field(gt=0)
     validation_sample_fingerprint: str
     commission_basis: Literal["pretrade_nav"]
+    tax_methodology: Literal["annual_net_realized_average_cost_v1"]
+    metric_order: list[str] = Field(min_length=13, max_length=13)
     portfolio: list[list[BootstrapTrendPoint]] = Field(min_length=36, max_length=36)
     by_asset: dict[str, list[list[BootstrapTrendPoint]]]
 
@@ -417,6 +426,7 @@ class TrendSensitivityPoint(BaseModel):
     lookback_months: int = Field(ge=1, le=36)
     gross: TrendSensitivityStats
     net: TrendSensitivityStats
+    trading_costs: dict[str, float]
 
 
 class AssetTrendSensitivitySeries(BaseModel):

@@ -1,4 +1,5 @@
 import type { Instrument, Portfolio } from "../types";
+import { annualCostKeys, costLabels } from "../lib/tradingCosts";
 import {
   displayedVolatility,
   number,
@@ -17,6 +18,11 @@ export default function PortfolioTable({
   onSelect?: (p: Portfolio, label: string) => void;
   historicalSharpeOnly?: boolean;
 }) {
+  const visibleCosts = annualCostKeys.filter((key) =>
+    rows.some(
+      ({ portfolio }) => portfolio.metrics?.trading_costs?.[key] != null,
+    ),
+  );
   return (
     <div className="table-scroll">
       <table>
@@ -35,6 +41,9 @@ export default function PortfolioTable({
             <th>{historicalSharpeOnly ? "Sharpe" : "Historical Sharpe"}</th>
             <th>Историческая CAGR</th>
             <th>Просадка</th>
+            {visibleCosts.map((key) => (
+              <th key={key}>{costLabels[key]} Net</th>
+            ))}
             <th>Веса</th>
           </tr>
         </thead>
@@ -50,6 +59,15 @@ export default function PortfolioTable({
                 </button>
                 {p.feasible === false && (
                   <small>Вне ограничений · reference</small>
+                )}
+                {p.metrics?.tax_insolvent && (
+                  <small>
+                    Непогашенный налог на $1: $
+                    {number(
+                      p.metrics.trading_costs?.unpaid_capital_gains_tax,
+                      4,
+                    )}
+                  </small>
                 )}
               </td>
               <td>
@@ -85,6 +103,9 @@ export default function PortfolioTable({
                   p.status === "historical_path" ? 3 : 2,
                 )}
               </td>
+              {visibleCosts.map((key) => (
+                <td key={key}>{percent(p.metrics?.trading_costs?.[key], 4)}</td>
+              ))}
               <td className="weight-cell">
                 {p.weights ? (
                   visibleWeights(p.weights, 1).map(([a, w]) => (

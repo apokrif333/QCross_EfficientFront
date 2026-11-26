@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 
+from app.analytics.models import TAX_METHODOLOGY
 from app.analytics.provenance import engine_identity, panel_provenance
 
 
@@ -11,6 +12,7 @@ def control_cache_key(panel, user_weights, expected_block_length, random_seed):
     identity = {
         "panel": panel_provenance(panel)["reference_panel_sha256"],
         "engine": engine_identity()["source_sha256"],
+        "tax_methodology": TAX_METHODOLOGY,
         "simulation": {"capital_gains_tax_rate": 0.0, **panel.simulation_options},
         "weights": user_weights,
         "block": expected_block_length,
@@ -77,6 +79,7 @@ def export_control_cache(panel, user_weights, result):
         )
     return {
         "version": 1,
+        "tax_methodology": TAX_METHODOLOGY,
         "key": control_cache_key(
             panel, user_weights, result["expected_block_length"], result["random_seed"]
         ),

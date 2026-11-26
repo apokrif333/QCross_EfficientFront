@@ -53,6 +53,9 @@ def test_real_process_api_roundtrip(endpoint, panel, settings, session_factory):
         assert "period" in completed["result"] and "correlation" in completed["result"]
         assert completed["result"]["allocation_groups"]["Group 3"] == ["2"]
         assert completed["result"]["simulation_settings"]["capital_gains_tax_rate"] == 0.10
+        assert completed["result"]["reproducibility"]["tax_methodology"] == (
+            "annual_net_realized_average_cost_v1"
+        )
         if endpoint == "frontier":
             user = completed["result"]["user_portfolio"]
             assert user["weights"]["1"] == 1.0
@@ -81,9 +84,16 @@ def test_real_process_api_roundtrip(endpoint, panel, settings, session_factory):
                 assert metrics["wealth_history"]["net"][-1] == pytest.approx(
                     metrics["terminal_wealth"]
                 )
-            assert completed["result"]["equal_weight"]["metrics"]["trading_costs"][
-                "total_capital_gains_tax"
-            ] > 0
+            assert (
+                completed["result"]["equal_weight"]["metrics"]["trading_costs"][
+                    "total_capital_gains_tax"
+                ]
+                > 0
+            )
+            costs = completed["result"]["equal_weight"]["metrics"]["trading_costs"]
+            assert costs["annualized_total_costs"] == pytest.approx(
+                costs["annualized_commissions"] + costs["annualized_capital_gains_tax"]
+            )
         if endpoint == "bootstrap":
             robustness = completed["result"]["efficiency_robustness"]
             assert robustness["horizon"]["months"] == len(panel.values)
@@ -150,6 +160,7 @@ def test_bootstrap_trend_sensitivity_is_a_separate_job(panel, settings, session_
         value = sensitivity["result"]["trend_sensitivity"]
         assert value["iterations"] == 3
         assert value["commission_basis"] == "pretrade_nav"
+        assert value["tax_methodology"] == bootstrap["result"]["reproducibility"]["tax_methodology"]
         assert (
             value["validation_sample_fingerprint"]
             == bootstrap["result"]["validation_sample_fingerprint"]
@@ -169,10 +180,7 @@ def test_bootstrap_trend_sensitivity_is_a_separate_job(panel, settings, session_
                     for side in ("net", "gross")
                     for metric in ("annualized_cagr", "maximum_drawdown", "annualized_volatility")
                 ]
-                + [
-                    fee_rate * controlled["annualized_turnover"]
-                    + fee_rate / (1 + fee_rate) * 12 / len(panel.values)
-                ]
+                + [controlled[key] for key in value["metric_order"][6:]]
             )
 
         expired = client.post(

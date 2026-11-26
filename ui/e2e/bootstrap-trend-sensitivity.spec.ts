@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import type { Job } from "../src/types";
+import { ANNUAL_TAX_METHODOLOGY } from "../src/lib/snapshot";
 
 test("Bootstrap trend densities are calculated on demand and toggle by period, risk and asset", async ({
   page,
@@ -27,18 +28,26 @@ test("Bootstrap trend densities are calculated on demand and toggle by period, r
         0.14 + 0.04 * Math.cos(draw / 3 + period / 3),
         0.28 + 0.04 * Math.cos(draw / 3 + period / 3),
         0.001 + (period + 1) / 100000,
+        0.002,
+        0.003 + (period + 1) / 100000,
+        0.02,
+        0.04,
+        0.06,
+        0,
       ]),
     );
   const asset = result.assets[0];
   const trend_sensitivity = {
     iterations: 500,
     commission_basis: "pretrade_nav",
+    tax_methodology: ANNUAL_TAX_METHODOLOGY,
     portfolio: series(0),
     by_asset: { [asset]: series(0.3) },
   };
   const request = {
     ...result.reproducibility.api_request,
     bootstrap_iterations: 500,
+    capital_gains_tax_rate: 0.1,
     user_weights: { [asset]: 1 },
     portfolio_controls: {
       mode: "trend",
@@ -52,6 +61,7 @@ test("Bootstrap trend densities are calculated on demand and toggle by period, r
     },
   };
   result.reproducibility.api_request = request;
+  result.reproducibility.tax_methodology = ANNUAL_TAX_METHODOLOGY;
   const bootstrapJob: Job = {
     job_id: "bootstrap-source",
     kind: "bootstrap",
@@ -239,9 +249,13 @@ test("Bootstrap trend densities are calculated on demand and toggle by period, r
   ).toBeVisible();
   await expect(
     section.getByText(
-      /Каждая комиссия делится на стоимость портфеля перед сделкой/,
+      /Годовые издержки Net: сумма списаний в долях капитала перед каждой сделкой/,
     ),
   ).toBeVisible();
+  const annualTax = table.getByRole("columnheader", {
+    name: "Годовой налог на прирост капитала",
+  });
+  await expect(annualTax).toBeVisible();
   await expect(
     table.getByRole("columnheader", { name: "Медианный Calmar" }),
   ).toHaveAttribute("aria-sort", "descending");
@@ -267,6 +281,7 @@ test("Bootstrap trend densities are calculated on demand and toggle by period, r
     table.locator("tbody tr").first().getByRole("cell").first(),
   ).toContainText("8.00%");
   await section.getByRole("button", { name: "Gross", exact: true }).click();
+  await expect(annualTax).toHaveCount(0);
   await expect(
     table.locator("tbody tr").first().getByRole("cell").first(),
   ).toContainText("18.00%");

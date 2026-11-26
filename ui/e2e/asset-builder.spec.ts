@@ -77,7 +77,7 @@ test("Live asset builder, numbered constraints and a 100% VTI reference use actu
     12,
   );
   expect(result.user_portfolio.metrics.historical_volatility).toBeCloseTo(
-    0.1478254835708333,
+    0.1478254835708333 * Math.sqrt(2804 / 2803), // Sample standard deviation.
     12,
   );
   expect(result.user_portfolio.feasible).toBe(false);
@@ -108,7 +108,10 @@ test("Live asset builder, numbered constraints and a 100% VTI reference use actu
   await expect(
     page.getByRole("columnheader", { name: "Оценка волатильности" }),
   ).toHaveCount(0);
-  const plotted = await page.locator(".js-plotly-plot").evaluate((el) => {
+  const frontierPlot = page
+    .getByRole("img", { name: "Efficient Frontier", exact: true })
+    .locator(".js-plotly-plot");
+  const plotted = await frontierPlot.evaluate((el) => {
     const plot = el as unknown as {
       data: { name: string; x: number[]; y: number[] }[];
       layout: { yaxis: { title: { text: string } } };
@@ -127,7 +130,7 @@ test("Live asset builder, numbered constraints and a 100% VTI reference use actu
     result.user_portfolio.metrics.volatility,
     12,
   );
-  const assetPoints = await page.locator(".js-plotly-plot").evaluate((el) => {
+  const assetPoints = await frontierPlot.evaluate((el) => {
     const plot = el as unknown as {
       data: {
         marker?: { symbol?: string; color?: string };

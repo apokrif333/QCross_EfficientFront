@@ -6,6 +6,12 @@ import type {
   RebalancingStrategy,
 } from "../types";
 import { number, percent, ticker, escapeHtml } from "../lib/display";
+import {
+  annualCostHint,
+  annualCostKeys,
+  costLabels,
+  eventLabels,
+} from "../lib/tradingCosts";
 import Plot from "./Plot";
 
 const columns = [
@@ -18,6 +24,8 @@ const columns = [
   ["terminal_wealth", "Капитал из $1"],
   ["total_commissions", "Накопленные комиссии, % от начального капитала"],
   ["total_capital_gains_tax", "Налог, % от начального капитала"],
+  ["total_costs", "Совокупные издержки, % от начального капитала"],
+  ...annualCostKeys.map((key) => [key, costLabels[key]] as const),
   ["trade_count", "Сделки"],
   ["rebalancing_events", "Ребалансировки"],
   ["annualized_turnover", "Оборот в год"],
@@ -57,7 +65,11 @@ export default function RebalancingView({
   const side = gross ? "gross" : "net";
   const taxed = !!r.capital_gains_tax_rate;
   const visibleColumns = columns.filter(
-    ([key]) => taxed || key !== "total_capital_gains_tax",
+    ([key]) =>
+      !(key in costLabels) ||
+      (!gross &&
+        (taxed || !key.includes("capital_gains_tax")) &&
+        r.strategies.some((s) => s[key as keyof typeof costLabels] != null)),
   );
   const value = (s: RebalancingStrategy, key: SortKey): number | null =>
     key in s[side]
@@ -66,8 +78,7 @@ export default function RebalancingView({
   const format = (s: RebalancingStrategy, key: SortKey) => {
     const v = value(s, key);
     if (key === "terminal_wealth") return v == null ? "—" : `$${number(v, 4)}`;
-    if (key === "total_commissions" || key === "total_capital_gains_tax")
-      return percent(v, 4);
+    if (key in costLabels) return percent(v, 4);
     if (
       [
         "historical_sharpe_ratio",
@@ -98,7 +109,14 @@ export default function RebalancingView({
   const active = r.strategies.find((s) => s.id === selected) ?? r.strategies[0];
   const plotData = useMemo(() => {
     const hover = (s: RebalancingStrategy) =>
-      `<b>${escapeHtml(s.label)}</b><br>CAGR: ${percent(s[side].annualized_cagr)}<br>Волатильность: ${percent(s[side].annualized_volatility)}<br>Sharpe: ${number(s[side].historical_sharpe_ratio)}<br>Просадка: ${percent(s[side].maximum_drawdown)}<extra></extra>`;
+      `<b>${escapeHtml(s.label)}</b><br>CAGR: ${percent(s[side].annualized_cagr)}<br>Волатильность: ${percent(s[side].annualized_volatility)}<br>Sharpe: ${number(s[side].historical_sharpe_ratio)}<br>Просадка: ${percent(s[side].maximum_drawdown)}${
+        side === "net"
+          ? annualCostKeys
+              .filter((key) => s[key] != null)
+              .map((key) => `<br>${costLabels[key]}: ${percent(s[key], 4)}`)
+              .join("")
+          : ""
+      }<extra></extra>`;
     const calendar = [...r.strategies].sort(byName);
     const points = calendar.map((s) => ({
       x: s[side].annualized_volatility,
@@ -232,7 +250,22 @@ export default function RebalancingView({
         data={plotData.calendar}
         layout={plotData.axes}
       />
-      <h3>Кривые капитала {gross ? "до" : "после"} комиссий</h3>
+      {!gross && active.annualized_total_costs != null && (
+        <p className="hint">{annualCostHint}</p>
+      )}
+      {!gross && r.strategies.some((s) => s.tax_insolvent) && (
+        <p className="warning">
+          Непогашенный налог на $1 начального капитала ·{" "}
+          {r.strategies
+            .filter((s) => s.tax_insolvent)
+            .map((s) => `${s.label} ${number(s.unpaid_capital_gains_tax, 4)}`)
+            .join(" · ")}
+        </p>
+      )}
+      <h3>
+        Кривые капитала {gross ? "до" : "после"} комиссий
+        {taxed ? " и налогов" : ""}
+      </h3>
       <Plot
         title="Капитал по правилам ребалансировки"
         data={[...r.strategies].sort(byName).map(
@@ -275,7 +308,7 @@ export default function RebalancingView({
           ))}
         </select>
       </label>
-      <h3>Фактические веса после исполнения на конец месяца</h3>
+      <h3>Фактические веса Net после исполнения на конец месяца</h3>
       <Plot
         title="Фактические веса портфеля"
         data={r.assets
@@ -300,7 +333,7 @@ export default function RebalancingView({
           yaxis: { tickformat: ".0%", range: [0, 1] },
           shapes: [
             ...active.events
-              .filter((e) => e.kind === "rebalance")
+              .filter((e) => e.kind !== "initial_purchase")
               .map((e) => ({
                 type: "line" as const,
                 xref: "x" as const,
@@ -319,7 +352,7 @@ export default function RebalancingView({
         }}
       />
       <details>
-        <summary>Сделки и события: {active.label}</summary>
+        <summary>Сделки и события: {active.label} · Net</summary>
         <div className="table-scroll">
           <table>
             <thead>
@@ -332,21 +365,19 @@ export default function RebalancingView({
                 <th title="Доля капитала непосредственно перед сделкой">
                   Комиссии, % капитала
                 </th>
+                {taxed && <th>Налог, $</th>}
               </tr>
             </thead>
             <tbody>
               {active.events.map((e, i) => (
                 <tr key={i}>
                   <td>
-                    {e.date} ·{" "}
-                    {e.kind === "initial_purchase"
-                      ? "начальная покупка"
-                      : "конец месяца"}
+                    {e.date} · {eventLabels[e.kind] ?? "конец месяца"}
                   </td>
                   <td>
                     {e.triggering_assets
                       .map((a) => ticker(a, instruments))
-                      .join(", ") || "календарь / вход"}
+                      .join(", ") || "—"}
                   </td>
                   <td>
                     {e.kind === "initial_purchase"
@@ -379,6 +410,16 @@ export default function RebalancingView({
                   </td>
                   <td>{percent(e.turnover)}</td>
                   <td>{percent(e.turnover * r.transaction_fee_rate, 4)}</td>
+                  {taxed && (
+                    <td>
+                      {number(e.capital_gains_tax, 5)}
+                      {(e.unpaid_capital_gains_tax ?? 0) > 0 && (
+                        <small>
+                          Не погашено: {number(e.unpaid_capital_gains_tax, 5)}
+                        </small>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

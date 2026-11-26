@@ -17,7 +17,7 @@ from app.analytics.cross_validation import period_description
 from app.analytics.efficiency_distance import efficiency_distance, summarize_distances
 from app.analytics.estimators import estimate_covariance
 from app.analytics.frontier import data_diagnostics, describe, prepare
-from app.analytics.models import AnalyticsError, OptimizationResult, ReturnPanel
+from app.analytics.models import TAX_METHODOLOGY, AnalyticsError, OptimizationResult, ReturnPanel
 from app.analytics.optimizer import PortfolioOptimizer
 from app.analytics.paired_comparison import (
     JOINED_METRICS,
@@ -26,6 +26,7 @@ from app.analytics.paired_comparison import (
     validation_frontier,
 )
 from app.analytics.portfolio_controls import compare_controls
+from app.analytics.portfolio_simulator import TRADING_METRICS
 from app.analytics.provenance import reproducible
 from app.analytics.references import differential_moments
 from app.analytics.splitting import BOOTSTRAP_METHODOLOGY, bootstrap_folds
@@ -173,6 +174,7 @@ def _fit_bootstrap_fold(
     method,
     folds,
     controls_enabled,
+    calendar_start,
 ):
     values = panel.values[train]
     settings = {"folds": folds, "target": "auto" if method == "cv_linear" else "identity"}
@@ -204,7 +206,13 @@ def _fit_bootstrap_fold(
     if controls_enabled and "max_return_at_user_risk" in objectives:
         try:
             risk_limit = compare_controls(
-                panel, user_weights, train, record_history=False, sampled_risk_free=training_rf
+                panel,
+                user_weights,
+                train,
+                record_history=False,
+                sampled_risk_free=training_rf,
+                synthetic=True,
+                calendar_start=calendar_start,
             )["controlled"]["net"]["annualized_volatility"]
         except (AnalyticsError, np.linalg.LinAlgError) as exc:
             control_error = str(exc)
@@ -255,7 +263,7 @@ def _validation_record(fits, offsets, values, rf, panel, indices, iteration, inc
             rf,
             include_wealth=include_wealth,
             target_schedule=dict(zip(offsets, (fit.weights for fit in fits[1:]), strict=True)),
-            **panel.path_options(indices),
+            **panel.path_options(indices, synthetic=True),
         )
         return {**record, "status": "optimal", "metrics": path}
     except (AnalyticsError, np.linalg.LinAlgError) as exc:
@@ -403,6 +411,7 @@ def analyze_bootstrap(
                     method,
                     cv_folds,
                     controls_enabled,
+                    int(splits[fold - 1][0][0]),
                 )
             except (AnalyticsError, np.linalg.LinAlgError) as exc:
                 diagnostics = {"reason": str(exc)}
@@ -446,6 +455,7 @@ def analyze_bootstrap(
                         record_history=False,
                         include_wealth=compare_optimizer,
                         sampled_risk_free=valid_rf,
+                        synthetic=True,
                     )
                     user_metrics = simulation_metrics(
                         control_sample["controlled"], include_wealth=compare_optimizer
@@ -457,7 +467,7 @@ def analyze_bootstrap(
                         fixed_weights,
                         valid_rf,
                         include_wealth=compare_optimizer,
-                        **panel.path_options(valid),
+                        **panel.path_options(valid, synthetic=True),
                     )
             except Exception as exc:  # A failed control path must not drop the generation.
                 control_sample = {"status": "failed", "reason": str(exc)}
@@ -647,6 +657,7 @@ def analyze_resampled_frontier(
     cache_matches = bool(
         controls_enabled
         and cache.get("version") == 1
+        and cache.get("tax_methodology") == TAX_METHODOLOGY
         and cache.get("key")
         == control_cache_key(panel, user_weights, expected_block_length, random_seed)
         and usable_original(cache.get("original", {}).get("controlled"))
@@ -706,7 +717,7 @@ def analyze_resampled_frontier(
                         else:
                             computed_samples += 1
                             path = compare_controls(
-                                panel, user_weights, indices, record_history=False
+                                panel, user_weights, indices, record_history=False, synthetic=True
                             )["controlled"]["net"]
                             user_sample_moments.append(
                                 (
@@ -795,15 +806,8 @@ def analyze_resampled_frontier(
                 "historical_max_drawdown": net["maximum_drawdown"],
                 "terminal_wealth": net["terminal_wealth"],
                 "gross_historical_metrics": path["gross"],
-                "trading_costs": {
-                    k: path[k]
-                    for k in (
-                        "total_commissions",
-                        "trade_count",
-                        "rebalancing_events",
-                        "annualized_turnover",
-                    )
-                },
+                "trading_costs": {k: path[k] for k in TRADING_METRICS},
+                "tax_insolvent": path["tax_insolvent"],
             },
         }
     if user_sample_moments:

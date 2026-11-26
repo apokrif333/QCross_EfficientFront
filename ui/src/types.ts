@@ -72,6 +72,7 @@ export interface SeriesIdentity {
   observation_count: number;
 }
 export interface Provenance {
+  tax_methodology?: string;
   engine: Engine;
   returns_matrix_sha256: string;
   reference_panel_sha256?: string;
@@ -97,6 +98,8 @@ export interface Catalog {
   instruments: Instrument[];
 }
 export interface Metrics {
+  trading_costs?: TradingCosts;
+  tax_insolvent?: boolean;
   rolling_3y?: { positive: number; total: number };
   wealth_history?: {
     months: string[];
@@ -183,6 +186,8 @@ export interface Fold {
   validation: Period;
   training_metrics?: Metrics | null;
   validation_metrics?: {
+    trading_costs?: TradingCosts;
+    tax_insolvent?: boolean;
     historical_cagr?: number | null;
     realized_annual_arithmetic_return: number;
     realized_annual_volatility: number;
@@ -225,6 +230,7 @@ export interface EfficiencyDistance {
   diagnostics: Record<string, unknown>;
 }
 export interface EfficiencyDistribution {
+  tax_insolvent_count?: number;
   user_portfolio_mode?: "passive" | "controlled";
   user_weights: Record<string, number>;
   evaluation?: string;
@@ -293,6 +299,7 @@ export interface WeightStats {
   upper_bound_frequency: number;
 }
 export interface BootstrapObjective {
+  tax_insolvent_count?: number;
   horizon?: EfficiencyDistribution["horizon"];
   distributions?: EfficiencyDistribution["distributions"];
   gross_distributions?: EfficiencyDistribution["gross_distributions"];
@@ -354,7 +361,7 @@ export interface BootstrapResult extends BaseResult {
   portfolio_control_samples?: BootstrapControlSample[];
   passive_portfolio_metrics?: Pick<
     EfficiencyDistribution,
-    "horizon" | "distributions" | "gross_distributions"
+    "horizon" | "distributions" | "gross_distributions" | "tax_insolvent_count"
   > | null;
   conditional_bootstrap: boolean;
   sample_fingerprint: string;
@@ -367,10 +374,17 @@ export interface BootstrapControlSample {
   baseline?: BootstrapControlPath;
   controlled?: BootstrapControlPath;
 }
-interface BootstrapControlPath {
-  net?: Partial<SimulationStats> & { calmar_ratio?: number | null };
+export interface TradingCosts {
   total_commissions?: number;
   annualized_commissions?: number;
+  total_capital_gains_tax?: number;
+  annualized_capital_gains_tax?: number;
+  total_costs?: number;
+  annualized_total_costs?: number;
+  unpaid_capital_gains_tax?: number;
+}
+interface BootstrapControlPath extends TradingCosts {
+  net?: Partial<SimulationStats> & { calmar_ratio?: number | null };
   annualized_turnover?: number;
 }
 type BootstrapTrendMetrics = [
@@ -384,6 +398,12 @@ export type BootstrapTrendPoint =
       ...net: BootstrapTrendMetrics,
       ...gross: BootstrapTrendMetrics,
       annualizedCommissions: number | null,
+      annualizedTax?: number | null,
+      annualizedCosts?: number | null,
+      totalCommissions?: number | null,
+      totalTax?: number | null,
+      totalCosts?: number | null,
+      unpaidTax?: number | null,
     ];
 // The outer array is ordered by lookback (1–36 months) and the inner by generation.
 export type BootstrapTrendSeries = BootstrapTrendPoint[][];
@@ -391,6 +411,8 @@ export interface BootstrapTrendSensitivity {
   iterations: number;
   validation_sample_fingerprint?: string;
   commission_basis?: "pretrade_nav";
+  tax_methodology?: string;
+  metric_order?: string[];
   portfolio: BootstrapTrendSeries;
   by_asset: Record<string, BootstrapTrendSeries>;
 }
@@ -421,6 +443,7 @@ export interface ResampledResult extends BaseResult {
 }
 export interface BootstrapControlCache {
   version: 1;
+  tax_methodology?: string;
   key: string;
   original: Record<string, unknown>;
   samples: {
@@ -652,6 +675,7 @@ export interface TrendSensitivityPoint {
   lookback_months: number;
   gross: SensitivityStats;
   net: SensitivityStats;
+  trading_costs?: TradingCosts;
 }
 export interface AssetTrendSensitivitySeries {
   asset_id: string;
@@ -661,8 +685,9 @@ export interface AssetTrendSensitivitySeries {
 export interface AssetTrendSensitivityResult extends AssetTrendSensitivitySeries {
   reproducibility: Provenance;
 }
-export interface RebalancingStrategy {
+export interface RebalancingStrategy extends TradingCosts {
   initial_net_wealth?: number;
+  tax_insolvent?: boolean;
   id: string;
   label: string;
   calendar_months: number | null;
@@ -693,6 +718,8 @@ export interface RebalancingStrategy {
     trades: Record<string, number>;
     commissions: number;
     capital_gains_tax?: number;
+    unpaid_capital_gains_tax?: number;
+    pretrade_nav?: number;
     turnover: number;
   }[];
 }

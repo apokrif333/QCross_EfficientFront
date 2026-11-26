@@ -2,6 +2,7 @@ import { Fragment, useId, useMemo, useState } from "react";
 import type { Data } from "plotly.js";
 import type { Instrument, PairedComparison } from "../types";
 import { number, percent, ticker, visibleWeights } from "../lib/display";
+import { annualCostKeys, costLabels } from "../lib/tradingCosts";
 import Plot from "./Plot";
 
 const columns = [
@@ -9,6 +10,14 @@ const columns = [
   ["Vol", "annualized_volatility", percent],
   ["DD", "maximum_drawdown", percent],
   ["Sharpe", "historical_sharpe_ratio", number],
+  ...annualCostKeys.map(
+    (key) =>
+      [
+        costLabels[key],
+        key,
+        (value: number | null | undefined) => percent(value, 4),
+      ] as const,
+  ),
 ] as const;
 type MetricKey = (typeof columns)[number][1];
 type SortKey = "pair" | "weights" | MetricKey;
@@ -18,6 +27,7 @@ function wealthSeries(encoded: string) {
   const view = new DataView(bytes.buffer);
   return Array.from({ length: bytes.length / 4 }, (_, month) => {
     const log = view.getFloat32(month * 4, true);
+    if (log === -Infinity) return 0;
     return Number.isFinite(log)
       ? Math.max(
           Number.MIN_VALUE,
@@ -100,6 +110,13 @@ export default function BootstrapValidationTable({
       .join(" · ") || "—";
   const hasPaths = value.results.some(
     (row) => row.wealth_log_f32?.user || row.wealth_log_f32?.optimized,
+  );
+  const visibleColumns = columns.filter(
+    ([, key]) =>
+      !annualCostKeys.some((cost) => cost === key) ||
+      value.results.some(
+        (row) => row.user?.[key] != null || row.optimized?.[key] != null,
+      ),
   );
   const rows = useMemo(() => {
     const keyFor = (
@@ -209,7 +226,7 @@ export default function BootstrapValidationTable({
                       "Сортировать по составу оптимизированного портфеля",
                     )
                   )}
-                  {columns.map(([label, key]) =>
+                  {visibleColumns.map(([label, key]) =>
                     header(
                       key,
                       label,
@@ -252,7 +269,7 @@ export default function BootstrapValidationTable({
                             <>Ваш Портфель / {allocation(row.weights)}</>
                           )}
                         </td>
-                        {columns.map(([label, key, format]) => (
+                        {visibleColumns.map(([label, key, format]) => (
                           <td key={label}>
                             {format(row.user?.[key])} /{" "}
                             {format(row.optimized?.[key])}
@@ -281,7 +298,7 @@ export default function BootstrapValidationTable({
                       </tr>
                       {chartVisible && (
                         <tr>
-                          <td colSpan={7} id={chartId}>
+                          <td colSpan={3 + visibleColumns.length} id={chartId}>
                             <ValidationChart
                               pair={pair}
                               paths={paths!}

@@ -6,6 +6,7 @@ import type {
   Snapshot,
 } from "../types";
 import { instrumentSchema, validateRecord } from "./validation";
+export const ANNUAL_TAX_METHODOLOGY = "annual_net_realized_average_cost_v1";
 export function stable(value: unknown): string {
   const normalize = (item: unknown): unknown =>
     Array.isArray(item)
@@ -20,8 +21,10 @@ export function stable(value: unknown): string {
   return JSON.stringify(normalize(value));
 }
 export function effectiveRequest(request: ApiRequest): ApiRequest {
+  const controls = request.portfolio_controls;
   return {
     ...request,
+    portfolio_controls: controls?.mode === "none" ? undefined : controls,
     transaction_fee_rate: request.transaction_fee_rate ?? 0,
     capital_gains_tax_rate: request.capital_gains_tax_rate ?? 0,
     rebalancing_interval_months:
@@ -52,6 +55,8 @@ export function settingsKey(request: ApiRequest): string {
 export function compatible(a: Calculation, b: Calculation): boolean {
   return (
     settingsKey(a.request) === settingsKey(b.request) &&
+    a.result.reproducibility.tax_methodology ===
+      b.result.reproducibility.tax_methodology &&
     a.result.reproducibility.reference_panel_sha256 ===
       b.result.reproducibility.reference_panel_sha256 &&
     a.result.reproducibility.returns_matrix_sha256 ===
@@ -193,6 +198,12 @@ export function compareCalculations(
     warnings.push("Полные API-запросы отличаются.");
   if (before.kind !== after.kind)
     warnings.push("Сравниваются разные виды задания.");
+  if (pa.tax_methodology !== pb.tax_methodology) {
+    warnings.push(
+      "В снимках разные методологии налога на прирост капитала. Результаты напрямую несопоставимы.",
+    );
+    return { differences, warnings, numericFields, maxAbsoluteDifference };
+  }
   if (
     before.kind === "bootstrap" &&
     after.kind === "bootstrap" &&

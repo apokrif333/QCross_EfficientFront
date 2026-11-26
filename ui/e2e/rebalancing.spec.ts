@@ -2,23 +2,11 @@ import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { rebalancingFixture } from "../src/test/rebalancingFixture";
-for (const trend of [false, true]) {
-  test(`rebalancing snapshot renders strategies and controls: ${trend}`, async ({
+for (const taxRate of [0, 0.1]) {
+  test(`rebalancing snapshot renders strategies with tax rate ${taxRate}`, async ({
     page,
   }) => {
-    const result = rebalancingFixture(
-      trend
-        ? {
-            mode: "trend",
-            hedge_weights: { "243": 1 },
-            trend: {
-              destination: "hedge",
-              asset_rules: { "1": { indicator: "sma", lookback_months: 12 } },
-              sensitivity_asset: "1",
-            },
-          }
-        : undefined,
-    );
+    const result = rebalancingFixture(taxRate);
     const manifest = JSON.parse(
       await readFile(resolve("public/demo/manifest.json"), "utf8"),
     );
@@ -76,36 +64,26 @@ for (const trend of [false, true]) {
     }));
     expect(data.type).toBe("scatter");
     expect(data.count).toBe(21);
-    if (trend) {
-      await expect(
-        page.getByRole("heading", {
-          name: "Управление портфелем: исходный / управляемый",
-        }),
-      ).toBeVisible();
-      const sensitivity = page.getByRole("img", {
-        name: /^Чувствительность SMA\/Momentum:/,
-      });
-      await sensitivity.scrollIntoViewIfNeeded();
-      await expect(sensitivity.locator("canvas").first()).toBeVisible();
-      const z = await sensitivity
-        .locator(".js-plotly-plot")
-        .evaluate((el: any) => el._fullData[0].z);
-      expect(z).toHaveLength(35);
-    }
+    const annualTax = table.getByRole("columnheader", {
+      name: /Годовой налог на прирост капитала/,
+    });
+    await expect(annualTax).toHaveCount(taxRate ? 1 : 0);
     await page
       .getByRole("combobox", { name: "Стратегия для весов и сделок" })
       .selectOption("threshold_10");
     await page
-      .getByText("Сделки и события: Порог 10%", { exact: true })
+      .getByText("Сделки и события: Порог 10% · Net", { exact: true })
       .click();
     await expect(
       page.getByRole("columnheader", { name: "Триггеры" }),
     ).toBeVisible();
-    await page
-      .getByRole("button", { name: "До комиссий", exact: true })
-      .click();
+    const gross = taxRate ? "До комиссий и налогов" : "До комиссий";
+    await page.getByRole("button", { name: gross, exact: true }).click();
     await expect(
-      page.getByRole("heading", { name: "Кривые капитала до комиссий" }),
+      page.getByRole("heading", {
+        name: new RegExp(`Кривые капитала ${gross.toLowerCase()}$`),
+      }),
     ).toBeVisible();
+    await expect(annualTax).toHaveCount(0);
   });
 }

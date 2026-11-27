@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type {
   ApiRequest,
   BootstrapResult,
@@ -54,10 +54,15 @@ import {
 import { number } from "./lib/display";
 import { cvHistoryError } from "./lib/cv";
 
+const BootstrapCalibration = lazy(
+  () => import("./components/BootstrapCalibration"),
+);
+
 const TABS = [
   "Frontier",
   "Cross-validation",
   "Bootstrap",
+  "Bootstrap Calibration",
   "Rebalancing Optimization",
   "Compare",
   "Snapshot",
@@ -136,6 +141,8 @@ export default function App() {
     >
   >({});
   const instruments = catalog?.instruments ?? [];
+  const [calibrationOpened, setCalibrationOpened] = useState(false);
+  const demoCalibrationLength = useRef<number | null>(null);
   const periodKey = JSON.stringify({
     instrument_ids: request.instrument_ids,
     currency: "USD",
@@ -224,15 +231,17 @@ export default function App() {
     tab === "Rebalancing Optimization" &&
     (request.portfolio_controls?.mode ?? "none") !== "none";
   const visible =
-    tab === "Rebalancing Optimization"
-      ? rebalancingBlocked
-        ? undefined
-        : rebalancing
-      : tab === "Cross-validation"
-        ? cv
-        : tab === "Bootstrap"
-          ? (bootstrap ?? resampled)
-          : frontier;
+    tab === "Bootstrap Calibration"
+      ? undefined
+      : tab === "Rebalancing Optimization"
+        ? rebalancingBlocked
+          ? undefined
+          : rebalancing
+        : tab === "Cross-validation"
+          ? cv
+          : tab === "Bootstrap"
+            ? (bootstrap ?? resampled)
+            : frontier;
   async function changeMode(next: Mode) {
     setError("");
     setMessage("");
@@ -244,6 +253,7 @@ export default function App() {
         setCatalog(demo.catalog);
         setCalculations(demo.calculations);
         adoptRequest(defaultDemoRequest(demo));
+        demoCalibrationLength.current = null;
         setLoaded(false);
         setBaseline([]);
         setComparisons([]);
@@ -266,7 +276,9 @@ export default function App() {
             start_date: null,
             end_date: null,
             bootstrap_iterations: DEFAULT_REQUEST.bootstrap_iterations,
-            expected_block_length: DEFAULT_REQUEST.expected_block_length,
+            expected_block_length:
+              demoCalibrationLength.current ??
+              DEFAULT_REQUEST.expected_block_length,
             cv_folds: DEFAULT_REQUEST.cv_folds,
             random_seed: DEFAULT_REQUEST.random_seed,
             bootstrap_objectives: [
@@ -707,14 +719,22 @@ export default function App() {
         locked={!!busy || mode === "demo"}
         onChange={updateRows}
       />
-      <PortfolioControls
-        request={request}
-        instruments={instruments}
-        onChange={changeRequest}
-        locked={!!busy || mode === "demo"}
-      />
-      <div className="workspace">
-        <aside>
+      {tab !== "Bootstrap Calibration" && (
+        <PortfolioControls
+          request={request}
+          instruments={instruments}
+          onChange={changeRequest}
+          locked={!!busy || mode === "demo"}
+        />
+      )}
+      <div
+        className={
+          tab === "Bootstrap Calibration"
+            ? "workspace calibration-workspace"
+            : "workspace"
+        }
+      >
+        <aside hidden={tab === "Bootstrap Calibration"}>
           <details className="settings-shell" open>
             <summary>Настройки расчёта</summary>
             {mode === "demo" && !loaded && (
@@ -772,13 +792,37 @@ export default function App() {
               <button
                 key={t}
                 aria-current={tab === t ? "page" : undefined}
-                onClick={() => setTab(t)}
+                onClick={() => {
+                  if (t === "Bootstrap Calibration") setCalibrationOpened(true);
+                  setTab(t);
+                }}
               >
                 {t}
               </button>
             ))}
           </nav>
-          <section className="card">
+          {calibrationOpened && (
+            <div hidden={tab !== "Bootstrap Calibration"}>
+              <Suspense
+                fallback={<p role="status">Загружаем вкладку Calibration.</p>}
+              >
+                <BootstrapCalibration
+                  request={request}
+                  mode={mode}
+                  instruments={instruments}
+                  onUseLength={(length) => {
+                    if (mode === "demo") demoCalibrationLength.current = length;
+                    setRequest((previous) => ({
+                      ...previous,
+                      expected_block_length: length,
+                    }));
+                    setTab("Bootstrap");
+                  }}
+                />
+              </Suspense>
+            </div>
+          )}
+          <section className="card" hidden={tab === "Bootstrap Calibration"}>
             <div className="section-heading">
               <div>
                 <h2>

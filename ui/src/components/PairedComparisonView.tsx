@@ -6,7 +6,6 @@ import Plot from "./Plot";
 import BootstrapValidationTable from "./BootstrapValidationTable";
 
 const labels: Record<string, string> = {
-  delta_arithmetic_return: "Δ годовой арифметической доходности",
   delta_cagr: "Δ CAGR",
   delta_volatility: "Δ годовой волатильности",
   delta_sharpe: "Δ Historical Sharpe",
@@ -14,28 +13,33 @@ const labels: Record<string, string> = {
   delta_calmar: "Δ Calmar",
   delta_sortino: "Δ Sortino",
   delta_terminal_wealth: "Δ конечного капитала на $1",
-  delta_commissions: "Δ комиссий на $1",
   delta_annualized_commissions: "Δ годовых комиссий",
-  delta_capital_gains_tax: "Δ уплаченного налога на $1",
   delta_annualized_capital_gains_tax: "Δ годового налога",
-  delta_total_costs: "Δ совокупных издержек на $1",
   delta_annualized_total_costs: "Δ совокупных годовых издержек",
   delta_turnover: "Δ годового оборота",
 };
+const hiddenDifferences = new Set([
+  "delta_arithmetic_return",
+  "delta_commissions",
+  "delta_capital_gains_tax",
+  "delta_total_costs",
+]);
 const wins: Record<string, string> = {
   higher_cagr: "Выше CAGR",
   higher_sharpe: "Выше Sharpe",
   lower_volatility: "Ниже волатильность",
   lower_drawdown: "Ниже просадки",
-  lower_annualized_total_costs: "Ниже годовые издержки",
+  higher_cagr_no_higher_drawdown: "Выше CAGR при не большей просадке",
   higher_cagr_no_higher_volatility: "Выше CAGR при не большей волатильности",
 };
 export default function PairedComparisonView({
   value,
   instruments,
+  bootstrap = false,
 }: {
   value?: PortfolioComparison | null;
   instruments: Instrument[];
+  bootstrap?: boolean;
 }) {
   const data = useMemo(() => {
     if (!value?.clouds?.length) return [];
@@ -118,37 +122,47 @@ export default function PairedComparisonView({
   const joined =
     !passive &&
     value.analysis_version === "bidirectional_block_cv_stationary_bootstrap_v1";
-  const availableDrawdowns = passive
-    ? []
-    : value.results
-        .filter((row) => row.optimized != null)
-        .map((row) => row.differences?.delta_max_drawdown)
-        .filter(
-          (delta): delta is number =>
-            typeof delta === "number" && Number.isFinite(delta),
-        );
-  const frequencies =
-    passive || value.win_frequencies.lower_drawdown || !value.results.length
-      ? value.win_frequencies
-      : {
-          ...value.win_frequencies,
-          lower_drawdown: {
-            fraction: availableDrawdowns.length
-              ? availableDrawdowns.filter((delta) => delta < 0).length /
-                availableDrawdowns.length
-              : null,
-            denominator: availableDrawdowns.length,
-          },
-        };
+  const frequencies = { ...value.win_frequencies };
+  delete frequencies.lower_annualized_total_costs;
+  // Older snapshots store row-level deltas but may lack these summaries.
+  if (
+    !frequencies.higher_cagr_no_higher_drawdown ||
+    !frequencies.lower_drawdown
+  ) {
+    const comparisons = passive
+      ? value.results
+      : value.results.filter((row) => row.optimized != null);
+    let drawdowns = 0,
+      lowerDrawdowns = 0,
+      jointPairs = 0,
+      jointWins = 0;
+    for (const row of comparisons) {
+      const drawdown = row.differences?.delta_max_drawdown;
+      if (drawdown == null || !Number.isFinite(drawdown)) continue;
+      drawdowns++;
+      if (drawdown < 0) lowerDrawdowns++;
+      const cagr = row.differences?.delta_cagr;
+      if (cagr == null || !Number.isFinite(cagr)) continue;
+      jointPairs++;
+      if (cagr > 0 && drawdown <= 0) jointWins++;
+    }
+    if (!passive && value.results.length) {
+      frequencies.lower_drawdown ??= {
+        fraction: drawdowns ? lowerDrawdowns / drawdowns : null,
+        denominator: drawdowns,
+      };
+    }
+    frequencies.higher_cagr_no_higher_drawdown ??= {
+      fraction: jointPairs ? jointWins / jointPairs : null,
+      denominator: jointPairs,
+    };
+  }
   const format = (key: string, v: number | null | undefined) =>
     [
       "delta_sharpe",
       "delta_sortino",
       "delta_calmar",
       "delta_terminal_wealth",
-      "delta_commissions",
-      "delta_capital_gains_tax",
-      "delta_total_costs",
     ].includes(key)
       ? number(v)
       : percent(v);
@@ -238,23 +252,29 @@ export default function PairedComparisonView({
             </tr>
           </thead>
           <tbody>
-            {Object.entries(value.differences).map(([k, v]) => (
-              <tr key={k}>
-                <td>{labels[k] ?? k}</td>
-                <td>{format(k, v?.mean)}</td>
-                <td>{format(k, v?.median)}</td>
-                {(joined || passive) && (
-                  <td>{format(k, v?.standard_deviation)}</td>
-                )}
-                <td>
-                  {format(k, v?.p5)} — {format(k, v?.p95)}
-                </td>
-                <td>
-                  {format(k, v?.minimum)} / {format(k, v?.maximum)}
-                </td>
-                {(joined || passive) && <td>{v?.valid_count ?? 0}</td>}
-              </tr>
-            ))}
+            {Object.entries(value.differences)
+              .filter(
+                ([key]) =>
+                  !hiddenDifferences.has(key) &&
+                  (!(bootstrap || passive) || key !== "delta_terminal_wealth"),
+              )
+              .map(([k, v]) => (
+                <tr key={k}>
+                  <td>{labels[k] ?? k}</td>
+                  <td>{format(k, v?.mean)}</td>
+                  <td>{format(k, v?.median)}</td>
+                  {(joined || passive) && (
+                    <td>{format(k, v?.standard_deviation)}</td>
+                  )}
+                  <td>
+                    {format(k, v?.p5)} — {format(k, v?.p95)}
+                  </td>
+                  <td>
+                    {format(k, v?.minimum)} / {format(k, v?.maximum)}
+                  </td>
+                  {(joined || passive) && <td>{v?.valid_count ?? 0}</td>}
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>

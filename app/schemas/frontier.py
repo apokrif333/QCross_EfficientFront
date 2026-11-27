@@ -5,6 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.analytics.constraints import user_allocation
 from app.analytics.models import CovarianceMethod, Objective, ShrinkageTarget
+from app.analytics.portfolio_simulator import TARGET_PATH_METRICS, TARGET_PATH_RATIO_METRICS
+from app.schemas.bootstrap_calibration import CalibrationProgress, CalibrationResult
 from app.schemas.portfolio_controls import PortfolioControls
 
 
@@ -49,8 +51,8 @@ class AnalyticsRequest(BaseModel):
     rolling_step_months: int = Field(default=12, ge=1, le=120)
     frontier_points: int = Field(default=51, ge=2, le=201)
     cv_folds: int = Field(default=4, strict=True, ge=2, le=20, multiple_of=2)
-    bootstrap_iterations: int = Field(default=500, ge=1, le=2000)
-    expected_block_length: float = Field(default=12, ge=3, le=24)
+    bootstrap_iterations: int = Field(default=100, ge=1, le=2000)
+    expected_block_length: float = Field(default=7, ge=1, le=24)
     random_seed: int = Field(default=42, ge=0, le=2**32 - 1)
     bootstrap_objectives: (
         list[Literal["gmv", "max_sharpe", "target_return", "max_return_at_user_risk"]] | None
@@ -352,8 +354,11 @@ class BootstrapEfficiencyRead(BaseModel):
     distributions: dict[str, BootstrapMetricDistribution] | None = None
 
 
-# Net and Gross return/risk metrics, annualized and cumulative Net costs, unpaid tax.
-BootstrapTrendPoint = Annotated[list[float | None], Field(min_length=13, max_length=13)]
+BOOTSTRAP_TREND_METRIC_COUNT = len(TARGET_PATH_METRICS) + len(TARGET_PATH_RATIO_METRICS)
+BootstrapTrendPoint = Annotated[
+    list[float | None],
+    Field(min_length=BOOTSTRAP_TREND_METRIC_COUNT, max_length=BOOTSTRAP_TREND_METRIC_COUNT),
+]
 
 
 class BootstrapTrendSensitivity(BaseModel):
@@ -362,7 +367,9 @@ class BootstrapTrendSensitivity(BaseModel):
     validation_sample_fingerprint: str
     commission_basis: Literal["pretrade_nav"]
     tax_methodology: Literal["annual_net_realized_average_cost_v1"]
-    metric_order: list[str] = Field(min_length=13, max_length=13)
+    metric_order: list[str] = Field(
+        min_length=BOOTSTRAP_TREND_METRIC_COUNT, max_length=BOOTSTRAP_TREND_METRIC_COUNT
+    )
     portfolio: list[list[BootstrapTrendPoint]] = Field(min_length=36, max_length=36)
     by_asset: dict[str, list[list[BootstrapTrendPoint]]]
 
@@ -420,6 +427,10 @@ class RebalancingOptimizationResult(BaseModel):
 class TrendSensitivityStats(BaseModel):
     annualized_cagr: float | None
     maximum_drawdown: float
+    annualized_volatility: float
+    historical_sharpe_ratio: float | None
+    sortino_ratio: float | None
+    calmar_ratio: float | None
 
 
 class TrendSensitivityPoint(BaseModel):
@@ -451,14 +462,17 @@ class JobRead(BaseModel):
         "rebalancing-optimization",
         "asset-trend-sensitivity",
         "bootstrap-trend-sensitivity",
+        "bootstrap-calibration",
+        "bootstrap-calibration-holdout",
     ]
-    status: Literal["running", "completed", "failed", "timed_out"]
+    status: Literal["running", "completed", "failed", "timed_out", "cancelled"]
     submitted_at: str
     elapsed_seconds: float
     timeout_seconds: float
     status_url: str
     result_url: str
     error: str | None = None
+    progress: CalibrationProgress | None = None
     bootstrap_trend_sensitivity_available: bool = False
 
 
@@ -472,5 +486,6 @@ class JobResultRead(JobRead):
         | RebalancingOptimizationResult
         | AssetTrendSensitivityResult
         | BootstrapTrendSensitivityResult
+        | CalibrationResult
         | None
     )

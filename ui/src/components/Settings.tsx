@@ -357,11 +357,11 @@ export default function Settings({
             </HelpField>
             <HelpField
               label="Длина блока, мес."
-              help="Ожидаемая длина блока Stationary Bootstrap: 3–24 месяца. Вероятность начать новый блок равна 1 / длина блока. Все активы пересэмплируются совместно."
+              help="Ожидаемая длина блока Stationary Bootstrap от 1 до 24 месяцев. Вероятность начать новый блок равна 1 / длина блока. Все активы пересэмплируются совместно."
             >
               <input
                 type="number"
-                min="3"
+                min="1"
                 max="24"
                 step="any"
                 value={value.expected_block_length}

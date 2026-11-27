@@ -38,6 +38,7 @@ TARGET_PATH_METRICS = (
     "total_costs",
     "unpaid_capital_gains_tax",
 )
+TARGET_PATH_RATIO_METRICS = ("net_sharpe", "net_sortino", "gross_sharpe", "gross_sortino")
 
 
 @dataclass(frozen=True)
@@ -255,14 +256,22 @@ def _return_risk_statistics(monthly, initial_investment):
     )
 
 
+def _risk_adjusted_ratios(monthly, risk_free):
+    differential = monthly - risk_free
+    excess = np.sqrt(12) * differential.mean(axis=-1)
+    sd = differential.std(axis=-1, ddof=1) if monthly.shape[-1] > 1 else np.zeros_like(excess)
+    downside = np.sqrt(np.mean(np.minimum(differential, 0) ** 2, axis=-1))
+    return tuple(
+        np.divide(excess, risk, out=np.full_like(excess, np.nan), where=risk > 1e-12)
+        for risk in (sd, downside)
+    )
+
+
 def path_statistics(monthly, wealth, risk_free, *, initial_investment=1.0):
     monthly, wealth, risk_free = map(
         lambda x: np.asarray(x, dtype=float), (monthly, wealth, risk_free)
     )
-    n = len(monthly)
-    differential = monthly - risk_free
-    sd = float(differential.std(ddof=1)) if n > 1 else 0
-    downside = float(np.sqrt(np.mean(np.minimum(differential, 0) ** 2)))
+    sharpe, sortino = _risk_adjusted_ratios(monthly, risk_free)
     cagr, volatility, drawdown, log_terminal = _return_risk_statistics(monthly, initial_investment)
     with np.errstate(over="ignore"):
         terminal = float(np.exp(log_terminal))
@@ -274,12 +283,8 @@ def path_statistics(monthly, wealth, risk_free, *, initial_investment=1.0):
         "annualized_arithmetic_return": float(monthly.mean() * 12),
         "annualized_volatility": float(volatility),
         "annualized_downside_volatility": float(np.sqrt(12 * np.mean(np.minimum(monthly, 0) ** 2))),
-        "historical_sharpe_ratio": float(np.sqrt(12) * differential.mean() / sd)
-        if sd > 1e-12
-        else None,
-        "sortino_ratio": float(np.sqrt(12) * differential.mean() / downside)
-        if downside > 1e-12
-        else None,
+        "historical_sharpe_ratio": float(sharpe) if np.isfinite(sharpe) else None,
+        "sortino_ratio": float(sortino) if np.isfinite(sortino) else None,
         "maximum_drawdown": float(drawdown),
         "terminal_wealth": terminal if np.isfinite(terminal) else None,
     }
@@ -290,6 +295,7 @@ def simulate_target_paths(
     weights,
     targets,
     *,
+    risk_free=None,
     transaction_fee_rate=0.0,
     capital_gains_tax_rate=0.0,
     inflation_factors=None,
@@ -432,7 +438,7 @@ def simulate_target_paths(
     gross_cagr, gross_volatility, gross_drawdown, _ = _return_risk_statistics(gross_monthly, 1.0)
     annualized_fees = fee_fractions * (12 / len(values))
     annualized_tax = tax_fractions * (12 / len(values))
-    return (
+    metrics = (
         cagr,
         drawdown,
         volatility,
@@ -446,6 +452,13 @@ def simulate_target_paths(
         tax,
         fees + tax,
         unpaid,
+    )
+    if risk_free is None:
+        return metrics
+    return (
+        metrics
+        + _risk_adjusted_ratios(monthly, risk_free)
+        + _risk_adjusted_ratios(gross_monthly, risk_free)
     )
 
 

@@ -2,6 +2,11 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 const source = new URL("../../docs/analytics-demo/", import.meta.url);
 const output = new URL("../public/demo/", import.meta.url);
 await mkdir(output, { recursive: true });
+const calibration = "bootstrap-calibration.json";
+await writeFile(
+  new URL(calibration, output),
+  await readFile(new URL(calibration, source)),
+);
 const records = [];
 for (const [kind, file] of [
   ...["sample", "ledoit_wolf", "nonlinear", "cv_linear"].map((method) => [

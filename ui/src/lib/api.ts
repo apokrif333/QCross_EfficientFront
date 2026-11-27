@@ -9,7 +9,13 @@ import type {
   Provenance,
   Result,
 } from "../types";
-import { requestSchemaFor } from "./validation";
+import { hasCompleteAssetTrendMetrics, requestSchemaFor } from "./validation";
+import type {
+  CalibrationDetail,
+  CalibrationPreview,
+  CalibrationRequest,
+  CalibrationResult,
+} from "./calibration";
 const BASE = import.meta.env.VITE_API_BASE_URL || "";
 export class ApiError extends Error {
   constructor(
@@ -106,18 +112,31 @@ export function runAssetTrendSensitivity(
     },
     onProgress,
     signal,
-  ).catch((error) => {
-    if (
-      error instanceof ApiError &&
-      error.status === 404 &&
-      error.message === "Not Found"
-    )
-      throw new ApiError(
-        "Запущенный FastAPI не поддерживает этот расчёт. Перезапустите сервер из текущей версии проекта.",
-        404,
-      );
-    throw error;
-  });
+  )
+    .then((result) => {
+      if (
+        Object.values(result.by_asset).some(
+          (series) => !hasCompleteAssetTrendMetrics(series),
+        )
+      ) {
+        throw new ApiError(
+          "FastAPI вернул неполные показатели по активам. Перезапустите сервер из текущей версии проекта и повторите расчёт.",
+        );
+      }
+      return result;
+    })
+    .catch((error) => {
+      if (
+        error instanceof ApiError &&
+        error.status === 404 &&
+        error.message === "Not Found"
+      )
+        throw new ApiError(
+          "Запущенный FastAPI не поддерживает этот расчёт. Перезапустите сервер из текущей версии проекта.",
+          404,
+        );
+      throw error;
+    });
 }
 
 export function runBootstrapTrendSensitivity(
@@ -131,6 +150,55 @@ export function runBootstrapTrendSensitivity(
     onProgress,
     signal,
   );
+}
+
+const CALIBRATION_PATH = "/api/v1/analytics/bootstrap-calibration";
+
+export function previewCalibration(body: CalibrationRequest) {
+  return requestJson<CalibrationPreview>(CALIBRATION_PATH + "/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function runCalibration(
+  body: CalibrationRequest | { calibration_job_id: string },
+  onProgress: (job: Job<CalibrationResult>) => void,
+  signal: AbortSignal,
+) {
+  return submitJob<CalibrationResult>(
+    "calibration_job_id" in body
+      ? "bootstrap-calibration-holdout"
+      : "bootstrap-calibration",
+    body,
+    onProgress,
+    signal,
+  );
+}
+
+export function fetchCalibrationDetail(
+  jobId: string,
+  fold: string,
+  horizon: string,
+  metrics: string[],
+  member: string[],
+  lengths: number[],
+  signal: AbortSignal,
+) {
+  const search = new URLSearchParams({ fold, horizon });
+  metrics.forEach((metric) => search.append("metrics", metric));
+  member.forEach((asset) => search.append("member", asset));
+  lengths.forEach((length) => search.append("lengths", String(length)));
+  return requestJson<CalibrationDetail>(
+    CALIBRATION_PATH + "/" + jobId + "/detail?" + search.toString(),
+    {},
+    signal,
+  );
+}
+
+export function cancelCalibration(jobId: string) {
+  return requestJson<Job>(CALIBRATION_PATH + "/" + jobId, { method: "DELETE" });
 }
 
 async function submitJob<T>(

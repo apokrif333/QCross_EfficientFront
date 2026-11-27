@@ -102,6 +102,7 @@ def test_efficiency_observes_exact_joint_bootstrap_sample(panel, monkeypatch):
     analyze_bootstrap(
         panel,
         bootstrap_iterations=4,
+        expected_block_length=12,
         objectives=["gmv"],
         random_seed=17,
         user_weights=dict.fromkeys(panel.assets, 1 / len(panel.assets)),
@@ -200,7 +201,11 @@ def test_cv_shrinkage_is_selected_in_each_synthetic_train(panel, monkeypatch):
 
     monkeypatch.setattr(estimators, "select_shrinkage", spy)
     result = analyze_bootstrap(
-        panel, bootstrap_iterations=3, covariance_method="cv_linear", objectives=["gmv"]
+        panel,
+        bootstrap_iterations=3,
+        expected_block_length=12,
+        covariance_method="cv_linear",
+        objectives=["gmv"],
     )
     splits = bootstrap_folds(len(panel.values), 4, "cv_linear")
     trains = [panel.values[t] for i in range(3) for t, _ in bootstrap_generation(splits, 12, 42, i)]
@@ -214,7 +219,11 @@ def test_cv_shrinkage_is_selected_in_each_synthetic_train(panel, monkeypatch):
 def test_resampled_frontier_matches_independent_shared_gamma_average(panel):
     aversions = [50.0, 5.0, 0.5]
     result = analyze_resampled_frontier(
-        panel, bootstrap_iterations=4, frontier_points=3, risk_aversions=aversions
+        panel,
+        bootstrap_iterations=4,
+        expected_block_length=12,
+        frontier_points=3,
+        risk_aversions=aversions,
     )
     assert result["status"] == "complete"
     rng = np.random.default_rng(42)
@@ -234,7 +243,9 @@ def test_resampled_frontier_matches_independent_shared_gamma_average(panel):
 
 def test_resampled_frontier_user_portfolio_uses_same_samples(panel):
     weights = {"1": 0.6, "2": 0.2, "3": 0.2}
-    options = dict(bootstrap_iterations=4, frontier_points=3, random_seed=42)
+    options = dict(
+        bootstrap_iterations=4, expected_block_length=12, frontier_points=3, random_seed=42
+    )
     baseline = analyze_resampled_frontier(panel, **options)
     result = analyze_resampled_frontier(panel, user_weights=weights, **options)
     assert result["sample_fingerprint"] == baseline["sample_fingerprint"]

@@ -121,9 +121,9 @@ def summarize(records, *, metrics=METRICS):
         ("lower_volatility", ["delta_volatility"], lambda d: d["delta_volatility"] < 0),
         ("lower_drawdown", ["delta_max_drawdown"], lambda d: d["delta_max_drawdown"] < 0),
         (
-            "lower_annualized_total_costs",
-            ["delta_annualized_total_costs"],
-            lambda d: d["delta_annualized_total_costs"] < 0,
+            "higher_cagr_no_higher_drawdown",
+            ["delta_cagr", "delta_max_drawdown"],
+            lambda d: d["delta_cagr"] > 0 and d["delta_max_drawdown"] <= 0,
         ),
         (
             "higher_cagr_no_higher_volatility",
@@ -134,7 +134,9 @@ def summarize(records, *, metrics=METRICS):
         eligible = [
             r["differences"]
             for r in valid
-            if all(r["differences"].get(k) is not None for k in keys)
+            if all(
+                (delta := r["differences"].get(k)) is not None and np.isfinite(delta) for k in keys
+            )
         ]
         wins[label] = {
             "fraction": float(np.mean([condition(d) for d in eligible])) if eligible else None,

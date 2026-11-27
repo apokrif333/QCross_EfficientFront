@@ -31,6 +31,37 @@ export function rollingReturns(
   });
 }
 
+export function rollingReturnDifferences(
+  months: string[],
+  passiveWealth: (number | null)[],
+  managedWealth: (number | null)[],
+  years: number,
+) {
+  const managedByEnd = new Map(
+    rollingReturns(months, managedWealth, years).map(({ end, value }) => [
+      end,
+      value,
+    ]),
+  );
+  return rollingReturns(months, passiveWealth, years).flatMap(
+    ({ start, end, value: passive }) => {
+      const managed = managedByEnd.get(end);
+      if (managed === undefined) return [];
+      const difference = passive - managed;
+      // Equivalent returns can have small floating-point differences between NAV paths.
+      return [
+        {
+          start,
+          end,
+          value: Math.abs(difference) < 1e-12 ? 0 : difference,
+          passive,
+          managed,
+        },
+      ];
+    },
+  );
+}
+
 export function threeYearReturnCounts(
   months: string[] | undefined,
   wealth: (number | null)[] | undefined,

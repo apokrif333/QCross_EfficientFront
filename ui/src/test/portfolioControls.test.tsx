@@ -202,19 +202,38 @@ it("plots a single labeled point per common period with drawdown on X and CAGR o
     gross: stats,
     total_commissions: 0.001,
   }));
-  render(
+  const result = {
+    portfolio_controls: {
+      config: {
+        mode: "trend",
+        trend: { asset_rules: { "1": { indicator: "sma" } } },
+      },
+      months: ["2000-01"],
+      assets: ["1"],
+      baseline: path,
+      controlled: path,
+      sensitivity: { scope: "common_lookback", points },
+    },
+  };
+  const props = {
+    instruments,
+    userWeights: { "1": 1 },
+    onCalculateSensitivity: vi.fn(),
+  };
+  const legacy = { annualized_cagr: 0.07, maximum_drawdown: 0.13 };
+  const assetSeries = {
+    asset_id: "1",
+    indicator: "sma",
+    points: points.map(({ lookback_months }) => ({
+      lookback_months,
+      gross: legacy,
+      net: legacy,
+    })),
+  };
+  const { rerender } = render(
     <ControlResults
-      instruments={instruments}
-      result={{
-        portfolio_controls: {
-          config: { mode: "trend", trend: { asset_rules: { "1": {} } } },
-          months: ["2000-01"],
-          assets: ["1"],
-          baseline: path,
-          controlled: path,
-          sensitivity: { scope: "common_lookback", points },
-        },
-      }}
+      {...props}
+      result={{ ...result, asset_trend_sensitivity: { "1": assetSeries } }}
     />,
   );
   const sensitivity = () =>
@@ -247,6 +266,22 @@ it("plots a single labeled point per common period with drawdown on X and CAGR o
   expect(p.data[0].text).toEqual(points.map((p) => String(p.lookback_months)));
   expect(p.data[0].x).toEqual(points.map((p) => p.net.maximum_drawdown));
   expect(p.data[0].y).toEqual(points.map((p) => p.net.annualized_cagr));
+  const table = screen.getByRole("table", {
+    name: "Показатели по периодам SMA/Momentum",
+  });
+  expect(
+    within(table)
+      .getAllByRole("columnheader")
+      .map((cell) => cell.textContent),
+  ).toEqual(["Период", "CAGR", "Vol", "DD", "Sharpe", "Sortino", "Calmar"]);
+  const rows = within(table).getAllByRole("row").slice(1);
+  expect(within(rows[0]).getByRole("rowheader")).toHaveTextContent("1 мес.");
+  expect(within(rows[35]).getByRole("rowheader")).toHaveTextContent("36 мес.");
+  const first = within(rows[0]).getAllByRole("cell");
+  const last = within(rows[35]).getAllByRole("cell");
+  expect(first[0]).toHaveStyle({ backgroundColor: "rgb(188, 245, 188)" });
+  expect(first[2]).toHaveStyle({ backgroundColor: "rgb(188, 245, 188)" });
+  expect(last[2]).toHaveStyle({ backgroundColor: "rgb(245, 188, 188)" });
   fireEvent.click(screen.getByRole("button", { name: "После комиссий" }));
   expect(sensitivity().data[0].x).toEqual(
     points.map((p) => p.gross.maximum_drawdown),
@@ -255,6 +290,48 @@ it("plots a single labeled point per common period with drawdown on X and CAGR o
   expect(screen.getByText(/Корреляция Пирсона/)).toHaveTextContent(
     "недостаточно различающихся данных",
   );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Рассчитать для активов" }),
+  );
+  expect(props.onCalculateSensitivity).toHaveBeenCalledOnce();
+  const updated = {
+    ...legacy,
+    annualized_volatility: 0.23,
+    historical_sharpe_ratio: 0.5,
+    sortino_ratio: null,
+    calmar_ratio: 0.54,
+  };
+  rerender(
+    <ControlResults
+      {...props}
+      result={{
+        ...result,
+        asset_trend_sensitivity: {
+          "1": {
+            ...assetSeries,
+            points: points.map(({ lookback_months }) => ({
+              lookback_months,
+              net: updated,
+              gross: updated,
+            })),
+          },
+        },
+      }}
+    />,
+  );
+  expect(
+    screen.queryByRole("button", { name: "Рассчитать для активов" }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Следующий график" }));
+  const assetCells = within(rows[0]).getAllByRole("cell");
+  expect(assetCells.map((cell) => cell.textContent)).toEqual([
+    "7.00%",
+    "23.00%",
+    "13.00%",
+    "0.500",
+    "—",
+    "0.540",
+  ]);
 });
 
 it("averages annual commission ratios including zero and partial years", () => {

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import FrontierRollingReturns from "../components/FrontierRollingReturns";
 import { rollingReturns } from "../lib/rollingReturns";
@@ -68,4 +68,52 @@ it("updates the bars, positive window counts and percentile thresholds from the 
   });
   expect(screen.getByText("P95")).toBeInTheDocument();
   expect(screen.getByText("Не ниже порога: 15.38%")).toBeInTheDocument();
+});
+
+it("compares annualized returns only for windows available in both portfolios", () => {
+  const result = saved().result as FrontierResult;
+  const passive = Array<number | null>(25).fill(1);
+  passive[12] = passive[24] = 1.25;
+  passive[13] = 0.8;
+  const managed = Array<number | null>(25).fill(1);
+  managed[1] = null;
+  managed[14] = 1.1;
+  result.portfolio_controls = {
+    months,
+    baseline: { net_wealth: passive },
+    controlled: { net_wealth: managed },
+  };
+  const { rerender } = render(<FrontierRollingReturns result={result} />);
+  fireEvent.change(screen.getByLabelText("Портфель"), {
+    target: { value: "passive-vs-managed" },
+  });
+  fireEvent.change(screen.getByLabelText("Горизонт, лет"), {
+    target: { value: "1" },
+  });
+  const [bars] = JSON.parse(
+    screen.getByRole("img", { name: "Разница скользящей доходности" })
+      .textContent!,
+  );
+  expect(bars.x).toHaveLength(12);
+  expect(bars.x.slice(0, 2)).toEqual(["2020-12", "2021-02"]);
+  expect(bars.y[0]).toBeCloseTo(25);
+  expect(bars.y[1]).toBeCloseTo(-10);
+  expect(bars.customdata[0]).toEqual(["2020-01 — 2020-12", 0.25, 0]);
+  expect(screen.getByText("Пассивный выше: 1 (8.33%)")).toBeInTheDocument();
+  expect(screen.getByText("Управляемый выше: 1 (8.33%)")).toBeInTheDocument();
+  expect(screen.getByText("Одинаково: 10 (83.33%)")).toBeInTheDocument();
+  expect(
+    within(screen.getByText("Худшее окно").parentElement!).getByText(
+      "-10.00 п. п.",
+    ),
+  ).toBeInTheDocument();
+
+  rerender(
+    <FrontierRollingReturns
+      result={{ ...result, portfolio_controls: undefined }}
+    />,
+  );
+  expect(
+    screen.queryByRole("option", { name: "Пассивный − управляемый" }),
+  ).not.toBeInTheDocument();
 });

@@ -17,11 +17,11 @@ def test_downside_exact_warmup_and_hedge_independence():
 
     first, second = run(0.5), run(-0.5)
     assert first["signal_history"][1]["alpha"] == 1
-    expected = 0.09 / (np.sqrt(12) * 0.1)
-    assert first["signal_history"][2]["alpha"] == pytest.approx(expected)
+    assert first["signal_history"][2]["raw_alpha"] == pytest.approx(0.09 / (np.sqrt(12) * 0.1))
+    assert first["signal_history"][2]["alpha"] == 0.3
     assert first["signal_history"] == second["signal_history"]
     assert first["events"][1]["month_index"] == 2
-    assert first["weight_history"][2] == pytest.approx([expected, 1 - expected])
+    assert first["weight_history"][2] == pytest.approx([0.3, 0.7])
 
 
 def test_single_month_downside_annualization_and_validation():
@@ -35,9 +35,49 @@ def test_single_month_downside_annualization_and_validation():
     provider = DownsideTarget(np.array([1.0, 0]), np.array([0.0, 1]), 0.09, 1)
     result = simulate_portfolio(values, [1, 0], target_provider=provider)
     assert result["signal_history"][0]["downside_volatility"] == pytest.approx(np.sqrt(12) * 0.1)
-    assert result["signal_history"][0]["alpha"] == pytest.approx(0.09 / (np.sqrt(12) * 0.1))
+    assert result["signal_history"][0]["raw_alpha"] == pytest.approx(0.09 / (np.sqrt(12) * 0.1))
+    assert result["signal_history"][0]["alpha"] == 0.3
     expected = np.sqrt(12 * np.mean(np.minimum(result["net_returns"], 0) ** 2))
     assert result["net"]["annualized_downside_volatility"] == pytest.approx(expected)
+
+
+def test_downside_trades_when_rounded_target_changes():
+    raw_targets = np.array(
+        [
+            0.95,
+            0.949,
+            0.93,
+            0.85,
+            0.849,
+            0.75,
+            0.749,
+            0.35,
+            0.33,
+            0.27,
+            0.249,
+            0.25,
+            0.049,
+            0.05,
+            0.12,
+            1,
+        ]
+    )
+    expected_targets = [1, 0.9, 0.9, 0.9, 0.8, 0.8, 0.7, 0.4, 0.3, 0.3, 0.2, 0.3, 0, 0.1, 0.1, 1]
+    base_returns = -0.05 / (np.sqrt(12) * raw_targets)
+    values = np.column_stack([base_returns, np.zeros_like(base_returns)])
+    provider = DownsideTarget(np.array([1.0, 0]), np.array([0.0, 1]), 0.05, 1)
+    path = simulate_portfolio(
+        values, [1, 0], target_provider=provider, rebalancing_interval_months=None
+    )
+
+    signals = path["signal_history"]
+    assert [signal["raw_alpha"] for signal in signals] == pytest.approx(raw_targets)
+    assert [signal["alpha"] for signal in signals] == expected_targets
+    events = path["events"][1:]
+    assert [event["month_index"] for event in events] == [1, 4, 6, 7, 8, 10, 11, 12, 13]
+    assert all(event["reason"] == "control_change" for event in events)
+    assert path["weight_history"][12] == [0, 1]
+    assert path["weight_history"][13] == pytest.approx([0.1, 0.9])
 
 
 def test_no_monthly_rebalance_for_unchanged_signal_and_no_lookahead():
@@ -150,7 +190,19 @@ def test_real_reporting_preserves_nominal_signals(panel, indicator):
             pytest.approx(expected)
         )
         asset = analyze_asset_trend_sensitivity(real, user_weights=weights, **settings)["by_asset"]
-        assert asset["1"]["points"][period - 1]["net"]["annualized_cagr"] == pytest.approx(expected)
+        assert asset["1"]["points"][period - 1]["net"] == pytest.approx(
+            {
+                key: real_path["net"][key]
+                for key in (
+                    "annualized_cagr",
+                    "annualized_volatility",
+                    "maximum_drawdown",
+                    "historical_sharpe_ratio",
+                    "sortino_ratio",
+                    "calmar_ratio",
+                )
+            }
+        )
         sampled = np.roll(np.arange(len(months)), 1)
         sweep = analyze_bootstrap_trend_sensitivity(
             real, user_weights=weights, _sample_indices=[sampled]

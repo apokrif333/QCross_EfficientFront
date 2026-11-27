@@ -12,16 +12,20 @@ export default function PortfolioTable({
   instruments,
   onSelect,
   historicalSharpeOnly = false,
+  showAnnualCosts = true,
 }: {
   rows: { label: string; portfolio: Portfolio }[];
   instruments: Instrument[];
   onSelect?: (p: Portfolio, label: string) => void;
   historicalSharpeOnly?: boolean;
+  showAnnualCosts?: boolean;
 }) {
-  const visibleCosts = annualCostKeys.filter((key) =>
-    rows.some(
-      ({ portfolio }) => portfolio.metrics?.trading_costs?.[key] != null,
-    ),
+  const visibleCosts = annualCostKeys.filter(
+    (key) =>
+      showAnnualCosts &&
+      rows.some(
+        ({ portfolio }) => portfolio.metrics?.trading_costs?.[key] != null,
+      ),
   );
   return (
     <div className="table-scroll">

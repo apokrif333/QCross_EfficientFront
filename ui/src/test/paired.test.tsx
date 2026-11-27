@@ -29,7 +29,14 @@ it("labels controlled CV and Bootstrap comparisons and their validation cloud", 
     valid_count: 0,
     failed_count: 0,
     requested_comparisons: 0,
-    differences: {},
+    differences: {
+      delta_arithmetic_return: null,
+      delta_terminal_wealth: null,
+      delta_commissions: null,
+      delta_capital_gains_tax: null,
+      delta_total_costs: null,
+      delta_annualized_total_costs: null,
+    },
     win_frequencies: {},
     results: [],
     generated_datasets: 2,
@@ -42,7 +49,25 @@ it("labels controlled CV and Bootstrap comparisons and their validation cloud", 
       },
     ],
   };
-  render(<PairedComparisonView value={value} instruments={instruments} />);
+  const { rerender } = render(
+    <PairedComparisonView value={value} instruments={instruments} />,
+  );
+  expect(screen.getByText("Δ конечного капитала на $1")).toBeVisible();
+  expect(screen.getByText("Δ совокупных годовых издержек")).toBeVisible();
+  for (const caption of [
+    "Δ годовой арифметической доходности",
+    "Δ комиссий на $1",
+    "Δ уплаченного налога на $1",
+    "Δ совокупных издержек на $1",
+  ]) {
+    expect(screen.queryByText(caption)).not.toBeInTheDocument();
+  }
+  rerender(
+    <PairedComparisonView value={value} instruments={instruments} bootstrap />,
+  );
+  expect(
+    screen.queryByText("Δ конечного капитала на $1"),
+  ).not.toBeInTheDocument();
   expect(
     screen.getByText(/Исходные целевые веса управляемого портфеля/),
   ).toBeVisible();
@@ -56,33 +81,35 @@ it("labels controlled CV and Bootstrap comparisons and their validation cloud", 
     ),
   ).toBeVisible();
 });
-it("shows lower drawdown frequency for saved results and excludes failed comparisons", () => {
+it("recomputes drawdown frequencies for saved results and excludes failed comparisons", () => {
   const value: PairedComparison = {
     valid_count: 3,
     failed_count: 1,
     requested_comparisons: 4,
     differences: {},
-    win_frequencies: {},
+    win_frequencies: {
+      lower_annualized_total_costs: { fraction: 0.25, denominator: 4 },
+    },
     results: [
       {
         status: "optimal",
         optimized: {},
-        differences: { delta_max_drawdown: -0.1 },
+        differences: { delta_max_drawdown: -0.1, delta_cagr: 0.02 },
       },
       {
         status: "optimal",
         optimized: {},
-        differences: { delta_max_drawdown: 0 },
+        differences: { delta_max_drawdown: 0, delta_cagr: 0.05 },
       },
       {
         status: "optimal",
         optimized: {},
-        differences: { delta_max_drawdown: 0.1 },
+        differences: { delta_max_drawdown: 0.1, delta_cagr: 0.15 },
       },
       {
         status: "failed",
         optimized: null,
-        differences: { delta_max_drawdown: -0.4 },
+        differences: { delta_max_drawdown: -0.4, delta_cagr: 0.1 },
       },
     ],
   };
@@ -90,6 +117,12 @@ it("shows lower drawdown frequency for saved results and excludes failed compari
   const metric = screen.getByText("Ниже просадки").closest("span")!;
   expect(within(metric).getByText("33.33%")).toBeVisible();
   expect(within(metric).getByText("3 сравнений")).toBeVisible();
+  expect(screen.queryByText("Ниже годовые издержки")).not.toBeInTheDocument();
+  const joint = screen
+    .getByText("Выше CAGR при не большей просадке")
+    .closest("span")!;
+  expect(within(joint).getByText("66.67%")).toBeVisible();
+  expect(within(joint).getByText("3 сравнений")).toBeVisible();
 });
 
 it("plots paired Validation differences including negative and zero outcomes", () => {
@@ -288,7 +321,12 @@ it("sorts by optimizer minus user for every metric, keeping missing results last
     pair,
     status: "optimal",
     weights: { [pair === 1 ? "175" : "1"]: 1 },
-    user: Object.fromEntries(keys.map((key) => [key, user])),
+    user: {
+      ...Object.fromEntries(keys.map((key) => [key, user])),
+      annualized_commissions: 0.003,
+      annualized_capital_gains_tax: 0.001,
+      annualized_total_costs: 0.004,
+    },
     optimized: Object.fromEntries(keys.map((key) => [key, optimized])),
   });
   const value: PairedComparison = {
@@ -316,6 +354,11 @@ it("sorts by optimizer minus user for every metric, keeping missing results last
       .getAllByRole("row")
       .slice(1)
       .map((row) => within(row).getByRole("rowheader").textContent!.charAt(0));
+  expect(
+    within(table).queryByRole("columnheader", {
+      name: /Годовые комиссии|Годовой налог|Совокупные годовые издержки/,
+    }),
+  ).not.toBeInTheDocument();
   for (const label of ["CAGR", "Vol", "DD", "Sharpe"]) {
     fireEvent.click(within(table).getByRole("button", { name: label }));
     expect(order()).toEqual(["3", "1", "2", "4"]);

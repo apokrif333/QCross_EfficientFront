@@ -65,9 +65,12 @@ it("subtracts active metrics from passive metrics within each draw and excludes 
   expect(comparison.differences.delta_annualized_total_costs?.valid_count).toBe(
     1,
   );
-  expect(comparison.win_frequencies.lower_annualized_total_costs).toEqual({
-    fraction: 1,
-    denominator: 1,
+  expect(
+    comparison.win_frequencies.lower_annualized_total_costs,
+  ).toBeUndefined();
+  expect(comparison.win_frequencies.higher_cagr_no_higher_drawdown).toEqual({
+    fraction: 0.5,
+    denominator: 2,
   });
   expect(comparison.win_frequencies.higher_cagr).toEqual({
     fraction: 0.5,

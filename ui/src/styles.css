@@ -730,6 +730,101 @@ details {
   border-radius: 6px;
   margin: 16px 0;
 }
+
+.calibration-section {
+  margin-block: 1.25rem;
+}
+
+.workspace.calibration-workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.calibration-fields,
+.calibration-checks {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.calibration-grid,
+.calibration-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.8rem;
+}
+
+.calibration-grid label,
+.calibration-actions > label:not(.calibration-inline) {
+  display: grid;
+  gap: 0.25rem;
+  align-content: start;
+}
+
+.calibration-actions,
+.calibration-checks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  margin-block: 0.75rem;
+}
+
+.calibration-inline,
+.calibration-checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.calibration-progress {
+  display: grid;
+  gap: 0.4rem;
+  margin-block: 0.75rem 1.25rem;
+}
+
+.calibration-progress-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+}
+
+.calibration-progress progress {
+  width: 100%;
+  height: 0.75rem;
+  accent-color: #226956;
+}
+
+.calibration-summary > div {
+  border: 1px solid #dce7e8;
+  border-radius: 0.55rem;
+  padding: 0.75rem;
+}
+
+.calibration-summary dt {
+  font-size: 0.87rem;
+  color: #4b6571;
+}
+
+.calibration-summary dd {
+  margin: 0.25rem 0 0;
+  color: #226956;
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.calibration-summary dd small {
+  display: block;
+  color: #4b6571;
+  font-size: 0.85rem;
+}
+
+td.calibration-best {
+  background: #e2f4ed;
+  color: #1b5747;
+  font-weight: 650;
+}
 .table-sort {
   border: 0;
   background: transparent;
@@ -742,10 +837,12 @@ details {
   outline: 2px solid #197b83;
   outline-offset: 3px;
 }
-.bootstrap-trend-table-scroll {
+.bootstrap-trend-table-scroll,
+.trend-table-scroll {
   max-height: min(65vh, 36rem);
 }
-.bootstrap-trend-table thead th {
+.bootstrap-trend-table thead th,
+.trend-table thead th {
   position: sticky;
   top: 0;
   z-index: 2;

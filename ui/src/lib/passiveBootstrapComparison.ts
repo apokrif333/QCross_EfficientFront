@@ -124,9 +124,9 @@ export function comparePassiveBootstrap(
         ["delta_max_drawdown"],
         (drawdown) => drawdown < 0,
       ),
-      lower_annualized_total_costs: frequency(
-        ["delta_annualized_total_costs"],
-        (cost) => cost < 0,
+      higher_cagr_no_higher_drawdown: frequency(
+        ["delta_cagr", "delta_max_drawdown"],
+        (cagr, drawdown) => cagr > 0 && drawdown <= 0,
       ),
       higher_cagr_no_higher_volatility: frequency(
         ["delta_cagr", "delta_volatility"],

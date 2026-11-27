@@ -38,6 +38,8 @@ def test_real_process_api_roundtrip(endpoint, panel, settings, session_factory):
         "asset_groups": {"1": 1, "2": 3, "3": 5},
         "user_weights": {"1": 1.0},
     }
+    if endpoint in {"bootstrap", "resampled-frontier"}:
+        body["expected_block_length"] = 1
     with TestClient(app) as client:
         response = client.post(f"/api/v1/analytics/{endpoint}", json=body)
         assert response.status_code == 202
@@ -113,6 +115,50 @@ def test_real_process_api_roundtrip(endpoint, panel, settings, session_factory):
         assert client.get("/api/v1/analytics/jobs/not-a-job/result").status_code == 404
 
 
+def test_asset_trend_sensitivity_returns_all_table_metrics(panel, settings, session_factory):
+    seed_database(session_factory, panel)
+    body = {
+        "risk_free_source": "fixed_annual",
+        "instrument_ids": [1, 2, 3],
+        "frontier_points": 3,
+        "user_weights": {"1": 0.6, "2": 0.4},
+        "portfolio_controls": {
+            "mode": "trend",
+            "hedge_weights": {"3": 1},
+            "trend": {
+                "destination": "hedge",
+                "asset_rules": {"1": {"indicator": "momentum", "lookback_months": 12}},
+            },
+        },
+    }
+    with TestClient(create_app(settings)) as client:
+        frontier = client.post("/api/v1/analytics/frontier", json=body)
+        assert frontier.status_code == 202, frontier.text
+        finished = wait_result(client, frontier.json())
+        assert finished["status"] == "completed", finished
+        reference_hash = finished["result"]["reproducibility"]["reference_panel_sha256"]
+        submitted = client.post(
+            "/api/v1/analytics/asset-trend-sensitivity",
+            json={**body, "reference_panel_sha256": reference_hash},
+        )
+        assert submitted.status_code == 202, submitted.text
+        completed = wait_result(client, submitted.json())
+        assert completed["status"] == "completed", completed
+        points = completed["result"]["by_asset"]["1"]["points"]
+        assert [point["lookback_months"] for point in points] == list(range(1, 37))
+        keys = (
+            "annualized_cagr",
+            "annualized_volatility",
+            "maximum_drawdown",
+            "historical_sharpe_ratio",
+            "sortino_ratio",
+            "calmar_ratio",
+        )
+        for side in ("net", "gross"):
+            assert all(set(keys) <= point[side].keys() for point in points)
+            assert all(isinstance(points[11][side][key], (int, float)) for key in keys)
+
+
 def test_bootstrap_trend_sensitivity_is_a_separate_job(panel, settings, session_factory):
     seed_database(session_factory, panel)
     fee_rate = 0.002
@@ -180,7 +226,12 @@ def test_bootstrap_trend_sensitivity_is_a_separate_job(panel, settings, session_
                     for side in ("net", "gross")
                     for metric in ("annualized_cagr", "maximum_drawdown", "annualized_volatility")
                 ]
-                + [controlled[key] for key in value["metric_order"][6:]]
+                + [controlled[key] for key in value["metric_order"][6:13]]
+                + [
+                    controlled[side][metric]
+                    for side in ("net", "gross")
+                    for metric in ("historical_sharpe_ratio", "sortino_ratio")
+                ]
             )
 
         expired = client.post(
@@ -327,7 +378,8 @@ def test_request_finiteness_and_defaults():
 
     from app.schemas.frontier import ResampledFrontierRequest
 
-    assert AnalyticsRequest(instrument_ids=[1, 2]).bootstrap_iterations == 500
+    assert AnalyticsRequest(instrument_ids=[1, 2]).bootstrap_iterations == 100
+    assert AnalyticsRequest(instrument_ids=[1, 2]).expected_block_length == 7
     assert AnalyticsRequest(instrument_ids=[1, 2]).cv_folds == 4
     for k in range(2, 21, 2):
         assert AnalyticsRequest(instrument_ids=[1, 2], cv_folds=k).cv_folds == k

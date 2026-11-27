@@ -1,15 +1,21 @@
 import { useMemo, useState } from "react";
 import { number, percent } from "../lib/display";
-import { linearQuantile } from "../lib/statistics";
+import { linearQuantile, trendHeatmap } from "../lib/statistics";
 import { annualCostHint } from "../lib/tradingCosts";
 import type { BootstrapTrendSeries } from "../types";
 
+const HEATMAP_METRICS = [
+  ["medianCagr", "CAGR"],
+  ["medianVolatility", "Vol"],
+  ["medianDrawdown", "DD"],
+  ["medianSharpe", "Sharpe"],
+  ["medianSortino", "Sortino"],
+  ["calmar", "Calmar"],
+] as const;
 const METRICS = [
-  ["medianCagr", "Медианный CAGR"],
+  ...HEATMAP_METRICS,
   ["p5Cagr", "P5 CAGR"],
-  ["medianDrawdown", "Медианная макс. просадка"],
   ["p95Drawdown", "P95 макс. просадки"],
-  ["calmar", "Медианный Calmar"],
   ["commissions", "Среднегодовые комиссии"],
   ["tax", "Годовой налог на прирост капитала"],
   ["costs", "Совокупные годовые издержки"],
@@ -38,10 +44,14 @@ export function summarizeBootstrapTrend(
   gross: boolean,
 ) {
   const offset = gross ? 3 : 0;
+  const ratioOffset = gross ? 15 : 13;
   const reference = series[benchmark - 1];
   const rows = series.map((samples, i) => {
     const returns: number[] = [],
       drawdowns: number[] = [],
+      volatilities: number[] = [],
+      sharpes: number[] = [],
+      sortinos: number[] = [],
       calmars: number[] = [];
     let fees = 0,
       feeCount = 0,
@@ -59,6 +69,12 @@ export function summarizeBootstrapTrend(
         commission = point[6];
       if (cagr != null) returns.push(cagr);
       if (drawdown != null) drawdowns.push(drawdown);
+      const volatility = point[offset + 2];
+      const sharpe = point[ratioOffset];
+      const sortino = point[ratioOffset + 1];
+      if (volatility != null) volatilities.push(volatility);
+      if (sharpe != null) sharpes.push(sharpe);
+      if (sortino != null) sortinos.push(sortino);
       if (cagr != null && drawdown != null && drawdown > 0) {
         const calmar = cagr / drawdown;
         if (Number.isFinite(calmar)) calmars.push(calmar);
@@ -89,12 +105,18 @@ export function summarizeBootstrapTrend(
     });
     returns.sort((a, b) => a - b);
     drawdowns.sort((a, b) => a - b);
+    volatilities.sort((a, b) => a - b);
+    sharpes.sort((a, b) => a - b);
+    sortinos.sort((a, b) => a - b);
     calmars.sort((a, b) => a - b);
     return {
       period: i + 1,
       medianCagr: quantile(returns, 0.5),
       p5Cagr: quantile(returns, 0.05),
       medianDrawdown: quantile(drawdowns, 0.5),
+      medianVolatility: quantile(volatilities, 0.5),
+      medianSharpe: quantile(sharpes, 0.5),
+      medianSortino: quantile(sortinos, 0.5),
       p95Drawdown: quantile(drawdowns, 0.95),
       calmar: quantile(calmars, 0.5),
       commissions: mean(fees, feeCount),
@@ -149,8 +171,8 @@ export default function BootstrapTrendComparison({
   onSelect: (period: number) => void;
 }) {
   const [sort, setSort] = useState<{ column: Column; descending: boolean }>({
-    column: "calmar",
-    descending: true,
+    column: "period",
+    descending: false,
   });
   const summary = useMemo(
     () => summarizeBootstrapTrend(series, benchmark, gross),
@@ -171,6 +193,18 @@ export default function BootstrapTrendComparison({
       return Number(x == null) - Number(y == null) || a.period - b.period;
     return (sort.descending ? y - x : x - y) || a.period - b.period;
   });
+  const colors = new Map<Column, (string | undefined)[]>(
+    HEATMAP_METRICS.map(
+      ([metric]) =>
+        [
+          metric,
+          trendHeatmap(
+            rows.map((row) => row[metric].value),
+            metric === "medianVolatility" || metric === "medianDrawdown",
+          ),
+        ] as const,
+    ),
+  );
   return (
     <>
       <p className="hint" aria-live="polite">
@@ -225,7 +259,7 @@ export default function BootstrapTrendComparison({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {rows.map((row, i) => (
               <tr
                 key={row.period}
                 data-benchmark={row.period === benchmark}
@@ -244,8 +278,13 @@ export default function BootstrapTrendComparison({
                   ([metric]) => {
                     const { value, count } = row[metric];
                     return (
-                      <td key={metric}>
-                        {metric === "calmar"
+                      <td
+                        key={metric}
+                        style={{ backgroundColor: colors.get(metric)?.[i] }}
+                      >
+                        {metric === "calmar" ||
+                        metric === "medianSharpe" ||
+                        metric === "medianSortino"
                           ? number(value)
                           : percent(value, metric === "commissions" ? 4 : 2)}
                         <small>
@@ -270,7 +309,8 @@ export default function BootstrapTrendComparison({
         </table>
       </div>
       <p className="hint">
-        Под значением указано число доступных генераций или пар.
+        CAGR, Vol, DD, Sharpe, Sortino и Calmar показаны как медианы по
+        генерациям. Под значением указано число доступных генераций или пар.
         {legacyCommissions &&
           " В этом сохранённом расчёте комиссии за весь период поделены на начальный капитал и число лет."}
         {commissionBasis === "pretrade_nav" && !gross && ` ${annualCostHint}`}

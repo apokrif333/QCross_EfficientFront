@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Kind } from "../types";
+import type { AssetTrendSensitivitySeries, Kind } from "../types";
 const n = z.number().finite(),
   hash = z.string().regex(/^[a-f0-9]{64}$/),
   weights = z.record(z.string(), n);
@@ -78,7 +78,7 @@ const requestFields = z.object({
   frontier_points: n.int().min(2).max(201),
   cv_folds: n.int().min(2).max(20).multipleOf(2),
   bootstrap_iterations: n.int().min(1).max(2000),
-  expected_block_length: n.min(3).max(24),
+  expected_block_length: n.min(1).max(24),
   random_seed: n.int().min(0).max(4294967295),
   bootstrap_objectives: z
     .array(
@@ -233,7 +233,37 @@ const provenance = z
 const trendSensitivityStats = z.object({
   annualized_cagr: n.nullable(),
   maximum_drawdown: n.min(0).max(1),
+  annualized_volatility: n.nonnegative().nullish(),
+  historical_sharpe_ratio: n.nullish(),
+  sortino_ratio: n.nullish(),
+  calmar_ratio: n.nullish(),
 });
+
+export function hasCompleteAssetTrendMetrics(
+  series: AssetTrendSensitivitySeries | undefined,
+): boolean {
+  return (
+    !!series?.points.length &&
+    series.points.every(({ net, gross }) =>
+      [net, gross].every(
+        ({
+          annualized_volatility,
+          historical_sharpe_ratio,
+          sortino_ratio,
+          calmar_ratio,
+        }) =>
+          typeof annualized_volatility === "number" &&
+          Number.isFinite(annualized_volatility) &&
+          [historical_sharpe_ratio, sortino_ratio, calmar_ratio].every(
+            (value) =>
+              value === null ||
+              (typeof value === "number" && Number.isFinite(value)),
+          ),
+      ),
+    )
+  );
+}
+
 const assetTrendSensitivity = z.record(
   z.string(),
   z.object({
@@ -274,6 +304,10 @@ const bootstrapTrendSeries = z
           n.nonnegative().nullable(), // Total tax
           n.nonnegative().nullable(), // Total costs
           n.nonnegative().nullable(), // Unpaid tax
+          n.nullable().optional(), // Net Sharpe
+          n.nullable().optional(), // Net Sortino
+          n.nullable().optional(), // Gross Sharpe
+          n.nullable().optional(), // Gross Sortino
         ]),
         z.tuple([
           ...bootstrapTrendMetrics,
@@ -291,7 +325,9 @@ const bootstrapTrendSensitivity = z
     validation_sample_fingerprint: hash.optional(),
     commission_basis: z.literal("pretrade_nav").optional(),
     tax_methodology: z.string().optional(),
-    metric_order: z.array(z.string()).length(13).optional(),
+    metric_order: z
+      .union([z.array(z.string()).length(13), z.array(z.string()).length(17)])
+      .optional(),
     portfolio: bootstrapTrendSeries,
     by_asset: z.record(z.string(), bootstrapTrendSeries),
   })
@@ -586,6 +622,8 @@ const results = {
             training_metrics: metrics.nullable().optional(),
             validation_metrics: z
               .object({
+                historical_cagr: n.nullish(),
+                historical_max_drawdown: n.min(0).max(1).nullish(),
                 realized_annual_arithmetic_return: n,
                 realized_annual_volatility: n,
                 realized_sharpe_ratio: n.nullable(),

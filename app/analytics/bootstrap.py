@@ -33,8 +33,8 @@ from app.analytics.splitting import BOOTSTRAP_METHODOLOGY, bootstrap_folds
 
 
 def stationary_indices(observations: int, expected_block_length: float, rng) -> np.ndarray:
-    if observations < 1 or not 3 <= expected_block_length <= 24:
-        raise AnalyticsError("Expected bootstrap block length must be 3 to 24 months.")
+    if observations < 1 or not 1 <= expected_block_length <= 24:
+        raise AnalyticsError("Expected bootstrap block length must be 1 to 24 months.")
     indices = np.empty(observations, dtype=np.int64)
     position = 0
     while position < observations:
@@ -82,8 +82,8 @@ def bootstrap_weight_statistics(
 def _validate_settings(iterations: int, block_length: float, seed: int) -> None:
     if not isinstance(iterations, int) or not 1 <= iterations <= 2000:
         raise AnalyticsError("Bootstrap iterations must be an integer from 1 to 2,000.")
-    if not 3 <= block_length <= 24:
-        raise AnalyticsError("Expected bootstrap block length must be 3 to 24 months.")
+    if not 1 <= block_length <= 24:
+        raise AnalyticsError("Expected bootstrap block length must be 1 to 24 months.")
     if not isinstance(seed, int) or not 0 <= seed <= 2**32 - 1:
         raise AnalyticsError("The random seed must be an integer from 0 to 2^32-1.")
 
@@ -323,8 +323,8 @@ def _bootstrap_objective_summary(objective, records, constraints, target_return)
 def analyze_bootstrap(
     panel: ReturnPanel,
     *,
-    bootstrap_iterations: int = 500,
-    expected_block_length: float = 12,
+    bootstrap_iterations: int = 100,
+    expected_block_length: float = 7,
     random_seed: int = 42,
     objectives: list[str] | None = None,
     risk_free_rate: float = 0.03,
@@ -615,7 +615,7 @@ def analyze_resampled_frontier(
     *,
     frontier_points: int = 51,
     bootstrap_iterations: int = 250,
-    expected_block_length: float = 12,
+    expected_block_length: float = 7,
     random_seed: int = 42,
     risk_aversions: list[float] | None = None,
     risk_free_rate: float = 0.03,

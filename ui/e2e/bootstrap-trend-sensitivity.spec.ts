@@ -34,6 +34,10 @@ test("Bootstrap trend densities are calculated on demand and toggle by period, r
         0.04,
         0.06,
         0,
+        0.5 + period / 100,
+        0.8 + period / 100,
+        0.7 + period / 100,
+        1.1 + period / 100,
       ]),
     );
   const asset = result.assets[0];
@@ -257,12 +261,17 @@ test("Bootstrap trend densities are calculated on demand and toggle by period, r
   });
   await expect(annualTax).toBeVisible();
   await expect(
-    table.getByRole("columnheader", { name: "Медианный Calmar" }),
-  ).toHaveAttribute("aria-sort", "descending");
+    table.getByRole("columnheader", { name: "Период" }),
+  ).toHaveAttribute("aria-sort", "ascending");
+  await expect(
+    table.getByRole("columnheader", { name: "Sharpe" }),
+  ).toBeVisible();
+  await expect(
+    table.getByRole("columnheader", { name: "Sortino" }),
+  ).toBeVisible();
   await expect(
     table.getByRole("button", { name: "12 мес.", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
-  await table.getByRole("button", { name: "Период", exact: true }).click();
   await expect(
     table.locator("tbody tr").first().getByRole("rowheader"),
   ).toHaveText("1 мес.");
@@ -280,6 +289,12 @@ test("Bootstrap trend densities are calculated on demand and toggle by period, r
   await expect(
     table.locator("tbody tr").first().getByRole("cell").first(),
   ).toContainText("8.00%");
+  await expect(
+    table.locator("tbody tr").first().getByRole("cell").nth(3),
+  ).toHaveCSS("background-color", "rgb(245, 188, 188)");
+  await expect(
+    table.locator("tbody tr").last().getByRole("cell").nth(3),
+  ).toHaveCSS("background-color", "rgb(188, 245, 188)");
   await section.getByRole("button", { name: "Gross", exact: true }).click();
   await expect(annualTax).toHaveCount(0);
   await expect(

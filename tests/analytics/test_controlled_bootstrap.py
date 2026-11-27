@@ -18,6 +18,7 @@ def test_selected_my_portfolio_objective_uses_controlled_sample_risk(panel):
     result = analyze_bootstrap(
         p,
         bootstrap_iterations=4,
+        expected_block_length=12,
         user_weights=USER,
         objectives=["max_return_at_user_risk"],
         capital_gains_tax_rate=0.1,
@@ -86,6 +87,7 @@ def test_controlled_bootstrap_train_valid_and_shared_samples(panel, method, basi
     p = controlled_panel(panel, mode, basis)
     options = dict(
         bootstrap_iterations=4,
+        expected_block_length=12,
         objectives=["gmv"],
         user_weights=USER,
         covariance_method=method,
@@ -224,6 +226,7 @@ def test_trend_sensitivity_reuses_every_draw_with_portfolio_and_single_asset_rul
     result = analyze_bootstrap(
         p,
         bootstrap_iterations=len(samples),
+        expected_block_length=12,
         objectives=["gmv"],
         user_weights=USER,
         include_paired_comparison=False,
@@ -242,7 +245,7 @@ def test_trend_sensitivity_reuses_every_draw_with_portfolio_and_single_asset_rul
     assert sweep["iterations"] == len(samples)
     assert set(sweep["by_asset"]) == {"1", "2"}
     for asset, series in [(None, sweep["portfolio"]), *sweep["by_asset"].items()]:
-        assert np.shape(series) == (36, len(samples), 13)
+        assert np.shape(series) == (36, len(samples), 17)
         weights = USER if asset is None else {asset: 1.0}
         for month, actual in enumerate(series, 1):
             rules = {
@@ -264,6 +267,16 @@ def test_trend_sensitivity_reuses_every_draw_with_portfolio_and_single_asset_rul
                         for side in ("net", "gross")
                         for k in ("annualized_cagr", "maximum_drawdown", "annualized_volatility")
                     ]
-                    + [controlled[key] for key in sweep["metric_order"][6:]]
+                    + [controlled[key] for key in sweep["metric_order"][6:13]]
+                    + [
+                        controlled[side][key]
+                        for side in ("net", "gross")
+                        for key in ("historical_sharpe_ratio", "sortino_ratio")
+                    ]
                 )
-            np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
+            np.testing.assert_allclose(
+                np.asarray(actual, dtype=float),
+                np.asarray(expected, dtype=float),
+                rtol=1e-10,
+                atol=1e-12,
+            )

@@ -14,10 +14,13 @@ signal convention, including on resampled months.
 Downside mode uses `downside_vol.target_annual` and `lookback_months` (1–24).
 The unconditional downside RMS includes zero for positive base returns and is
 annualized by sqrt(12). It uses the original fixed targets exclusively. Warm-up
-keeps original exposure; zero downside gives alpha=1. Scaling is an exposure
-rule, not a realized-risk guarantee. Signals observed at month end affect only
-the following month. Changed targets trigger execution; unchanged signals do
-not force monthly rebalancing. Scheduled policies use the current targets.
+keeps original exposure. Zero downside implies a raw exposure of 100%.
+Each month, the raw exposure is rounded to the nearest 10 percentage points,
+with half steps rounded up. A raw exposure from 85% up to 95% (exclusive) gives
+a target of 90%. `raw_alpha` reports the raw exposure and `alpha` reports the
+rounded target. A change in the rounded target triggers rebalancing for the
+following month. Scheduled rebalancing also uses the rounded target.
+Scaling is an exposure rule, not a realized-risk guarantee.
 All asset trades are aggregated before the existing self-financing fee solver.
 
 Results retain original metrics. `portfolio_controls` contains baseline and

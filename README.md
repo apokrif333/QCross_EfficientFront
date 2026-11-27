@@ -651,6 +651,7 @@ Portfolio Lab selects **Analytical Nonlinear Shrinkage** (`nonlinear`) by defaul
 - [API, schemas, execution limits and project structure](docs/analytics-api.md)
 - [Actual stored USD calculation, portfolios, stability and timings](docs/analytics-demo/report.md)
 - [Staged verification and complete test results](docs/analytics-verification.md)
+- [Bootstrap Block Length Calibration, API and benchmark](docs/bootstrap-calibration.md)
 
 Install the numerical and test dependencies with the project's configured interpreter
 using `-m pip install -e ".[dev]"`. Run the reproducible stored-history demonstration

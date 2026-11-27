@@ -127,8 +127,8 @@ IDs through the existing instrument catalog in other databases.
 | group_constraints | Up to 30 explicit named min/max bounds in [0,1] |
 | frontier_points | 2–201; default 51 |
 | cv_folds | Even integers 2–20; default 4; portfolio folds 120/60 train/validation months, covariance folds 60/30 |
-| bootstrap_iterations | 1–2,000, including odd counts, default 500. Resampled Frontier 1–500, default 250 |
-| expected_block_length | 3–24 months; default 12 |
+| bootstrap_iterations | 1–2,000, including odd counts, default 100. Resampled Frontier 1–500, default 250 |
+| expected_block_length | 1–24 months (default 7) |
 | random_seed | Integer 0 through 2^32−1; default 42 |
 | bootstrap_objectives | Optional distinct list of gmv/max_sharpe/target_return (up to three) |
 | risk_aversions | Optional one gamma in (0,1e6] per resampled frontier point |

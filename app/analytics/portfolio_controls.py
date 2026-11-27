@@ -1,6 +1,7 @@
 """Sequential user-sleeve controls, independent of optimizer moments."""
 
 import hashlib
+import math
 
 import numpy as np
 
@@ -8,6 +9,7 @@ from app.analytics.models import TAX_METHODOLOGY, AnalyticsError
 from app.analytics.portfolio_simulator import (
     COST_METRICS,
     TARGET_PATH_METRICS,
+    TARGET_PATH_RATIO_METRICS,
     TRADING_METRICS,
     simulate_portfolio,
     simulate_target_paths,
@@ -34,6 +36,8 @@ def _trend_weights(base, hedge, active, destination):
 
 
 class DownsideTarget:
+    EXPOSURE_STEPS = 10
+
     def __init__(self, base, hedge, target, lookback):
         self.base, self.hedge = base, hedge
         self.target, self.lookback = target, lookback
@@ -48,9 +52,13 @@ class DownsideTarget:
             if ready
             else None
         )
-        alpha = min(1.0, self.target / downside) if downside else 1.0
+        raw_alpha = min(1.0, self.target / downside) if downside else 1.0
+        raw_step = raw_alpha * self.EXPOSURE_STEPS
+        # Round halfway up, allowing for floating-point error in the volatility ratio.
+        alpha = math.floor(raw_step + 0.5 + 1e-12) / self.EXPOSURE_STEPS
         self.diagnostics = {
             "alpha": alpha,
+            "raw_alpha": raw_alpha,
             "downside_volatility": downside,
             "hedge_allocation": 1 - alpha,
             "warmup": not ready,
@@ -236,15 +244,16 @@ def analyze_bootstrap_trend_sensitivity(panel, *, user_weights, _sample_indices)
         fingerprint.update(indices.astype("<i8").tobytes())
     trend = panel.control_config["trend"]
     rules = _enabled_trend_rules(trend["asset_rules"], user_weights)
-    values, signal_values, base, hedge, _, assets = _control_inputs(panel, user_weights)
+    values, signal_values, base, hedge, rf, assets = _control_inputs(panel, user_weights)
     asset_columns = {asset: assets.index(asset) for asset in rules}
     portfolios = {None: base}
     for asset, column in asset_columns.items():
         weights = np.zeros_like(base)
         weights[column] = 1
         portfolios[asset] = weights
+    metric_order = TARGET_PATH_METRICS + TARGET_PATH_RATIO_METRICS
     results = {
-        asset: np.empty((len(TREND_LOOKBACKS), len(sample_indices), len(TARGET_PATH_METRICS)))
+        asset: np.empty((len(TREND_LOOKBACKS), len(sample_indices), len(metric_order)))
         for asset in portfolios
     }
     # Bound the temporary target arrays even for long histories.
@@ -270,6 +279,7 @@ def analyze_bootstrap_trend_sensitivity(panel, *, user_weights, _sample_indices)
                 paths[..., None, included],
                 weights[included],
                 targets,
+                risk_free=rf[indices][:, None, :],
                 **settings,
             )
             results[asset][:, start:stop] = np.stack(metrics, axis=-1).transpose(1, 0, 2)
@@ -283,7 +293,7 @@ def analyze_bootstrap_trend_sensitivity(panel, *, user_weights, _sample_indices)
             "validation_sample_fingerprint": fingerprint.hexdigest(),
             "commission_basis": "pretrade_nav",
             "tax_methodology": TAX_METHODOLOGY,
-            "metric_order": TARGET_PATH_METRICS,
+            "metric_order": metric_order,
             "portfolio": export(results[None]),
             "by_asset": {asset: export(results[asset]) for asset in rules},
         },
@@ -407,7 +417,14 @@ def _single_asset_sensitivity(
                 **{
                     side: {
                         metric: path[side][metric]
-                        for metric in ("annualized_cagr", "maximum_drawdown")
+                        for metric in (
+                            "annualized_cagr",
+                            "annualized_volatility",
+                            "maximum_drawdown",
+                            "historical_sharpe_ratio",
+                            "sortino_ratio",
+                            "calmar_ratio",
+                        )
                     }
                     for side in ("gross", "net")
                 },

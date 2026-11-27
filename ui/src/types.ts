@@ -189,6 +189,7 @@ export interface Fold {
     trading_costs?: TradingCosts;
     tax_insolvent?: boolean;
     historical_cagr?: number | null;
+    historical_max_drawdown?: number | null;
     realized_annual_arithmetic_return: number;
     realized_annual_volatility: number;
     realized_sharpe_ratio: number | null;
@@ -404,6 +405,10 @@ export type BootstrapTrendPoint =
       totalTax?: number | null,
       totalCosts?: number | null,
       unpaidTax?: number | null,
+      netSharpe?: number | null,
+      netSortino?: number | null,
+      grossSharpe?: number | null,
+      grossSortino?: number | null,
     ];
 // The outer array is ordered by lookback (1–36 months) and the inner by generation.
 export type BootstrapTrendSeries = BootstrapTrendPoint[][];
@@ -508,13 +513,32 @@ export interface Calculation {
 }
 export interface Job<T = Result> {
   job_id: string;
-  kind: Kind | "asset-trend-sensitivity" | "bootstrap-trend-sensitivity";
+  kind:
+    | Kind
+    | "asset-trend-sensitivity"
+    | "bootstrap-trend-sensitivity"
+    | "bootstrap-calibration"
+    | "bootstrap-calibration-holdout";
   bootstrap_trend_sensitivity_available?: boolean;
-  status: "running" | "completed" | "failed" | "timed_out";
+  status: "running" | "completed" | "failed" | "timed_out" | "cancelled";
   result_url: string;
   status_url: string;
   timeout_seconds: number;
   elapsed_seconds: number;
+  progress?: {
+    phase:
+      | "starting"
+      | "reference"
+      | "scoring"
+      | "summarizing"
+      | "transferring"
+      | "completed";
+    completed_steps: number;
+    total_steps?: number | null;
+    fold_index?: number | null;
+    total_folds?: number | null;
+    block_length?: number | null;
+  } | null;
   error: string | null;
   result?: T | null;
 }
@@ -578,8 +602,8 @@ export const DEFAULT_REQUEST: ApiRequest = {
   group_constraints: {},
   frontier_points: 51,
   cv_folds: 4,
-  bootstrap_iterations: 500,
-  expected_block_length: 12,
+  bootstrap_iterations: 100,
+  expected_block_length: 7,
   random_seed: 42,
   bootstrap_objectives: ["gmv", "max_sharpe"],
   risk_aversions: null,
@@ -670,7 +694,13 @@ export interface SimulationStats {
 type SensitivityStats = Pick<
   SimulationStats,
   "maximum_drawdown" | "annualized_cagr"
->;
+> &
+  Partial<
+    Pick<
+      SimulationStats,
+      "annualized_volatility" | "historical_sharpe_ratio" | "sortino_ratio"
+    >
+  > & { calmar_ratio?: number | null };
 export interface TrendSensitivityPoint {
   lookback_months: number;
   gross: SensitivityStats;

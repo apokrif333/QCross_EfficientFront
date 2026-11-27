@@ -134,19 +134,20 @@ def test_zero_sharpe_denominator_and_delta_drawdown(panel):
     assert summary["win_frequencies"]["higher_sharpe"]["denominator"] == 0
 
 
-def test_lower_drawdown_frequency_excludes_failed_and_missing_and_counts_ties():
+def test_drawdown_frequencies_exclude_failed_and_missing_and_handle_ties():
     records = [
-        {"optimized": {}, "differences": {"delta_max_drawdown": delta}}
-        for delta in (-0.1, 0, 0.2, None)
+        {"optimized": {}, "differences": {"delta_max_drawdown": drawdown, "delta_cagr": cagr}}
+        for drawdown, cagr in [(-0.1, 0), (0, 0.1), (0.2, 0.1), (None, 0.1), (0, None)]
     ]
-    records.append({"optimized": None, "differences": {"delta_max_drawdown": -0.2}})
-    result = summarize(records)["win_frequencies"]["lower_drawdown"]
-    assert result["denominator"] == 3
-    assert result["fraction"] == pytest.approx(1 / 3)
-    assert summarize([])["win_frequencies"]["lower_drawdown"] == {
-        "fraction": None,
-        "denominator": 0,
-    }
+    records.append(
+        {"optimized": None, "differences": {"delta_max_drawdown": -0.2, "delta_cagr": 0.1}}
+    )
+    frequencies = summarize(records)["win_frequencies"]
+    assert "lower_annualized_total_costs" not in frequencies
+    assert frequencies["lower_drawdown"] == {"fraction": 1 / 4, "denominator": 4}
+    assert frequencies["higher_cagr_no_higher_drawdown"] == {"fraction": 1 / 3, "denominator": 3}
+    for metric in ("lower_drawdown", "higher_cagr_no_higher_drawdown"):
+        assert summarize([])["win_frequencies"][metric] == {"fraction": None, "denominator": 0}
 
 
 def test_500_generations_have_500_pairs_and_500_user_paths(panel):
@@ -190,6 +191,9 @@ def test_paired_jobs_and_new_objective(panel, settings, session_factory, basis):
             result = done["result"]
             if endpoint in {"cross-validation", "bootstrap"}:
                 assert result["paired_comparison"]["valid_count"] == (4)
+                frequencies = result["paired_comparison"]["win_frequencies"]
+                assert frequencies["higher_cagr_no_higher_drawdown"]["denominator"] == 4
+                assert "lower_annualized_total_costs" not in frequencies
                 assert ("wealth_log_f32" in result["paired_comparison"]["results"][0]) == (
                     endpoint == "bootstrap"
                 )

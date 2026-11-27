@@ -212,6 +212,7 @@ it("shows CV summaries above the existing table and adds one user-portfolio colu
     training_metrics: fold.training_metrics && {
       ...fold.training_metrics,
       historical_cagr: 0.11,
+      historical_max_drawdown: 0.13,
       historical_volatility:
         0.1 *
         Math.sqrt(
@@ -221,12 +222,22 @@ it("shows CV summaries above the existing table and adds one user-portfolio colu
     validation_metrics: fold.validation_metrics && {
       ...fold.validation_metrics,
       historical_cagr: 0.1084,
+      historical_max_drawdown: 0.21,
       realized_annual_arithmetic_return: 0.1144,
       realized_annual_volatility: 0.1509,
+      trading_costs: {
+        annualized_commissions: 0.002,
+        annualized_capital_gains_tax: 0.001,
+        annualized_total_costs: 0.003,
+      },
     },
     paired_comparison: {
       status: "optimal",
-      user: { annualized_cagr: 0.1774, annualized_volatility: 0.1493 },
+      user: {
+        annualized_cagr: 0.1774,
+        annualized_volatility: 0.1493,
+        maximum_drawdown: 0.18,
+      },
     },
   }));
   r.efficiency_robustness = {
@@ -243,7 +254,7 @@ it("shows CV summaries above the existing table and adds one user-portfolio colu
     ),
   );
   const column = screen.getByRole("columnheader", {
-    name: "Your Port on Valid CAGR / historical vol",
+    name: "Your Port on Valid CAGR / vol / DD",
   });
   expect(column).toBeVisible();
   const summary = screen.getByText(
@@ -270,9 +281,14 @@ it("shows CV summaries above the existing table and adds one user-portfolio colu
   expect(
     screen.queryByRole("columnheader", { name: "Статус" }),
   ).not.toBeInTheDocument();
-  expect(screen.getAllByText("17.74% / 14.93%")).toHaveLength(4);
-  expect(screen.getAllByText("10.84% / 15.09%")).toHaveLength(4);
-  expect(screen.getAllByText("11.00% / 10.00%")).toHaveLength(4);
+  expect(screen.getAllByText("17.74% / 14.93% / 18.00%")).toHaveLength(4);
+  expect(screen.getAllByText("10.84% / 15.09% / 21.00%")).toHaveLength(4);
+  expect(screen.getAllByText("11.00% / 10.00% / 13.00%")).toHaveLength(4);
+  expect(
+    screen.queryByRole("columnheader", {
+      name: /Historical Validation Sharpe|Validation Net/,
+    }),
+  ).not.toBeInTheDocument();
   expect(
     screen.queryByText("Результаты сравнений и веса на Train"),
   ).not.toBeInTheDocument();
@@ -303,7 +319,7 @@ it("hides user-portfolio CV information when no allocation is specified", () => 
   ).not.toBeInTheDocument();
   expect(
     screen.queryByRole("columnheader", {
-      name: "Your Port on Valid CAGR / historical vol",
+      name: "Your Port on Valid CAGR / vol / DD",
     }),
   ).not.toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "Fold" })).toBeVisible();

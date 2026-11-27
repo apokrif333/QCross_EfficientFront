@@ -17,11 +17,7 @@ import type {
 import { METHODS } from "../types";
 import { compatible } from "../lib/snapshot";
 import { comparePassiveBootstrap } from "../lib/passiveBootstrapComparison";
-import {
-  annualCostHint,
-  annualCostKeys,
-  costLabels,
-} from "../lib/tradingCosts";
+import { annualCostHint, costLabels } from "../lib/tradingCosts";
 import { threeYearReturnCounts } from "../lib/rollingReturns";
 import {
   displayedVolatility,
@@ -113,6 +109,14 @@ function formatEfficiencySummary(
     ? `mean ${(v.mean * 100).toFixed(2)} п.п.; median ${(v.median * 100).toFixed(2)}; P5-P95 ${(v.p5 * 100).toFixed(2)}-${(v.p95 * 100).toFixed(2)}; max ${(v.maximum * 100).toFixed(2)}`
     : "-";
 }
+const hiddenBootstrapPortfolioMetrics = new Set([
+  "annualized_arithmetic_return",
+  "terminal_wealth",
+  "total_commissions",
+  "total_capital_gains_tax",
+  "total_costs",
+]);
+
 function BootstrapPortfolioMetrics({
   result,
   objective,
@@ -129,6 +133,9 @@ function BootstrapPortfolioMetrics({
   const joined =
     result.methodology === "bidirectional_block_cv_stationary_bootstrap_v1";
   const taxed = !!result.simulation_settings?.capital_gains_tax_rate;
+  const controlled =
+    !passive &&
+    result.efficiency_robustness?.user_portfolio_mode === "controlled";
   if (!robustness?.distributions || !robustness.horizon) return null;
   const labels: Record<string, string> = {
     annualized_cagr: "CAGR, % годовых",
@@ -161,7 +168,7 @@ function BootstrapPortfolioMetrics({
           ? "Показатели пассивного портфеля на объединённой Validation"
           : objective
             ? "Показатели оптимизатора на объединённой Validation"
-            : result.efficiency_robustness?.user_portfolio_mode === "controlled"
+            : controlled
               ? "Показатели портфеля под управлением"
               : "Показатели фиксированного портфеля"}
       </h3>
@@ -190,9 +197,11 @@ function BootstrapPortfolioMetrics({
       </p>
       <p className="hint">
         P5/P95 описывают исторические бутстрап-сценарии и не являются
-        калиброванными вероятностями будущей доходности. В Real стоимость $1
-        выражена в покупательной способности начала периода. Для каждого
-        показателя указано число доступных значений.
+        калиброванными вероятностями будущей доходности.{" "}
+        {!objective &&
+          !controlled &&
+          "В Real стоимость $1 выражена в покупательной способности начала периода. "}
+        Для каждого показателя указано число доступных значений.
       </p>
       <div className="table-scroll">
         <table
@@ -226,6 +235,8 @@ function BootstrapPortfolioMetrics({
                 ([key]) =>
                   key !== "return_shortfall" &&
                   key !== "excess_volatility" &&
+                  (!(objective || controlled) ||
+                    !hiddenBootstrapPortfolioMetrics.has(key)) &&
                   (taxed || !key.includes("capital_gains_tax")),
               )
               .map(([key, d]) => (
@@ -759,6 +770,7 @@ export function FrontierView({
         rows={rows}
         instruments={instruments}
         historicalSharpeOnly
+        showAnnualCosts={false}
         onSelect={(portfolio, label) => setSelected({ portfolio, label })}
       />
       {compare && (
@@ -810,9 +822,6 @@ export function CVView({
     )
       ? r.efficiency_robustness
       : null;
-  const validationCosts = annualCostKeys.filter((key) =>
-    r.folds.some((f) => f.validation_metrics?.trading_costs?.[key] != null),
-  );
   const data = useMemo(
     () =>
       r.assets.map(
@@ -956,8 +965,8 @@ export function CVView({
         !r.paired_comparison &&
         !r.folds.some((f) => f.paired_comparison?.user) && (
           <p className="hint">
-            Для CAGR и исторической волатильности вашего портфеля повторите
-            расчёт CV.
+            Для CAGR, волатильности и просадки вашего портфеля повторите расчёт
+            CV.
           </p>
         )}
       <div className="table-scroll">
@@ -968,17 +977,13 @@ export function CVView({
               <th>Обучение</th>
               <th>Проверка</th>
               <th>Веса</th>
-              <th>Train CAGR / historical vol</th>
-              <th>Validation CAGR / historical vol</th>
-              <th>Historical Validation Sharpe</th>
-              {validationCosts.map((key) => (
-                <th key={key}>{costLabels[key]} · Validation Net</th>
-              ))}
+              <th>Train CAGR / vol / DD</th>
+              <th>Validation CAGR / vol / DD</th>
               {(userEfficiency || r.paired_comparison) && (
                 <th>
                   {r.paired_comparison?.user_portfolio_mode === "controlled"
-                    ? "Your Controlled Port on Valid CAGR / historical vol"
-                    : "Your Port on Valid CAGR / historical vol"}
+                    ? "Controlled Port on Valid CAGR / vol / DD"
+                    : "Your Port on Valid CAGR / vol / DD"}
                 </th>
               )}
             </tr>
@@ -1036,33 +1041,28 @@ export function CVView({
                                     (f.training.observations - 1),
                                 ))
                         : null,
-                    )}
+                    )}{" "}
+                    / {percent(f.training_metrics?.historical_max_drawdown)}
                   </td>
                   <td>
                     {percent(f.validation_metrics?.historical_cagr)} /{" "}
-                    {percent(f.validation_metrics?.realized_annual_volatility)}
-                  </td>
-                  <td>{number(f.validation_metrics?.realized_sharpe_ratio)}</td>
-                  {validationCosts.map((key) => (
-                    <td key={key}>
-                      {percent(f.validation_metrics?.trading_costs?.[key], 4)}
-                      {key === "annualized_total_costs" &&
-                        f.validation_metrics?.tax_insolvent && (
-                          <small>
-                            Непогашенный налог: $
-                            {number(
-                              f.validation_metrics.trading_costs
-                                ?.unpaid_capital_gains_tax,
-                              4,
-                            )}
-                          </small>
+                    {percent(f.validation_metrics?.realized_annual_volatility)}{" "}
+                    / {percent(f.validation_metrics?.historical_max_drawdown)}
+                    {f.validation_metrics?.tax_insolvent && (
+                      <small>
+                        Непогашенный налог: $
+                        {number(
+                          f.validation_metrics.trading_costs
+                            ?.unpaid_capital_gains_tax,
+                          4,
                         )}
-                    </td>
-                  ))}
+                      </small>
+                    )}
+                  </td>
                   {(userEfficiency || r.paired_comparison) && (
                     <td>
                       {paired?.user ? (
-                        `${percent(paired.user.annualized_cagr)} / ${percent(paired.user.annualized_volatility)}`
+                        `${percent(paired.user.annualized_cagr)} / ${percent(paired.user.annualized_volatility)} / ${percent(paired.user.maximum_drawdown)}`
                       ) : paired?.status && paired.status !== "optimal" ? (
                         <ResultStatus
                           status={paired.status}
@@ -1242,6 +1242,7 @@ export function BootstrapView({
         key={String(showPassive)}
         value={comparison}
         instruments={instruments}
+        bootstrap
       />
       <PairedDifferenceHistogram value={comparison} />
       <BootstrapPortfolioMetrics result={r} />

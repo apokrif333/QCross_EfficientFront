@@ -1,5 +1,7 @@
 import { useState } from "react";
 import Plot from "./Plot";
+import HistoricalTrendTable from "./HistoricalTrendTable";
+import { hasCompleteAssetTrendMetrics } from "../lib/validation";
 import PortfolioPathCharts from "./PortfolioPathCharts";
 import { number, percent, ticker, escapeHtml } from "../lib/display";
 import {
@@ -323,7 +325,9 @@ export default function ControlResults({
         <>
           <h4>Чувствительность к периоду SMA/Momentum</h4>
           {onCalculateSensitivity &&
-            trendAssets.some((asset) => !byAsset[asset]) && (
+            trendAssets.some(
+              (asset) => !hasCompleteAssetTrendMetrics(byAsset[asset]),
+            ) && (
               <button
                 type="button"
                 disabled={sensitivityBusy}
@@ -426,6 +430,7 @@ export default function ControlResults({
               yaxis: { title: { text: "CAGR портфеля" }, tickformat: ".1%" },
             }}
           />
+          <HistoricalTrendTable points={sensitivity} side={side} />
         </>
       )}
       {c.sensitivity && c.sensitivity.scope !== "common_lookback" && (
